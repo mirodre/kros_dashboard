@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --bg: #090b10;
+  --bg: #111420;
   --panel: #111420;
   --panel-soft: #171b2b;
   --text: #eff2ff;
@@ -20,15 +20,7 @@
 }
 
 html {
-  background-color: #111420;
-  background-image: radial-gradient(
-    circle at 20% -10%,
-    #23305d 0%,
-    rgba(9, 11, 16, 0.94) 44%,
-    #111420 78%
-  );
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background: var(--bg);
   min-height: 100%;
   overflow-x: hidden;
   overscroll-behavior-x: none;
@@ -36,15 +28,7 @@ html {
 
 body {
   margin: 0;
-  background-color: #111420;
-  background-image: radial-gradient(
-    circle at 20% -10%,
-    #23305d 0%,
-    rgba(9, 11, 16, 0.94) 44%,
-    #111420 78%
-  );
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background: var(--bg);
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--text);
@@ -56,12 +40,30 @@ body {
 }
 
 .app-shell {
+  isolation: isolate;
   margin: 0 auto;
   max-width: 1080px;
   overflow-x: clip;
   padding: calc(1.8rem + env(safe-area-inset-top)) 1.8rem calc(6.2rem + env(safe-area-inset-bottom));
   position: relative;
   width: 100%;
+}
+
+.app-shell::before {
+  background: radial-gradient(circle at 50% 230px, rgba(55, 78, 148, 0.78) 0%, rgba(44, 62, 122, 0.42) 30%, rgba(17, 20, 32, 0) 68%);
+  content: "";
+  height: 560px;
+  left: 0;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 0;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .pull-refresh-indicator {
