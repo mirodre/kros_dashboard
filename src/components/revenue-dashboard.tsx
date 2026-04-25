@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import { formatCurrency, formatDelta } from "@/lib/format";
 import { GranularityToggle } from "./granularity-toggle";
@@ -31,10 +31,31 @@ export function RevenueDashboard({
 }: Props) {
   const maxValue = Math.max(...points.map((point) => Math.max(point.current, point.previous)));
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
+  const tooltipTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (tooltipTimeoutRef.current) {
+        window.clearTimeout(tooltipTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const getDeltaPct = (point: RevenuePoint) => {
     if (point.previous === 0) return 100;
     return ((point.current - point.previous) / point.previous) * 100;
+  };
+
+  const showTemporaryTooltip = (point: RevenuePoint) => {
+    setActivePoint(point);
+    if (tooltipTimeoutRef.current) {
+      window.clearTimeout(tooltipTimeoutRef.current);
+    }
+
+    tooltipTimeoutRef.current = window.setTimeout(() => {
+      setActivePoint(null);
+      tooltipTimeoutRef.current = null;
+    }, 3000);
   };
 
   return (
@@ -84,8 +105,8 @@ export function RevenueDashboard({
               key={point.label}
               onMouseEnter={() => setActivePoint(point)}
               onFocus={() => setActivePoint(point)}
-              onTouchStart={() => setActivePoint(point)}
-              onClick={() => setActivePoint(point)}
+              onTouchStart={() => showTemporaryTooltip(point)}
+              onClick={() => showTemporaryTooltip(point)}
             >
               {activePoint?.label === point.label ? (
                 <div className="chart-tooltip chart-tooltip-inline" aria-live="polite">

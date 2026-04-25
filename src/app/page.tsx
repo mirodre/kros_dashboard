@@ -13,6 +13,7 @@ import {
 } from "@/lib/mock-data";
 import {
   computeCompanyBreakdown,
+  computeComparableYtdTotals,
   getDateRange,
   computeKpis,
   computeRevenueSeries,
@@ -28,8 +29,34 @@ const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
+type LiveInvoicesCacheEntry = {
+  invoices: NormalizedInvoice[];
+  syncedAt: string;
+};
+
+declare global {
+  var __krosDashboardLiveInvoicesCache: Map<string, LiveInvoicesCacheEntry> | undefined;
+  var __krosDashboardGranularity: Granularity | undefined;
+}
+
+const liveInvoicesCache =
+  globalThis.__krosDashboardLiveInvoicesCache ?? new Map<string, LiveInvoicesCacheEntry>();
+
+globalThis.__krosDashboardLiveInvoicesCache = liveInvoicesCache;
+
+function getLiveInvoicesCacheKey(connections: KrosConnection[], granularity: Granularity) {
+  const connectionKey = connections
+    .map((connection) => `${connection.companyId}:${connection.connectedAt}`)
+    .sort()
+    .join("|");
+
+  return `${granularity}:${connectionKey}`;
+}
+
 export default function HomePage() {
-  const [granularity, setGranularity] = useState<Granularity>("month");
+  const [granularity, setGranularity] = useState<Granularity>(
+    globalThis.__krosDashboardGranularity ?? "month"
+  );
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
@@ -93,6 +120,10 @@ export default function HomePage() {
   }, [hasLoadedPersistedFilters, selectedCompanies]);
 
   useEffect(() => {
+    globalThis.__krosDashboardGranularity = granularity;
+  }, [granularity]);
+
+  useEffect(() => {
     if (connections.length === 0) {
       setLiveInvoices([]);
       return;
@@ -100,6 +131,18 @@ export default function HomePage() {
 
     const abortController = new AbortController();
     const range = getDateRange(granularity);
+    const cacheKey = getLiveInvoicesCacheKey(connections, granularity);
+    const cachedEntry = liveInvoicesCache.get(cacheKey);
+    const isManualRefresh = refreshNonce > 0;
+
+    if (cachedEntry && !isManualRefresh) {
+      setLiveInvoices(cachedEntry.invoices);
+      setLastSyncedAt(cachedEntry.syncedAt);
+      setIsLoadingLiveData(false);
+      setLiveError(null);
+      localStorage.setItem(LAST_SYNC_STORAGE_KEY, cachedEntry.syncedAt);
+      return;
+    }
 
     const loadInvoices = async () => {
       setIsLoadingLiveData(true);
@@ -124,10 +167,15 @@ export default function HomePage() {
           );
         }
 
-        setLiveInvoices(normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []));
+        const normalizedInvoices = normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []);
+        setLiveInvoices(normalizedInvoices);
         const syncedAt = new Date().toISOString();
         setLastSyncedAt(syncedAt);
         localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
+        liveInvoicesCache.set(cacheKey, {
+          invoices: normalizedInvoices,
+          syncedAt
+        });
         if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
           setLiveError(
             `Niektoré firmy sa nepodarilo načítať (${payload.errors.length}). Zobrazujú sa dostupné dáta.`
@@ -162,7 +210,16 @@ export default function HomePage() {
     return getRevenueChartPointsByTags(granularity, effectiveTags, effectiveCompanies);
   }, [hasLiveMode, liveInvoices, granularity, effectiveTags, effectiveCompanies]);
 
-  const kpis = useMemo(() => computeKpis(revenueData), [revenueData]);
+  const ytdTotals = useMemo(() => {
+    if (!hasLiveMode) return undefined;
+    return computeComparableYtdTotals({
+      invoices: liveInvoices,
+      selectedTags: effectiveTags,
+      selectedCompanies: effectiveCompanies
+    });
+  }, [hasLiveMode, liveInvoices, effectiveTags, effectiveCompanies]);
+
+  const kpis = useMemo(() => computeKpis(revenueData, ytdTotals), [revenueData, ytdTotals]);
 
   const tagsData = useMemo(() => {
     if (hasLiveMode) return computeTagBreakdown(liveInvoices, effectiveCompanies);

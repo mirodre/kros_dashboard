@@ -17,6 +17,7 @@ export function getDateRange(granularity: Granularity) {
   const now = new Date();
   const currentFrom = new Date(now);
   const currentTo = new Date(now);
+  currentTo.setHours(23, 59, 59, 999);
 
   if (granularity === "week" || granularity === "month") {
     currentFrom.setMonth(0, 1);
@@ -186,7 +187,10 @@ export function computeRevenueSeries({
   }));
 }
 
-export function computeKpis(points: AggregatedRevenuePoint[]): KpiCard[] {
+export function computeKpis(
+  points: AggregatedRevenuePoint[],
+  ytdTotals?: { current: number; previous: number }
+): KpiCard[] {
   const currentBucket = points.length > 0 ? points[points.length - 1] : null;
   const currentPeriodCurrent = currentBucket?.current ?? 0;
   const currentPeriodPrevious = currentBucket?.previous ?? 0;
@@ -196,8 +200,8 @@ export function computeKpis(points: AggregatedRevenuePoint[]): KpiCard[] {
   const avgCurrent = points.length ? currentTotal / points.length : 0;
   const avgPrevious = points.length ? previousTotal / points.length : 0;
 
-  const ytdCurrent = currentTotal;
-  const ytdPrevious = previousTotal;
+  const ytdCurrent = ytdTotals?.current ?? currentTotal;
+  const ytdPrevious = ytdTotals?.previous ?? previousTotal;
 
   const delta = (current: number, previous: number) =>
     previous === 0 ? 100 : ((current - previous) / previous) * 100;
@@ -224,18 +228,47 @@ export function computeKpis(points: AggregatedRevenuePoint[]): KpiCard[] {
   ];
 }
 
+export function computeComparableYtdTotals({
+  invoices,
+  selectedTags,
+  selectedCompanies
+}: {
+  invoices: NormalizedInvoice[];
+  selectedTags: string[];
+  selectedCompanies: string[];
+}) {
+  const range = getDateRange("month");
+  const selectedTagSet = new Set(selectedTags);
+  const selectedCompanySet = new Set(selectedCompanies);
+  let current = 0;
+  let previous = 0;
+
+  for (const invoice of invoices) {
+    const invoiceDate = new Date(invoice.issueDate);
+    const companyPass = selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
+    const tagPass = selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
+    if (!companyPass || !tagPass) continue;
+
+    if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
+      current += invoice.totalPrice;
+    } else if (invoiceDate >= range.previousFrom && invoiceDate <= range.previousTo) {
+      previous += invoice.totalPrice;
+    }
+  }
+
+  return {
+    current: Math.round(current),
+    previous: Math.round(previous)
+  };
+}
+
 export function computeTagBreakdown(
   invoices: NormalizedInvoice[],
   selectedCompanies: string[]
 ): AggregatedBreakdownPoint[] {
   const companySet = new Set(selectedCompanies);
   const map = new Map<string, { current: number; previous: number }>();
-  const now = new Date();
-  const nowYear = now.getFullYear();
-  const previousYear = nowYear - 1;
-  const currentPeriodStart = new Date(nowYear, 0, 1);
-  const previousPeriodStart = new Date(previousYear, 0, 1);
-  const previousPeriodEnd = new Date(previousYear, now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const range = getDateRange("month");
 
   for (const invoice of invoices) {
     if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
@@ -243,9 +276,9 @@ export function computeTagBreakdown(
     const invoiceDate = new Date(invoice.issueDate);
     let yearBucket: "current" | "previous" | null = null;
 
-    if (invoiceDate >= currentPeriodStart && invoiceDate <= now) {
+    if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
       yearBucket = "current";
-    } else if (invoiceDate >= previousPeriodStart && invoiceDate <= previousPeriodEnd) {
+    } else if (invoiceDate >= range.previousFrom && invoiceDate <= range.previousTo) {
       yearBucket = "previous";
     }
 
@@ -271,12 +304,7 @@ export function computeCompanyBreakdown(
 ): AggregatedBreakdownPoint[] {
   const tagSet = new Set(selectedTags);
   const map = new Map<string, { current: number; previous: number }>();
-  const now = new Date();
-  const nowYear = now.getFullYear();
-  const previousYear = nowYear - 1;
-  const currentPeriodStart = new Date(nowYear, 0, 1);
-  const previousPeriodStart = new Date(previousYear, 0, 1);
-  const previousPeriodEnd = new Date(previousYear, now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const range = getDateRange("month");
 
   for (const invoice of invoices) {
     const tagPass = tagSet.size === 0 || invoice.tags.some((tag) => tagSet.has(tag));
@@ -285,9 +313,9 @@ export function computeCompanyBreakdown(
     const invoiceDate = new Date(invoice.issueDate);
     let yearBucket: "current" | "previous" | null = null;
 
-    if (invoiceDate >= currentPeriodStart && invoiceDate <= now) {
+    if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
       yearBucket = "current";
-    } else if (invoiceDate >= previousPeriodStart && invoiceDate <= previousPeriodEnd) {
+    } else if (invoiceDate >= range.previousFrom && invoiceDate <= range.previousTo) {
       yearBucket = "previous";
     }
 

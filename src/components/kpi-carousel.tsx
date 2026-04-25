@@ -11,9 +11,24 @@ type Props = {
 export function KpiCarousel({ items }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     setTouchStartX(event.touches[0]?.clientX ?? null);
+    setTouchStartY(event.touches[0]?.clientY ?? null);
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    if (touchStartX === null || touchStartY === null) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    const deltaX = Math.abs(touchStartX - touch.clientX);
+    const deltaY = Math.abs(touchStartY - touch.clientY);
+    if (deltaX > deltaY && deltaX > 8) {
+      event.preventDefault();
+    }
   };
 
   const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
@@ -30,6 +45,7 @@ export function KpiCarousel({ items }: Props) {
     }
 
     setTouchStartX(null);
+    setTouchStartY(null);
   };
 
   return (
@@ -38,6 +54,7 @@ export function KpiCarousel({ items }: Props) {
         className="kpi-carousel"
         style={{ transform: `translateX(-${activeIndex * 100}%)` }}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {items.map((item) => (

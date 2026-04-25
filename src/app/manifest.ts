@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Mobile-first dashboard pre KROS tržby a tagy",
     start_url: "/",
     display: "standalone",
-    background_color: "#090b10",
-    theme_color: "#0a0b10",
+    background_color: "#111420",
+    theme_color: "#111420",
     lang: "sk",
     icons: [
       {

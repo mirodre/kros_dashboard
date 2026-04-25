@@ -19,6 +19,21 @@
   box-sizing: border-box;
 }
 
+html {
+  background-color: #111420;
+  background-image: radial-gradient(
+    circle at 20% -10%,
+    #23305d 0%,
+    rgba(9, 11, 16, 0.94) 44%,
+    #111420 78%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
 body {
   margin: 0;
   background-color: #111420;
@@ -31,14 +46,45 @@ body {
   background-repeat: no-repeat;
   background-size: 100% 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text);
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  position: relative;
+  width: 100%;
 }
 
 .app-shell {
   margin: 0 auto;
   max-width: 1080px;
-  padding: 1.8rem 1.8rem 6.2rem;
+  overflow-x: clip;
+  padding: calc(1.8rem + env(safe-area-inset-top)) 1.8rem calc(6.2rem + env(safe-area-inset-bottom));
+  position: relative;
+  width: 100%;
+}
+
+.pull-refresh-indicator {
+  background: rgba(21, 28, 51, 0.86);
+  border: 1px solid rgba(91, 113, 187, 0.42);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+  color: #dce5ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  left: 50%;
+  padding: 0.42rem 0.75rem;
+  pointer-events: none;
+  position: fixed;
+  top: calc(0.65rem + env(safe-area-inset-top));
+  transition: opacity 140ms ease, transform 140ms ease, border-color 140ms ease;
+  transform: translate(-50%, 0);
+  z-index: 50;
+}
+
+.pull-refresh-indicator.ready {
+  border-color: rgba(142, 170, 255, 0.78);
+  color: #f1f5ff;
 }
 
 .app-header {
@@ -301,13 +347,15 @@ body {
 }
 
 .kpi-stage {
-  margin-top: 1rem;
+  margin-top: 0.55rem;
   overflow: hidden;
-  padding: 1.25rem 0 0.7rem;
+  padding: 0.55rem 0 0.45rem;
+  touch-action: pan-y;
 }
 
 .kpi-carousel {
   display: flex;
+  will-change: transform;
   transition: transform 280ms ease;
   width: 100%;
 }
@@ -317,8 +365,8 @@ body {
   flex: 0 0 100%;
   flex-direction: column;
   justify-content: center;
-  min-height: 250px;
-  padding: 0.55rem 0.8rem;
+  min-height: 190px;
+  padding: 0.25rem 0.8rem;
   text-align: center;
 }
 
@@ -333,7 +381,7 @@ body {
   font-size: clamp(2.55rem, 9.2vw, 3.95rem);
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin: 1rem 0;
+  margin: 0.65rem 0;
 }
 
 .kpi-row {
@@ -342,7 +390,7 @@ body {
   font-size: 1.02rem;
   justify-content: center;
   gap: 1.1rem;
-  margin-top: 0.45rem;
+  margin-top: 0.15rem;
 }
 
 .kpi-row span:first-child {
@@ -365,7 +413,7 @@ body {
   display: flex;
   gap: 0.4rem;
   justify-content: center;
-  margin-top: 0.45rem;
+  margin-top: 0.2rem;
 }
 
 .kpi-dot {
@@ -430,13 +478,14 @@ body {
 
 .bar-chart {
   -ms-overflow-style: none;
+  align-items: flex-end;
   display: flex;
   flex-wrap: nowrap;
   gap: 0.95rem;
   margin-top: 0.85rem;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 5.2rem 0.35rem 0;
+  padding: 2.25rem 0.35rem 0;
   position: relative;
   scrollbar-width: none;
 }
@@ -448,13 +497,13 @@ body {
 .chart-tooltip {
   background: #12182b;
   border: 1px solid #27345d;
-  border-radius: 12px;
+  border-radius: 10px;
   margin-top: 0.8rem;
-  padding: 0.65rem 0.75rem;
+  padding: 0.45rem 0.55rem;
 }
 
 .tooltip-label {
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   font-weight: 700;
   margin: 0;
 }
@@ -463,9 +512,9 @@ body {
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.82rem;
-  gap: 0.85rem;
-  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  gap: 0.35rem 0.55rem;
+  margin-top: 0.2rem;
 }
 
 .bar-item {
@@ -497,7 +546,7 @@ body {
   align-items: flex-end;
   display: flex;
   gap: 0.2rem;
-  height: 130px;
+  height: clamp(170px, 33vw, 220px);
 }
 
 .bar-item.active .bar.current {
@@ -506,10 +555,10 @@ body {
 
 .chart-tooltip-inline {
   left: 50%;
-  max-width: min(240px, calc(100vw - 56px));
-  min-width: 170px;
+  max-width: min(190px, calc(100vw - 48px));
+  min-width: 146px;
   position: absolute;
-  top: -78px;
+  top: -42px;
   transform: translateX(-50%);
   white-space: normal;
   z-index: 20;
@@ -799,7 +848,24 @@ body {
 
 @media (max-width: 760px) {
   .app-shell {
-    padding: 1.35rem 1.25rem 4.8rem;
+    padding: calc(1.35rem + env(safe-area-inset-top)) 1.25rem calc(4.8rem + env(safe-area-inset-bottom));
+  }
+
+  .kpi-stage {
+    margin-top: 0.35rem;
+    padding: 0.35rem 0 0.3rem;
+  }
+
+  .kpi-card {
+    min-height: 165px;
+  }
+
+  .kpi-title {
+    font-size: 1rem;
+  }
+
+  .kpi-current {
+    margin: 0.45rem 0;
   }
 
   .tag-filter-sheet {
