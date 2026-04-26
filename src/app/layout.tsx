@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "KROS tržbový dashboard",
-  description: "Mobile-first dashboard tržieb a tagov pre dáta z KROS",
+  description: "Mobile-first dashboard tržieb a štítkov pre dáta z KROS",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

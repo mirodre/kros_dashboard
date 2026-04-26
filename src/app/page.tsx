@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
 import { TagsDashboard } from "@/components/tags-dashboard";
@@ -34,23 +34,24 @@ type LiveInvoicesCacheEntry = {
   syncedAt: string;
 };
 
+type LiveDataRange = "ytd" | "history";
+
 declare global {
-  var __krosDashboardLiveInvoicesCache: Map<string, LiveInvoicesCacheEntry> | undefined;
+  var __krosDashboardCompanyInvoicesCache: Map<string, LiveInvoicesCacheEntry> | undefined;
   var __krosDashboardGranularity: Granularity | undefined;
 }
 
-const liveInvoicesCache =
-  globalThis.__krosDashboardLiveInvoicesCache ?? new Map<string, LiveInvoicesCacheEntry>();
+const companyInvoicesCache =
+  globalThis.__krosDashboardCompanyInvoicesCache ?? new Map<string, LiveInvoicesCacheEntry>();
 
-globalThis.__krosDashboardLiveInvoicesCache = liveInvoicesCache;
+globalThis.__krosDashboardCompanyInvoicesCache = companyInvoicesCache;
 
-function getLiveInvoicesCacheKey(connections: KrosConnection[], granularity: Granularity) {
-  const connectionKey = connections
-    .map((connection) => `${connection.companyId}:${connection.connectedAt}`)
-    .sort()
-    .join("|");
+function getCompanyCacheKey(connection: KrosConnection, range: LiveDataRange) {
+  return `${range}:${connection.companyId}:${connection.connectedAt}`;
+}
 
-  return `${granularity}:${connectionKey}`;
+function getLiveDataRange(granularity: Granularity): LiveDataRange {
+  return granularity === "year" ? "history" : "ytd";
 }
 
 export default function HomePage() {
@@ -68,6 +69,7 @@ export default function HomePage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
+  const handledRefreshNonceRef = useRef(0);
 
   const effectiveTags = useMemo(
     () => (focusedTag ? [focusedTag] : selectedTags),
@@ -77,6 +79,12 @@ export default function HomePage() {
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
     [focusedCompany, selectedCompanies]
   );
+  const syncConnections = useMemo(() => {
+    if (selectedCompanies.length === 0) return connections;
+
+    const selectedCompanySet = new Set(selectedCompanies);
+    return connections.filter((connection) => selectedCompanySet.has(connection.companyName));
+  }, [connections, selectedCompanies]);
 
   useEffect(() => {
     const storedConnections = readConnections();
@@ -124,23 +132,50 @@ export default function HomePage() {
   }, [granularity]);
 
   useEffect(() => {
+    if (!hasLoadedPersistedFilters) return;
+
     if (connections.length === 0) {
       setLiveInvoices([]);
       return;
     }
 
-    const abortController = new AbortController();
-    const range = getDateRange(granularity);
-    const cacheKey = getLiveInvoicesCacheKey(connections, granularity);
-    const cachedEntry = liveInvoicesCache.get(cacheKey);
-    const isManualRefresh = refreshNonce > 0;
+    if (syncConnections.length === 0) {
+      setLiveInvoices([]);
+      setIsLoadingLiveData(false);
+      return;
+    }
 
-    if (cachedEntry && !isManualRefresh) {
-      setLiveInvoices(cachedEntry.invoices);
-      setLastSyncedAt(cachedEntry.syncedAt);
+    const abortController = new AbortController();
+    const liveDataRange = getLiveDataRange(granularity);
+    const fetchRange = getDateRange(liveDataRange === "history" ? "year" : "month");
+    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
+    const cachedEntries = syncConnections
+      .map((connection) => {
+        const rangeEntry = companyInvoicesCache.get(getCompanyCacheKey(connection, liveDataRange));
+        const historyEntry =
+          liveDataRange === "ytd"
+            ? companyInvoicesCache.get(getCompanyCacheKey(connection, "history"))
+            : undefined;
+        return rangeEntry ?? historyEntry;
+      });
+    const missingConnections = isManualRefresh
+      ? syncConnections
+      : syncConnections.filter((_, index) => !cachedEntries[index]);
+    const cachedInvoices = cachedEntries.flatMap((entry) => entry?.invoices ?? []);
+    const latestCachedSync = cachedEntries
+      .map((entry) => entry?.syncedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1);
+
+    if (missingConnections.length === 0 && !isManualRefresh) {
+      setLiveInvoices(cachedInvoices);
+      if (latestCachedSync) {
+        setLastSyncedAt(latestCachedSync);
+        localStorage.setItem(LAST_SYNC_STORAGE_KEY, latestCachedSync);
+      }
       setIsLoadingLiveData(false);
       setLiveError(null);
-      localStorage.setItem(LAST_SYNC_STORAGE_KEY, cachedEntry.syncedAt);
       return;
     }
 
@@ -153,9 +188,9 @@ export default function HomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            companies: connections,
-            issueDateFrom: range.fetchFrom,
-            issueDateTo: range.fetchTo
+            companies: missingConnections,
+            issueDateFrom: fetchRange.fetchFrom,
+            issueDateTo: fetchRange.fetchTo
           }),
           signal: abortController.signal
         });
@@ -168,14 +203,29 @@ export default function HomePage() {
         }
 
         const normalizedInvoices = normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []);
-        setLiveInvoices(normalizedInvoices);
         const syncedAt = new Date().toISOString();
+        for (const connection of missingConnections) {
+          const companyInvoices = normalizedInvoices.filter(
+            (invoice) => invoice.companyName === connection.companyName
+          );
+          companyInvoicesCache.set(getCompanyCacheKey(connection, liveDataRange), {
+            invoices: companyInvoices,
+            syncedAt
+          });
+        }
+
+        const nextInvoices = syncConnections.flatMap((connection) => {
+          const rangeEntry = companyInvoicesCache.get(getCompanyCacheKey(connection, liveDataRange));
+          const historyEntry =
+            liveDataRange === "ytd"
+              ? companyInvoicesCache.get(getCompanyCacheKey(connection, "history"))
+              : undefined;
+          return (rangeEntry ?? historyEntry)?.invoices ?? [];
+        });
+
+        setLiveInvoices(nextInvoices);
         setLastSyncedAt(syncedAt);
         localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
-        liveInvoicesCache.set(cacheKey, {
-          invoices: normalizedInvoices,
-          syncedAt
-        });
         if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
           setLiveError(
             `Niektoré firmy sa nepodarilo načítať (${payload.errors.length}). Zobrazujú sa dostupné dáta.`
@@ -187,6 +237,7 @@ export default function HomePage() {
         }
       } finally {
         if (!abortController.signal.aborted) {
+          handledRefreshNonceRef.current = refreshNonce;
           setIsLoadingLiveData(false);
         }
       }
@@ -195,7 +246,7 @@ export default function HomePage() {
     loadInvoices();
 
     return () => abortController.abort();
-  }, [connections, granularity, refreshNonce]);
+  }, [connections, syncConnections, granularity, refreshNonce, hasLoadedPersistedFilters]);
 
   const hasLiveMode = connections.length > 0;
   const revenueData = useMemo(() => {
@@ -273,6 +324,7 @@ export default function HomePage() {
       <CompaniesDashboard
         companies={companiesData}
         selectedCompanies={selectedCompanies}
+        availableCompanyNames={connections.map((connection) => connection.companyName)}
         focusedCompany={focusedCompany}
         onSelectionChange={(companies) =>
           updateSelectionWithFocusedGuard(

@@ -6,6 +6,7 @@ import { FilterableBreakdownSection } from "./filterable-breakdown-section";
 type Props = {
   companies: CompanyPoint[];
   selectedCompanies: string[];
+  availableCompanyNames?: string[];
   focusedCompany: string | null;
   onSelectionChange: (companies: string[]) => void;
   onFocusedCompanyChange: (company: string | null) => void;
@@ -15,6 +16,7 @@ type Props = {
 export function CompaniesDashboard({
   companies,
   selectedCompanies,
+  availableCompanyNames,
   focusedCompany,
   onSelectionChange,
   onFocusedCompanyChange,
@@ -29,6 +31,7 @@ export function CompaniesDashboard({
       ariaLabelPrefix="Filtrovať dashboard podľa firmy"
       items={companies}
       selectedItems={selectedCompanies}
+      availableItemNames={availableCompanyNames}
       focusedItem={focusedCompany}
       onSelectionChange={onSelectionChange}
       onFocusedItemChange={onFocusedCompanyChange}

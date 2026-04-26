@@ -2,7 +2,7 @@
 
 Frontend-first prototyp pre mobilný dashboard:
 - Dashboard 1: Vývoj tržieb
-- Dashboard 2: Výkon podľa tagov
+- Dashboard 2: Výkon podľa štítkov
 - Dashboard 3: Výkon podľa firiem
 - Revolut-like swipe KPI karty
 - Filter granularít: týždeň / mesiac / rok

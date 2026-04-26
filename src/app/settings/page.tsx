@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
-import { getDateRange } from "@/lib/dashboard-live";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
 import type { KrosConnection } from "@/lib/kros-types";
 import type { KrosApiLogEntry } from "@/lib/kros-logs";
@@ -13,7 +12,6 @@ export default function SettingsPage() {
   const [pendingState, setPendingState] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Pre napojenie klikni na Prepojiť s KROS.");
   const [logs, setLogs] = useState<KrosApiLogEntry[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedLog, setSelectedLog] = useState<KrosApiLogEntry | null>(null);
   const [companyToDisconnect, setCompanyToDisconnect] = useState<KrosConnection | null>(null);
 
@@ -151,50 +149,6 @@ export default function SettingsPage() {
     await refreshLogs();
   };
 
-  const handleLoadLiveData = async () => {
-    if (connections.length === 0) {
-      setStatusMessage("Najprv je potrebné prepojiť aspoň jednu firmu.");
-      return;
-    }
-
-    setIsSyncing(true);
-    setStatusMessage("Spúšťam načítanie live dát...");
-    try {
-      const range = getDateRange("month");
-      const response = await fetch("/api/kros/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companies: connections.map(({ companyId, companyName, token }) => ({
-            companyId,
-            companyName,
-            token
-          })),
-          issueDateFrom: range.fetchFrom,
-          issueDateTo: range.fetchTo
-        })
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Synchronizácia zlyhala.");
-      }
-
-      const loadedCount = Array.isArray(payload?.data) ? payload.data.length : 0;
-      const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
-      setStatusMessage(
-        errorsCount > 0
-          ? `Synchronizácia dokončená: ${loadedCount} dokladov, chybné firmy: ${errorsCount}.`
-          : `Synchronizácia dokončená: ${loadedCount} dokladov.`
-      );
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Synchronizácia live dát zlyhala.");
-    } finally {
-      setIsSyncing(false);
-      await refreshLogs();
-    }
-  };
-
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -216,12 +170,6 @@ export default function SettingsPage() {
           <header className="panel-head">
             <h3>Záznamy API</h3>
             <div className="filters-inline">
-              <button type="button" className="secondary-button" onClick={handleLoadLiveData} disabled={isSyncing}>
-                {isSyncing ? "Načítavam..." : "Načítať live dáta"}
-              </button>
-              <button type="button" className="secondary-button" onClick={refreshLogs}>
-                Obnoviť záznamy
-              </button>
               <button type="button" className="secondary-button" onClick={handleClearLogs}>
                 Vymazať záznamy
               </button>

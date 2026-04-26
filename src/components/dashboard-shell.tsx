@@ -107,12 +107,12 @@ export function DashboardShell({ children, lastSyncedAt, isSyncing = false, onRe
       <div
         className={pullDistance >= pullThreshold ? "pull-refresh-indicator ready" : "pull-refresh-indicator"}
         style={{
-          opacity: pullDistance > 12 || isSyncing ? 1 : 0,
+          opacity: pullDistance > 12 && !isSyncing ? 1 : 0,
           transform: `translate(-50%, ${Math.min(pullDistance * 0.35, 34)}px)`
         }}
         aria-hidden="true"
       >
-        {isSyncing ? "Synchronizujem..." : pullDistance >= pullThreshold ? "Pusti pre obnovenie" : "Potiahni pre obnovenie"}
+        {pullDistance >= pullThreshold ? "Pusti pre obnovenie" : "Potiahni pre obnovenie"}
       </div>
       <header className="app-header">
         <div>

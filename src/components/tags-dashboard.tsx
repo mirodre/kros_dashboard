@@ -22,11 +22,11 @@ export function TagsDashboard({
 }: Props) {
   return (
     <FilterableBreakdownSection
-      title="Výkon podľa tagov"
-      filterLabel="Filter tagov"
-      dialogTitle="Filter tagov"
-      dialogHelp="Vyber tagy, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
-      ariaLabelPrefix="Filtrovať dashboard podľa tagu"
+      title="Výkon podľa štítkov"
+      filterLabel="Filter štítkov"
+      dialogTitle="Filter štítkov"
+      dialogHelp="Vyber štítky, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
+      ariaLabelPrefix="Filtrovať dashboard podľa štítku"
       items={tags}
       selectedItems={selectedTags}
       focusedItem={focusedTag}

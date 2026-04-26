@@ -17,6 +17,7 @@ type Props = {
   ariaLabelPrefix: string;
   items: BreakdownItem[];
   selectedItems: string[];
+  availableItemNames?: string[];
   focusedItem: string | null;
   onSelectionChange: (items: string[]) => void;
   onFocusedItemChange: (item: string | null) => void;
@@ -31,6 +32,7 @@ export function FilterableBreakdownSection({
   ariaLabelPrefix,
   items,
   selectedItems,
+  availableItemNames,
   focusedItem,
   onSelectionChange,
   onFocusedItemChange,
@@ -39,7 +41,10 @@ export function FilterableBreakdownSection({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
 
-  const availableNames = useMemo(() => items.map((item) => item.name), [items]);
+  const availableNames = useMemo(
+    () => availableItemNames ?? items.map((item) => item.name),
+    [availableItemNames, items]
+  );
   const filteredItems = useMemo(() => {
     if (selectedItems.length === 0) return items;
     return items.filter((item) => selectedItems.includes(item.name));
