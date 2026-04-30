@@ -245,22 +245,24 @@ export function RevenueDashboard({
               <ul className="invoice-list">
                 {detailInvoices.map((invoice) => (
                   <li key={`${invoice.companyId ?? invoice.companyName}-${invoice.id}`}>
-                    <div>
-                      <p className="tag-name invoice-title-line">{invoice.partnerName ?? "Neznámy odberateľ"}</p>
-                      <p className="tag-sub">
-                        {new Date(invoice.issueDate).toLocaleDateString("sk-SK")}
-                        {invoice.invoiceNumber ? ` • ${invoice.invoiceNumber}` : ""}
-                      </p>
-                      <div
-                        className="invoice-tags"
-                        aria-label={invoice.tags.length ? "Štítky faktúry" : undefined}
-                      >
-                        {invoice.tags.map((tag) => (
-                          <span key={tag}>{tag}</span>
-                        ))}
+                    <div className="invoice-item-head">
+                      <div className="invoice-item-text">
+                        <p className="tag-name invoice-title-line">{invoice.partnerName ?? "Neznámy odberateľ"}</p>
+                        <p className="tag-sub">
+                          {new Date(invoice.issueDate).toLocaleDateString("sk-SK")}
+                          {invoice.invoiceNumber ? ` • ${invoice.invoiceNumber}` : ""}
+                        </p>
                       </div>
+                      <strong>{formatCurrencyPrecise(invoice.totalPrice)}</strong>
                     </div>
-                    <strong>{formatCurrencyPrecise(invoice.totalPrice)}</strong>
+                    <div
+                      className="invoice-tags"
+                      aria-label={invoice.tags.length ? "Štítky faktúry" : undefined}
+                    >
+                      {invoice.tags.map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </div>
                   </li>
                 ))}
               </ul>

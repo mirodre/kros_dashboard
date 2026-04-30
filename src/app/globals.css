@@ -705,34 +705,43 @@ body {
 }
 
 .invoice-list li {
-  align-items: flex-start;
+  align-items: stretch;
   background: linear-gradient(150deg, #1b2440 0%, #18203a 55%, #141a31 100%);
   border: 1px solid var(--card-border);
   border-radius: 14px;
   display: flex;
-  gap: 0.8rem;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 0.45rem;
   max-width: 100%;
   min-width: 0;
   padding: 0.85rem;
   width: 100%;
 }
 
-.invoice-list li > div:first-child {
+.invoice-item-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
+}
+
+.invoice-item-text {
   flex: 1 1 0%;
   max-width: 100%;
   min-width: 0;
   overflow-x: hidden;
 }
 
-.invoice-list li > strong {
+.invoice-item-head strong {
   color: #eef2ff;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 
 .invoice-list .invoice-title-line,
-.invoice-list li .tag-sub {
+.invoice-list .invoice-item-text .tag-sub {
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -742,7 +751,7 @@ body {
   display: block;
 }
 
-.invoice-tags {
+.invoice-list .invoice-tags {
   align-items: center;
   box-sizing: border-box;
   display: flex;
@@ -750,8 +759,8 @@ body {
   flex-wrap: nowrap;
   gap: 0.28rem;
   height: 1.75rem;
-  margin-top: 0.4rem;
-  max-width: 100%;
+  margin-top: 0;
+  max-width: none;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
