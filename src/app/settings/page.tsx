@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
+import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
 import type { KrosConnection } from "@/lib/kros-types";
 import type { KrosApiLogEntry } from "@/lib/kros-logs";
+
+const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 export default function SettingsPage() {
   const [connections, setConnections] = useState<KrosConnection[]>([]);
@@ -14,6 +17,7 @@ export default function SettingsPage() {
   const [logs, setLogs] = useState<KrosApiLogEntry[]>([]);
   const [selectedLog, setSelectedLog] = useState<KrosApiLogEntry | null>(null);
   const [companyToDisconnect, setCompanyToDisconnect] = useState<KrosConnection | null>(null);
+  const [isCacheClearOpen, setIsCacheClearOpen] = useState(false);
 
   useEffect(() => {
     setConnections(readConnections());
@@ -149,6 +153,13 @@ export default function SettingsPage() {
     await refreshLogs();
   };
 
+  const handleClearInvoiceCache = async () => {
+    await clearInvoiceCache();
+    localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
+    setIsCacheClearOpen(false);
+    setStatusMessage("Lokálna cache faktúr bola vymazaná. Dashboard sa pri ďalšom otvorení načíta odznova.");
+  };
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -164,6 +175,20 @@ export default function SettingsPage() {
         onConnectClick={handleConnectClick}
         onDisconnectCompany={handleDisconnectCompany}
       />
+
+      <section className="dashboard-body">
+        <article className="panel">
+          <header className="panel-head">
+            <h3>Lokálna cache</h3>
+            <button type="button" className="danger-button" onClick={() => setIsCacheClearOpen(true)}>
+              Vymazať cache dát
+            </button>
+          </header>
+          <p className="tag-sub">
+            Vymaže lokálne uložené faktúry a stav synchronizácie v tomto prehliadači. Prepojenie na KROS zostane zachované.
+          </p>
+        </article>
+      </section>
 
       <section className="dashboard-body">
         <article className="panel">
@@ -260,6 +285,31 @@ export default function SettingsPage() {
               </button>
               <button type="button" className="danger-button" onClick={confirmDisconnectCompany}>
                 Áno, odpojiť
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isCacheClearOpen ? (
+        <div className="tag-filter-overlay" onClick={() => setIsCacheClearOpen(false)} role="presentation">
+          <div
+            className="confirm-sheet"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Potvrdenie vymazania lokálnej cache"
+          >
+            <h4>Vymazať lokálnu cache?</h4>
+            <p className="tag-sub">
+              Vymažú sa lokálne uložené faktúry a stav synchronizácie. Pri ďalšom otvorení dashboardu sa dáta natiahnu odznova z KROS.
+            </p>
+            <div className="tag-filter-actions">
+              <button type="button" className="secondary-button" onClick={() => setIsCacheClearOpen(false)}>
+                Nie, ponechať
+              </button>
+              <button type="button" className="danger-button" onClick={handleClearInvoiceCache}>
+                Áno, vymazať cache
               </button>
             </div>
           </div>

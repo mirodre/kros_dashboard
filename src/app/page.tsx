@@ -24,34 +24,81 @@ import {
   readConnections,
 } from "@/lib/kros-storage";
 import type { KrosConnection, NormalizedInvoice } from "@/lib/kros-types";
+import {
+  getCachedInvoices,
+  monthKeyFromDate,
+  readSyncMeta,
+  syncCompanyMetaKey,
+  syncMonthMetaKey,
+  upsertCachedInvoices,
+  writeSyncMeta
+} from "@/lib/invoice-cache";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
-type LiveInvoicesCacheEntry = {
-  invoices: NormalizedInvoice[];
-  syncedAt: string;
-};
-
 type LiveDataRange = "ytd" | "history";
 
 declare global {
-  var __krosDashboardCompanyInvoicesCache: Map<string, LiveInvoicesCacheEntry> | undefined;
   var __krosDashboardGranularity: Granularity | undefined;
-}
-
-const companyInvoicesCache =
-  globalThis.__krosDashboardCompanyInvoicesCache ?? new Map<string, LiveInvoicesCacheEntry>();
-
-globalThis.__krosDashboardCompanyInvoicesCache = companyInvoicesCache;
-
-function getCompanyCacheKey(connection: KrosConnection, range: LiveDataRange) {
-  return `${range}:${connection.companyId}:${connection.connectedAt}`;
 }
 
 function getLiveDataRange(granularity: Granularity): LiveDataRange {
   return granularity === "year" ? "history" : "ytd";
+}
+
+function startOfDayIso(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value.toISOString();
+}
+
+function endOfDayIso(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value.toISOString();
+}
+
+function buildMonthSyncRanges(fetchFrom: string, fetchTo: string) {
+  const start = new Date(fetchFrom);
+  const end = new Date(fetchTo);
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const ranges: { monthKey: string; from: string; to: string }[] = [];
+
+  while (cursor <= end) {
+    const monthStart = new Date(cursor);
+    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+    const from = monthStart < start ? start : monthStart;
+    const to = monthEnd > end ? end : monthEnd;
+
+    ranges.push({
+      monthKey: monthKeyFromDate(cursor),
+      from: startOfDayIso(from),
+      to: endOfDayIso(to)
+    });
+
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return ranges;
+}
+
+function getMaxLastModified(invoices: NormalizedInvoice[], fallback?: string) {
+  return invoices.reduce<string | undefined>((max, invoice) => {
+    if (!invoice.lastModifiedTimestamp) return max;
+    if (!max) return invoice.lastModifiedTimestamp;
+    return new Date(invoice.lastModifiedTimestamp).getTime() > new Date(max).getTime()
+      ? invoice.lastModifiedTimestamp
+      : max;
+  }, fallback);
+}
+
+function withOverlap(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setMinutes(date.getMinutes() - 5);
+  return date.toISOString();
 }
 
 export default function HomePage() {
@@ -149,87 +196,149 @@ export default function HomePage() {
     const liveDataRange = getLiveDataRange(granularity);
     const fetchRange = getDateRange(liveDataRange === "history" ? "year" : "month");
     const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
-    const cachedEntries = syncConnections
-      .map((connection) => {
-        const rangeEntry = companyInvoicesCache.get(getCompanyCacheKey(connection, liveDataRange));
-        const historyEntry =
-          liveDataRange === "ytd"
-            ? companyInvoicesCache.get(getCompanyCacheKey(connection, "history"))
-            : undefined;
-        return rangeEntry ?? historyEntry;
-      });
-    const missingConnections = isManualRefresh
-      ? syncConnections
-      : syncConnections.filter((_, index) => !cachedEntries[index]);
-    const cachedInvoices = cachedEntries.flatMap((entry) => entry?.invoices ?? []);
-    const latestCachedSync = cachedEntries
-      .map((entry) => entry?.syncedAt)
-      .filter((value): value is string => Boolean(value))
-      .sort()
-      .at(-1);
-
-    if (missingConnections.length === 0 && !isManualRefresh) {
-      setLiveInvoices(cachedInvoices);
-      if (latestCachedSync) {
-        setLastSyncedAt(latestCachedSync);
-        localStorage.setItem(LAST_SYNC_STORAGE_KEY, latestCachedSync);
-      }
-      setIsLoadingLiveData(false);
-      setLiveError(null);
-      return;
-    }
+    const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
 
     const loadInvoices = async () => {
-      setIsLoadingLiveData(true);
+      const cachedInvoices = await getCachedInvoices(syncCompanyIds);
+      if (!abortController.signal.aborted) {
+        setLiveInvoices(cachedInvoices);
+      }
+
       setLiveError(null);
 
       try {
-        const response = await fetch("/api/kros/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companies: missingConnections,
-            issueDateFrom: fetchRange.fetchFrom,
-            issueDateTo: fetchRange.fetchTo
-          }),
-          signal: abortController.signal
-        });
+        const monthRanges = buildMonthSyncRanges(fetchRange.fetchFrom, fetchRange.fetchTo);
+        let didFetch = false;
 
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(
-            payload?.details ? `${payload?.error ?? "Nepodarilo sa načítať faktúry."} ${payload.details}` : payload?.error ?? "Nepodarilo sa načítať faktúry."
-          );
+        for (const connection of syncConnections) {
+          const missingMonthRanges = [];
+          for (const monthRange of monthRanges) {
+            const monthMeta = await readSyncMeta(
+              syncMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey)
+            );
+            if (!monthMeta?.completedAt) {
+              missingMonthRanges.push(monthRange);
+            }
+          }
+
+          if (missingMonthRanges.length > 0) {
+            setIsLoadingLiveData(true);
+            for (const monthRange of missingMonthRanges) {
+              if (abortController.signal.aborted) return;
+
+              const response = await fetch("/api/kros/invoices", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  companies: [connection],
+                  issueDateFrom: monthRange.from,
+                  issueDateTo: monthRange.to
+                }),
+                signal: abortController.signal
+              });
+
+              const payload = await response.json();
+              if (!response.ok) {
+                throw new Error(
+                  payload?.details
+                    ? `${payload?.error ?? "Nepodarilo sa načítať faktúry."} ${payload.details}`
+                    : payload?.error ?? "Nepodarilo sa načítať faktúry."
+                );
+              }
+              if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+                throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
+              }
+
+              const normalizedInvoices = normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []);
+              const companyInvoices = normalizedInvoices.filter(
+                (invoice) => invoice.companyId === connection.companyId || invoice.companyName === connection.companyName
+              );
+              const completedAt = new Date().toISOString();
+              await upsertCachedInvoices(connection.companyId, companyInvoices);
+              await writeSyncMeta({
+                key: syncMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey),
+                companyId: connection.companyId,
+                range: liveDataRange,
+                monthKey: monthRange.monthKey,
+                completedAt
+              });
+
+              const companyMetaKey = syncCompanyMetaKey(connection.companyId, liveDataRange);
+              const previousCompanyMeta = await readSyncMeta(companyMetaKey);
+              await writeSyncMeta({
+                key: companyMetaKey,
+                companyId: connection.companyId,
+                range: liveDataRange,
+                completedAt,
+                lastModifiedTimestamp: getMaxLastModified(
+                  companyInvoices,
+                  previousCompanyMeta?.lastModifiedTimestamp
+                )
+              });
+
+              didFetch = true;
+              const nextCachedInvoices = await getCachedInvoices(syncCompanyIds);
+              if (!abortController.signal.aborted) {
+                setLiveInvoices(nextCachedInvoices);
+              }
+            }
+
+            continue;
+          }
+
+          if (isManualRefresh) {
+            const companyMetaKey = syncCompanyMetaKey(connection.companyId, liveDataRange);
+            const companyMeta = await readSyncMeta(companyMetaKey);
+            if (!companyMeta?.lastModifiedTimestamp) continue;
+
+            setIsLoadingLiveData(true);
+            const response = await fetch("/api/kros/invoices", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                companies: [connection],
+                lastModifiedTimestampFrom: withOverlap(companyMeta.lastModifiedTimestamp)
+              }),
+              signal: abortController.signal
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+              throw new Error(
+                payload?.details
+                  ? `${payload?.error ?? "Nepodarilo sa načítať faktúry."} ${payload.details}`
+                  : payload?.error ?? "Nepodarilo sa načítať faktúry."
+              );
+            }
+            if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+              throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
+            }
+
+            const normalizedInvoices = normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []);
+            const companyInvoices = normalizedInvoices.filter(
+              (invoice) => invoice.companyId === connection.companyId || invoice.companyName === connection.companyName
+            );
+            const syncedAt = new Date().toISOString();
+            await upsertCachedInvoices(connection.companyId, companyInvoices);
+            await writeSyncMeta({
+              key: companyMetaKey,
+              companyId: connection.companyId,
+              range: liveDataRange,
+              completedAt: syncedAt,
+              lastModifiedTimestamp: getMaxLastModified(companyInvoices, companyMeta.lastModifiedTimestamp)
+            });
+            didFetch = true;
+            const nextCachedInvoices = await getCachedInvoices(syncCompanyIds);
+            if (!abortController.signal.aborted) {
+              setLiveInvoices(nextCachedInvoices);
+            }
+          }
         }
 
-        const normalizedInvoices = normalizeInvoices(Array.isArray(payload?.data) ? payload.data : []);
-        const syncedAt = new Date().toISOString();
-        for (const connection of missingConnections) {
-          const companyInvoices = normalizedInvoices.filter(
-            (invoice) => invoice.companyName === connection.companyName
-          );
-          companyInvoicesCache.set(getCompanyCacheKey(connection, liveDataRange), {
-            invoices: companyInvoices,
-            syncedAt
-          });
-        }
-
-        const nextInvoices = syncConnections.flatMap((connection) => {
-          const rangeEntry = companyInvoicesCache.get(getCompanyCacheKey(connection, liveDataRange));
-          const historyEntry =
-            liveDataRange === "ytd"
-              ? companyInvoicesCache.get(getCompanyCacheKey(connection, "history"))
-              : undefined;
-          return (rangeEntry ?? historyEntry)?.invoices ?? [];
-        });
-
-        setLiveInvoices(nextInvoices);
-        setLastSyncedAt(syncedAt);
-        localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
-        if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
-          setLiveError(
-            `Niektoré firmy sa nepodarilo načítať (${payload.errors.length}). Zobrazujú sa dostupné dáta.`
-          );
+        if (didFetch) {
+          const syncedAt = new Date().toISOString();
+          setLastSyncedAt(syncedAt);
+          localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
         }
       } catch (error) {
         if (!abortController.signal.aborted) {

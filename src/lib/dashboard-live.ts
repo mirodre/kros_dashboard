@@ -87,12 +87,39 @@ function normalizeTag(rawTag: unknown): string | null {
   return null;
 }
 
+function readString(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number") return String(value);
+  }
+  return null;
+}
+
+function readPartnerName(row: Record<string, unknown>) {
+  const direct = readString(row, ["partnerName", "customerName", "businessPartnerName"]);
+  if (direct) return direct;
+
+  const partner = row.partner ?? row.customer ?? row.businessPartner;
+  if (partner && typeof partner === "object") {
+    return readString(partner as Record<string, unknown>, ["name", "businessName", "companyName"]) ?? undefined;
+  }
+
+  return undefined;
+}
+
 export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
   return rawInvoices
-    .map((invoice) => {
+    .map((invoice): NormalizedInvoice | null => {
       const row = invoice as Record<string, unknown>;
+      const id = readString(row, ["id", "invoiceId", "documentId", "number"]);
       const issueDate = typeof row.issueDate === "string" ? row.issueDate : null;
       const companyName = typeof row.__company === "string" ? row.__company : "Neznáma firma";
+      const companyId = typeof row.__companyId === "number" ? row.__companyId : undefined;
+      const invoiceNumber = readString(row, ["invoiceNumber", "number", "documentNumber", "variableSymbol"]);
+      const partnerName = readPartnerName(row);
+      const lastModifiedTimestamp =
+        readString(row, ["lastModifiedTimestamp", "lastModified", "modifiedAt", "updatedAt"]) ?? undefined;
       const totalPrice =
         Number(
           (row.prices as Record<string, unknown> | undefined)?.legislativePrices &&
@@ -101,11 +128,16 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
       const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
       const tags = tagsRaw.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
 
-      if (!issueDate || Number.isNaN(new Date(issueDate).getTime())) return null;
+      if (!id || !issueDate || Number.isNaN(new Date(issueDate).getTime())) return null;
 
       return {
+        id,
+        companyId,
         companyName,
+        invoiceNumber: invoiceNumber ?? undefined,
+        partnerName,
         issueDate,
+        lastModifiedTimestamp,
         totalPrice,
         tags: tags.length > 0 ? tags : ["Nedefinované"]
       } satisfies NormalizedInvoice;

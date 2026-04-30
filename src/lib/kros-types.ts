@@ -7,8 +7,13 @@ export type KrosConnection = {
 };
 
 export type NormalizedInvoice = {
+  id: string;
+  companyId?: number;
   companyName: string;
+  invoiceNumber?: string;
+  partnerName?: string;
   issueDate: string;
+  lastModifiedTimestamp?: string;
   totalPrice: number;
   tags: string[];
 };

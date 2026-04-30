@@ -9,8 +9,9 @@ type CompanyConnection = {
 
 type InvoiceRequestBody = {
   companies: CompanyConnection[];
-  issueDateFrom: string;
-  issueDateTo: string;
+  issueDateFrom?: string;
+  issueDateTo?: string;
+  lastModifiedTimestampFrom?: string;
 };
 
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
@@ -52,29 +53,33 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
 
 async function fetchCompanyInvoices(
   company: CompanyConnection,
-  issueDateFrom: string,
-  issueDateTo: string
+  issueDateFrom?: string,
+  issueDateTo?: string,
+  lastModifiedTimestampFrom?: string
 ) {
-  const issueFrom = toKrosDate(issueDateFrom);
-  const issueTo = toKrosDate(issueDateTo);
+  const issueFrom = issueDateFrom ? toKrosDate(issueDateFrom) : null;
+  const issueTo = issueDateTo ? toKrosDate(issueDateTo) : null;
   const top = 100;
   let skip = 0;
   const aggregated: unknown[] = [];
 
   while (true) {
     const query = new URLSearchParams({
-      IssueDateFrom: issueFrom,
-      IssueDateTo: issueTo,
       Top: String(top),
       Skip: String(skip)
     });
+    if (issueFrom) query.set("IssueDateFrom", issueFrom);
+    if (issueTo) query.set("IssueDateTo", issueTo);
+    if (lastModifiedTimestampFrom) {
+      query.set("LastModifiedTimestampFrom", lastModifiedTimestampFrom);
+    }
 
     await appendKrosLog({
       direction: "request",
       endpoint: "/api/invoices",
       method: "GET",
       companyName: company.companyName,
-      message: `Skip=${skip}, Top=${top}, IssueDateFrom=${issueFrom}, IssueDateTo=${issueTo}`
+      message: `Skip=${skip}, Top=${top}${issueFrom ? `, IssueDateFrom=${issueFrom}` : ""}${issueTo ? `, IssueDateTo=${issueTo}` : ""}${lastModifiedTimestampFrom ? `, LastModifiedTimestampFrom=${lastModifiedTimestampFrom}` : ""}`
     });
 
     const response = await fetchWithRetry(`${KROS_API_BASE}/api/invoices?${query.toString()}`, {
@@ -134,13 +139,17 @@ async function fetchCompanyInvoices(
     skip += top;
   }
 
-  return aggregated.map((invoice) => ({ ...((invoice as object) ?? {}), __company: company.companyName }));
+  return aggregated.map((invoice) => ({
+    ...((invoice as object) ?? {}),
+    __company: company.companyName,
+    __companyId: company.companyId
+  }));
 }
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as InvoiceRequestBody;
-    if (!body.issueDateFrom || !body.issueDateTo || !Array.isArray(body.companies)) {
+    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestampFrom && (!body.issueDateFrom || !body.issueDateTo))) {
       return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
     }
 
@@ -148,14 +157,15 @@ export async function POST(request: Request) {
       direction: "request",
       endpoint: "/api/kros/invoices",
       method: "POST",
-      message: `firmy=${body.companies.length}, issueDateFrom=${body.issueDateFrom}, issueDateTo=${body.issueDateTo}`,
+      message: `firmy=${body.companies.length}${body.issueDateFrom ? `, issueDateFrom=${body.issueDateFrom}` : ""}${body.issueDateTo ? `, issueDateTo=${body.issueDateTo}` : ""}${body.lastModifiedTimestampFrom ? `, lastModifiedTimestampFrom=${body.lastModifiedTimestampFrom}` : ""}`,
       payload: {
         companies: body.companies.map((company) => ({
           companyId: company.companyId,
           companyName: company.companyName
         })),
         issueDateFrom: body.issueDateFrom,
-        issueDateTo: body.issueDateTo
+        issueDateTo: body.issueDateTo,
+        lastModifiedTimestampFrom: body.lastModifiedTimestampFrom
       }
     });
 
@@ -164,7 +174,12 @@ export async function POST(request: Request) {
 
     for (const company of body.companies) {
       try {
-        const companyInvoices = await fetchCompanyInvoices(company, body.issueDateFrom, body.issueDateTo);
+        const companyInvoices = await fetchCompanyInvoices(
+          company,
+          body.issueDateFrom,
+          body.issueDateTo,
+          body.lastModifiedTimestampFrom
+        );
         allInvoices.push(...companyInvoices);
       } catch (error) {
         errors.push({
