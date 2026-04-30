@@ -172,41 +172,6 @@ body {
   padding: 0.55rem 0.9rem;
 }
 
-.status-row {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  font-size: 0.85rem;
-  gap: 0.5rem;
-  justify-content: flex-start;
-  margin-top: 1rem;
-}
-
-.status-row p {
-  margin: 0;
-}
-
-.status-refresh {
-  align-items: center;
-  background: transparent;
-  border: 1px solid #2b3558;
-  border-radius: 999px;
-  color: #cfd8fb;
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.86rem;
-  height: 24px;
-  justify-content: center;
-  line-height: 1;
-  padding: 0;
-  width: 24px;
-}
-
-.status-refresh:hover {
-  border-color: #4c62ab;
-  color: #eef2ff;
-}
-
 .dashboard-body {
   margin-top: 1.35rem;
 }

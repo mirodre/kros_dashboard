@@ -122,7 +122,6 @@ export default function HomePage() {
   const [liveInvoices, setLiveInvoices] = useState<NormalizedInvoice[]>([]);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
@@ -145,7 +144,6 @@ export default function HomePage() {
   useEffect(() => {
     const storedConnections = readConnections();
     setConnections(storedConnections);
-    setLastSyncedAt(localStorage.getItem(LAST_SYNC_STORAGE_KEY));
   }, []);
 
   useEffect(() => {
@@ -353,9 +351,7 @@ export default function HomePage() {
         }
 
         if (didFetch) {
-          const syncedAt = new Date().toISOString();
-          setLastSyncedAt(syncedAt);
-          localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
+          localStorage.setItem(LAST_SYNC_STORAGE_KEY, new Date().toISOString());
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -422,7 +418,6 @@ export default function HomePage() {
 
   return (
     <DashboardShell
-      lastSyncedAt={lastSyncedAt}
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
