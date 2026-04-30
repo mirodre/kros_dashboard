@@ -11,7 +11,7 @@ type InvoiceRequestBody = {
   companies: CompanyConnection[];
   issueDateFrom?: string;
   issueDateTo?: string;
-  lastModifiedTimestampFrom?: string;
+  lastModifiedTimestamp?: string;
 };
 
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
@@ -55,7 +55,7 @@ async function fetchCompanyInvoices(
   company: CompanyConnection,
   issueDateFrom?: string,
   issueDateTo?: string,
-  lastModifiedTimestampFrom?: string
+  lastModifiedTimestamp?: string
 ) {
   const issueFrom = issueDateFrom ? toKrosDate(issueDateFrom) : null;
   const issueTo = issueDateTo ? toKrosDate(issueDateTo) : null;
@@ -70,8 +70,8 @@ async function fetchCompanyInvoices(
     });
     if (issueFrom) query.set("IssueDateFrom", issueFrom);
     if (issueTo) query.set("IssueDateTo", issueTo);
-    if (lastModifiedTimestampFrom) {
-      query.set("LastModifiedTimestampFrom", lastModifiedTimestampFrom);
+    if (lastModifiedTimestamp) {
+      query.set("LastModifiedTimestamp", lastModifiedTimestamp);
     }
 
     await appendKrosLog({
@@ -79,7 +79,7 @@ async function fetchCompanyInvoices(
       endpoint: "/api/invoices",
       method: "GET",
       companyName: company.companyName,
-      message: `Skip=${skip}, Top=${top}${issueFrom ? `, IssueDateFrom=${issueFrom}` : ""}${issueTo ? `, IssueDateTo=${issueTo}` : ""}${lastModifiedTimestampFrom ? `, LastModifiedTimestampFrom=${lastModifiedTimestampFrom}` : ""}`
+      message: `Skip=${skip}, Top=${top}${issueFrom ? `, IssueDateFrom=${issueFrom}` : ""}${issueTo ? `, IssueDateTo=${issueTo}` : ""}${lastModifiedTimestamp ? `, LastModifiedTimestamp=${lastModifiedTimestamp}` : ""}`
     });
 
     const response = await fetchWithRetry(`${KROS_API_BASE}/api/invoices?${query.toString()}`, {
@@ -149,7 +149,7 @@ async function fetchCompanyInvoices(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as InvoiceRequestBody;
-    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestampFrom && (!body.issueDateFrom || !body.issueDateTo))) {
+    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestamp && (!body.issueDateFrom || !body.issueDateTo))) {
       return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
     }
 
@@ -157,7 +157,7 @@ export async function POST(request: Request) {
       direction: "request",
       endpoint: "/api/kros/invoices",
       method: "POST",
-      message: `firmy=${body.companies.length}${body.issueDateFrom ? `, issueDateFrom=${body.issueDateFrom}` : ""}${body.issueDateTo ? `, issueDateTo=${body.issueDateTo}` : ""}${body.lastModifiedTimestampFrom ? `, lastModifiedTimestampFrom=${body.lastModifiedTimestampFrom}` : ""}`,
+      message: `firmy=${body.companies.length}${body.issueDateFrom ? `, issueDateFrom=${body.issueDateFrom}` : ""}${body.issueDateTo ? `, issueDateTo=${body.issueDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
       payload: {
         companies: body.companies.map((company) => ({
           companyId: company.companyId,
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
         })),
         issueDateFrom: body.issueDateFrom,
         issueDateTo: body.issueDateTo,
-        lastModifiedTimestampFrom: body.lastModifiedTimestampFrom
+        lastModifiedTimestamp: body.lastModifiedTimestamp
       }
     });
 
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
           company,
           body.issueDateFrom,
           body.issueDateTo,
-          body.lastModifiedTimestampFrom
+          body.lastModifiedTimestamp
         );
         allInvoices.push(...companyInvoices);
       } catch (error) {

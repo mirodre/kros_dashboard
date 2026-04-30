@@ -98,7 +98,16 @@ function withLastModifiedOverlap(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   date.setMinutes(date.getMinutes() - 5);
-  return date.toISOString();
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  const milliseconds = date.getUTCMilliseconds();
+  const fraction =
+    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
 }
 
 export default function HomePage() {
@@ -305,7 +314,7 @@ export default function HomePage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 companies: [connection],
-                lastModifiedTimestampFrom: withLastModifiedOverlap(companyMeta.lastModifiedTimestamp)
+                lastModifiedTimestamp: withLastModifiedOverlap(companyMeta.lastModifiedTimestamp)
               }),
               signal: abortController.signal
             });
