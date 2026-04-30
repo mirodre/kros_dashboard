@@ -84,7 +84,7 @@ export function FilterableBreakdownSection({
   };
 
   return (
-    <section className="dashboard-body">
+    <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
       <article className="panel panel-with-skeleton">
         <header className="panel-head">
           <h3>{title}</h3>

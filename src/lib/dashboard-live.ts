@@ -17,6 +17,7 @@ export function getDateRange(granularity: Granularity) {
   const now = new Date();
   const currentFrom = new Date(now);
   const currentTo = new Date(now);
+  currentFrom.setHours(0, 0, 0, 0);
   currentTo.setHours(23, 59, 59, 999);
 
   if (granularity === "week" || granularity === "month") {
@@ -41,9 +42,15 @@ export function getDateRange(granularity: Granularity) {
 }
 
 function getWeekOfYear(date: Date) {
-  const start = new Date(date.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((date.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-  return Math.ceil(dayOfYear / 7);
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  normalized.setDate(normalized.getDate() + 3 - ((normalized.getDay() + 6) % 7));
+  const firstThursday = new Date(normalized.getFullYear(), 0, 4);
+  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
+  return (
+    1 +
+    Math.round((normalized.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000))
+  );
 }
 
 type BucketDef = { key: string; label: string };
@@ -78,6 +85,54 @@ function toBucketKey(date: Date, granularity: Granularity) {
   return `y-${date.getFullYear()}`;
 }
 
+function toComparableBucketKey(date: Date, granularity: Granularity, periodStart: Date) {
+  if (granularity === "week") {
+    return `w-${getWeekOfYear(date)}`;
+  }
+
+  return toBucketKey(date, granularity);
+}
+
+function getIsoWeekStart(year: number, week: number) {
+  const simple = new Date(year, 0, 4 + (week - 1) * 7);
+  const day = (simple.getDay() + 6) % 7;
+  simple.setDate(simple.getDate() - day);
+  simple.setHours(0, 0, 0, 0);
+  return simple;
+}
+
+function getBucketRange(key: string, granularity: Granularity, year: number, maxTo: Date) {
+  if (granularity === "week") {
+    const week = Number(key.replace("w-", ""));
+    const from = getIsoWeekStart(year, week);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 6);
+    to.setHours(23, 59, 59, 999);
+    return { from, to: to > maxTo ? maxTo : to };
+  }
+
+  if (granularity === "month") {
+    const month = Number(key.replace("m-", "")) - 1;
+    const from = new Date(year, month, 1);
+    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    return { from, to: to > maxTo ? maxTo : to };
+  }
+
+  const bucketYear = Number(key.replace("y-", ""));
+  const from = new Date(bucketYear, 0, 1);
+  const to = new Date(bucketYear, 11, 31, 23, 59, 59, 999);
+  return { from, to: to > maxTo ? maxTo : to };
+}
+
+function formatPeriodLabel(from: Date, to: Date) {
+  const formatter = new Intl.DateTimeFormat("sk-SK", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric"
+  });
+  return `${formatter.format(from)} - ${formatter.format(to)}`;
+}
+
 function normalizeTag(rawTag: unknown): string | null {
   if (typeof rawTag === "string" && rawTag.trim()) return rawTag.trim();
   if (rawTag && typeof rawTag === "object" && "name" in rawTag) {
@@ -102,7 +157,14 @@ function readPartnerName(row: Record<string, unknown>) {
 
   const partner = row.partner ?? row.customer ?? row.businessPartner;
   if (partner && typeof partner === "object") {
-    return readString(partner as Record<string, unknown>, ["name", "businessName", "companyName"]) ?? undefined;
+    const partnerRow = partner as Record<string, unknown>;
+    const partnerName = readString(partnerRow, ["name", "businessName", "companyName"]);
+    if (partnerName) return partnerName;
+
+    const address = partnerRow.address ?? partnerRow.postalAddress;
+    if (address && typeof address === "object") {
+      return readString(address as Record<string, unknown>, ["businessName", "contactName", "name"]) ?? undefined;
+    }
   }
 
   return undefined;
@@ -189,9 +251,6 @@ export function computeRevenueSeries({
 
   for (const invoice of filtered) {
     const date = new Date(invoice.issueDate);
-    const key = toBucketKey(date, granularity);
-
-    if (!bucketMap.has(key) && granularity !== "year") continue;
 
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
@@ -201,13 +260,16 @@ export function computeRevenueSeries({
       continue;
     }
 
-    const bucket = bucketMap.get(key);
-    if (!bucket) continue;
-
     if (date.getFullYear() === currentYear && date <= range.currentTo) {
+      const key = toComparableBucketKey(date, granularity, range.currentFrom);
+      const bucket = bucketMap.get(key);
+      if (!bucket) continue;
       bucket.current += invoice.totalPrice;
     }
     if (date.getFullYear() === currentYear - 1 && date <= range.previousTo) {
+      const key = toComparableBucketKey(date, granularity, range.previousFrom);
+      const bucket = bucketMap.get(key);
+      if (!bucket) continue;
       bucket.previous += invoice.totalPrice;
     }
   }
@@ -217,6 +279,55 @@ export function computeRevenueSeries({
     current: Math.round(values.current),
     previous: Math.round(values.previous)
   }));
+}
+
+export function getRevenueBucketInvoices({
+  invoices,
+  granularity,
+  bucketLabel,
+  selectedTags,
+  selectedCompanies
+}: ComputeInput & { bucketLabel: string }) {
+  const range = getDateRange(granularity);
+  const selectedTagSet = new Set(selectedTags);
+  const selectedCompanySet = new Set(selectedCompanies);
+  const now = range.currentTo;
+  const currentYear = now.getFullYear();
+  const bucket = buildBuckets(granularity, now).find((item) => item.label === bucketLabel);
+
+  if (!bucket) {
+    return {
+      current: [],
+      previous: [],
+      currentPeriodLabel: "",
+      previousPeriodLabel: ""
+    };
+  }
+
+  const currentRange = getBucketRange(bucket.key, granularity, currentYear, range.currentTo);
+  const previousRange =
+    granularity === "year"
+      ? getBucketRange(`y-${Number(bucket.key.replace("y-", "")) - 1}`, granularity, currentYear - 1, range.previousTo)
+      : getBucketRange(bucket.key, granularity, currentYear - 1, range.previousTo);
+
+  const filterInvoices = ({ from, to }: { from: Date; to: Date }) =>
+    invoices
+      .filter((invoice) => {
+        const invoiceDate = new Date(invoice.issueDate);
+        const companyPass =
+          selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
+        const tagPass =
+          selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
+        return invoiceDate >= from && invoiceDate <= to && companyPass && tagPass;
+      })
+      .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+
+  return {
+    current: filterInvoices(currentRange),
+    previous: filterInvoices(previousRange),
+    currentPeriodLabel: formatPeriodLabel(currentRange.from, currentRange.to),
+    previousPeriodLabel: formatPeriodLabel(previousRange.from, previousRange.to)
+  };
 }
 
 export function computeKpis(

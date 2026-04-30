@@ -173,6 +173,11 @@ body {
   position: relative;
 }
 
+.dashboard-section.overlay-open,
+.dashboard-body.overlay-open {
+  z-index: 60;
+}
+
 .dashboard-skeleton-overlay {
   backdrop-filter: blur(10px);
   background: rgba(10, 13, 24, 0.72);
@@ -519,6 +524,19 @@ body {
   margin-top: 0.2rem;
 }
 
+.tooltip-detail-button {
+  background: rgba(91, 124, 236, 0.18);
+  border: 1px solid rgba(126, 154, 255, 0.52);
+  border-radius: 999px;
+  color: #edf2ff;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-top: 0.45rem;
+  padding: 0.32rem 0.5rem;
+  width: 100%;
+}
+
 .bar-item {
   align-items: center;
   background: transparent;
@@ -566,6 +584,17 @@ body {
   z-index: 20;
 }
 
+.chart-tooltip-inline.edge-start {
+  left: 0;
+  transform: translateX(0);
+}
+
+.chart-tooltip-inline.edge-end {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
+}
+
 .bar {
   border-radius: 8px;
   width: 13px;
@@ -583,6 +612,84 @@ body {
 
 .bar-item.active .bar.previous {
   opacity: 0.72;
+}
+
+.invoice-detail-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(88dvh - env(safe-area-inset-bottom));
+  overflow: hidden;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+.invoice-detail-tabs {
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.invoice-detail-summary {
+  align-items: center;
+  background: rgba(26, 35, 64, 0.72);
+  border: 1px solid rgba(77, 96, 158, 0.35);
+  border-radius: 14px;
+  color: #dbe4ff;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.invoice-detail-summary strong {
+  color: #f2f6ff;
+}
+
+.invoice-list {
+  display: grid;
+  flex: 1;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0.9rem 0 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 0 0.6rem;
+}
+
+.invoice-list li {
+  align-items: flex-start;
+  background: linear-gradient(150deg, #1b2440 0%, #18203a 55%, #141a31 100%);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  padding: 0.85rem;
+}
+
+.invoice-list li > strong {
+  color: #eef2ff;
+  white-space: nowrap;
+}
+
+.invoice-title-line {
+  display: block;
+}
+
+.invoice-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.invoice-tags span {
+  background: rgba(71, 92, 160, 0.24);
+  border: 1px solid rgba(100, 126, 210, 0.38);
+  border-radius: 999px;
+  color: #d8e1ff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.25rem 0.45rem;
 }
 
 .tag-list {

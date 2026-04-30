@@ -431,6 +431,9 @@ export default function HomePage() {
         onGranularityChange={setGranularity}
         kpis={kpis}
         points={revenueData}
+        invoices={liveInvoices}
+        selectedTags={effectiveTags}
+        selectedCompanies={effectiveCompanies}
         onClearTagFilter={() => setFocusedTag(null)}
         activeTagLabel={focusedTag ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
