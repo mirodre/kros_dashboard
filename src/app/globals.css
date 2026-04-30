@@ -661,7 +661,10 @@ body {
   display: flex;
   flex-direction: column;
   max-height: calc(88dvh - env(safe-area-inset-bottom));
-  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 
@@ -694,8 +697,11 @@ body {
   list-style: none;
   margin: 0.9rem 0 0;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 0 0 0.6rem;
+  width: 100%;
 }
 
 .invoice-list li {
@@ -706,17 +712,30 @@ body {
   display: flex;
   gap: 0.8rem;
   justify-content: space-between;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.85rem;
+  width: 100%;
 }
 
 .invoice-list li > div:first-child {
-  flex: 1;
+  flex: 1 1 0%;
+  max-width: 100%;
   min-width: 0;
+  overflow-x: hidden;
 }
 
 .invoice-list li > strong {
   color: #eef2ff;
+  flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.invoice-list .invoice-title-line,
+.invoice-list li .tag-sub {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .invoice-title-line {
@@ -732,11 +751,14 @@ body {
   gap: 0.28rem;
   height: 1.75rem;
   margin-top: 0.4rem;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
 }
 
 .invoice-tags::-webkit-scrollbar {
@@ -952,6 +974,7 @@ body {
 .tag-filter-overlay {
   background: rgba(6, 8, 14, 0.58);
   inset: 0;
+  overflow-x: hidden;
   position: fixed;
   z-index: 30;
 }
@@ -963,16 +986,30 @@ body {
   bottom: 0;
   left: 0;
   margin: 0 auto;
-  max-width: 760px;
+  max-width: min(760px, 100%);
+  min-width: 0;
   padding: 1rem 1rem 1.2rem;
   position: absolute;
   right: 0;
+  width: 100%;
 }
 
 .tag-filter-head {
   align-items: center;
   display: flex;
+  gap: 0.75rem;
   justify-content: space-between;
+  min-width: 0;
+}
+
+.invoice-detail-sheet .tag-filter-head > div:first-child {
+  min-width: 0;
+}
+
+.invoice-detail-sheet .tag-filter-head h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-filter-head h4 {
