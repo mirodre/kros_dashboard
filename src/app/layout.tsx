@@ -29,7 +29,15 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="sk">
-      <body>{children}</body>
+      <body>
+        {children}
+        <div className="orientation-lock" aria-hidden="true">
+          <div>
+            <strong>Otoč telefón naspäť na výšku</strong>
+            <span>Dashboard je optimalizovaný iba pre zobrazenie na výšku.</span>
+          </div>
+        </div>
+      </body>
     </html>
   );
 }

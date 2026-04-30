@@ -66,6 +66,49 @@ body {
   z-index: 1;
 }
 
+.orientation-lock {
+  align-items: center;
+  background: var(--bg);
+  color: var(--text);
+  display: none;
+  inset: 0;
+  justify-content: center;
+  padding: 2rem;
+  position: fixed;
+  text-align: center;
+  z-index: 999;
+}
+
+.orientation-lock div {
+  background: linear-gradient(150deg, #1b2440 0%, #18203a 55%, #141a31 100%);
+  border: 1px solid var(--card-border);
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  display: grid;
+  gap: 0.65rem;
+  max-width: 360px;
+  padding: 1.4rem;
+}
+
+.orientation-lock strong {
+  font-size: 1.05rem;
+}
+
+.orientation-lock span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .orientation-lock {
+    display: flex;
+  }
+
+  body {
+    overflow: hidden;
+  }
+}
+
 .pull-refresh-indicator {
   background: rgba(21, 28, 51, 0.86);
   border: 1px solid rgba(91, 113, 187, 0.42);
