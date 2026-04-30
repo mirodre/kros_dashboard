@@ -251,13 +251,14 @@ export function RevenueDashboard({
                         {new Date(invoice.issueDate).toLocaleDateString("sk-SK")}
                         {invoice.invoiceNumber ? ` • ${invoice.invoiceNumber}` : ""}
                       </p>
-                      {invoice.tags.length > 0 ? (
-                        <div className="invoice-tags">
-                          {invoice.tags.slice(0, 4).map((tag) => (
-                            <span key={tag}>{tag}</span>
-                          ))}
-                        </div>
-                      ) : null}
+                      <div
+                        className="invoice-tags"
+                        aria-label={invoice.tags.length ? "Štítky faktúry" : undefined}
+                      >
+                        {invoice.tags.map((tag) => (
+                          <span key={tag}>{tag}</span>
+                        ))}
+                      </div>
                     </div>
                     <strong>{formatCurrencyPrecise(invoice.totalPrice)}</strong>
                   </li>

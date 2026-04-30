@@ -709,6 +709,11 @@ body {
   padding: 0.85rem;
 }
 
+.invoice-list li > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .invoice-list li > strong {
   color: #eef2ff;
   white-space: nowrap;
@@ -719,20 +724,42 @@ body {
 }
 
 .invoice-tags {
+  align-items: center;
+  box-sizing: border-box;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.45rem;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.28rem;
+  height: 1.75rem;
+  margin-top: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.invoice-tags::-webkit-scrollbar {
+  height: 4px;
+}
+
+.invoice-tags::-webkit-scrollbar-thumb {
+  background: rgba(100, 126, 210, 0.45);
+  border-radius: 999px;
 }
 
 .invoice-tags span {
   background: rgba(71, 92, 160, 0.24);
   border: 1px solid rgba(100, 126, 210, 0.38);
   border-radius: 999px;
-  color: #d8e1ff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.25rem 0.45rem;
+  color: #c9d4f5;
+  flex-shrink: 0;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  padding: 0.12rem 0.34rem;
+  white-space: nowrap;
 }
 
 .tag-list {
