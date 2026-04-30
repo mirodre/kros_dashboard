@@ -94,7 +94,7 @@ function getMaxLastModified(invoices: NormalizedInvoice[], fallback?: string) {
   }, fallback);
 }
 
-function withOverlap(value: string) {
+function withLastModifiedOverlap(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   date.setMinutes(date.getMinutes() - 5);
@@ -209,6 +209,12 @@ export default function HomePage() {
       try {
         const monthRanges = buildMonthSyncRanges(fetchRange.fetchFrom, fetchRange.fetchTo);
         let didFetch = false;
+        let didClearSyncLogs = false;
+        const clearSyncLogsOnce = async () => {
+          if (didClearSyncLogs) return;
+          didClearSyncLogs = true;
+          await fetch("/api/kros/logs", { method: "DELETE" });
+        };
 
         for (const connection of syncConnections) {
           const missingMonthRanges = [];
@@ -226,6 +232,7 @@ export default function HomePage() {
             for (const monthRange of missingMonthRanges) {
               if (abortController.signal.aborted) return;
 
+              await clearSyncLogsOnce();
               const response = await fetch("/api/kros/invoices", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -292,12 +299,13 @@ export default function HomePage() {
             if (!companyMeta?.lastModifiedTimestamp) continue;
 
             setIsLoadingLiveData(true);
+            await clearSyncLogsOnce();
             const response = await fetch("/api/kros/invoices", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 companies: [connection],
-                lastModifiedTimestampFrom: withOverlap(companyMeta.lastModifiedTimestamp)
+                lastModifiedTimestampFrom: withLastModifiedOverlap(companyMeta.lastModifiedTimestamp)
               }),
               signal: abortController.signal
             });

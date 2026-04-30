@@ -107,7 +107,7 @@ async function fetchCompanyInvoices(
       message: response.ok
         ? "OK"
         : `Zlyhalo: ${typeof payload === "string" ? payload : JSON.stringify(payload)}`,
-      payload: typeof payload === "string" ? payload : payload
+      payload: response.ok ? undefined : typeof payload === "string" ? payload : payload
     });
 
     if (!response.ok) {
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
       method: "POST",
       status: 200,
       message: `Načítané faktúry=${allInvoices.length}, chyby=${errors.length}, firmy=${body.companies.length}`,
-      payload: { errors, data: allInvoices }
+      payload: errors.length > 0 ? { errors } : undefined
     });
     return NextResponse.json({ data: allInvoices, errors });
   } catch (error) {
