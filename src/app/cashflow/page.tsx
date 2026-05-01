@@ -30,6 +30,7 @@ type CashflowLiveCachePayload = {
 
 declare global {
   var __krosDashboardGranularity: Granularity | undefined;
+  var __krosCashflowLiveCache: CashflowLiveCachePayload | undefined;
 }
 
 export default function CashflowPage() {
@@ -105,6 +106,27 @@ export default function CashflowPage() {
 
     const connectionIds = connections.map((connection) => connection.companyId).sort((a, b) => a - b);
     try {
+      const memoryCache = globalThis.__krosCashflowLiveCache;
+      if (memoryCache) {
+        const cachedIds = Array.isArray(memoryCache.companyIds)
+          ? memoryCache.companyIds.slice().sort((a, b) => a - b)
+          : [];
+        const hasSameScope =
+          cachedIds.length === connectionIds.length &&
+          cachedIds.every((id, index) => id === connectionIds[index]);
+        if (
+          hasSameScope &&
+          Array.isArray(memoryCache.accounts) &&
+          Array.isArray(memoryCache.transactions)
+        ) {
+          setLiveAccounts(memoryCache.accounts);
+          setLiveTransactions(memoryCache.transactions);
+          setLiveError(null);
+          setHasHydratedLiveCache(true);
+          return;
+        }
+      }
+
       const rawCache = sessionStorage.getItem(CASHFLOW_LIVE_CACHE_KEY);
       if (!rawCache) {
         setHasHydratedLiveCache(true);
@@ -127,6 +149,7 @@ export default function CashflowPage() {
         setLiveAccounts(parsed.accounts);
         setLiveTransactions(parsed.transactions);
         setLiveError(null);
+        globalThis.__krosCashflowLiveCache = parsed;
       }
     } catch {
       // Ignore invalid cache payload.
@@ -235,6 +258,7 @@ export default function CashflowPage() {
               transactions: normalizedTransactions,
               savedAt: new Date().toISOString()
             };
+            globalThis.__krosCashflowLiveCache = payload;
             sessionStorage.setItem(CASHFLOW_LIVE_CACHE_KEY, JSON.stringify(payload));
           } catch {
             // Ignore cache write failures.
