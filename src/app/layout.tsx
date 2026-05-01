@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KROS tržbový dashboard",
-  description: "Mobile-first dashboard tržieb a štítkov pre dáta z KROS",
+  title: "KROS tržbový prehľad",
+  description: "Mobile-first prehľad tržieb a štítkov pre dáta z KROS",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "KROS Dashboard"
+    title: "KROS Prehľad"
   },
   other: {
     "mobile-web-app-capable": "yes",
@@ -34,7 +34,7 @@ export default function RootLayout({
         <div className="orientation-lock" aria-hidden="true">
           <div>
             <strong>Otoč telefón naspäť na výšku</strong>
-            <span>Dashboard je optimalizovaný iba pre zobrazenie na výšku.</span>
+            <span>Prehľad je optimalizovaný iba pre zobrazenie na výšku.</span>
           </div>
         </div>
       </body>

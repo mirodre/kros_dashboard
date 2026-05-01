@@ -184,7 +184,6 @@ export function getCashflowOverview(granularity: Granularity, selectedCompanies:
   const recentTransactions: CashflowRecentTransaction[] = transactionScope
     .slice()
     .sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
-    .slice(0, 10)
     .map((transaction) => ({
       id: transaction.id,
       accountId: transaction.accountId,

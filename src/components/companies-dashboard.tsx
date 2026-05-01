@@ -28,7 +28,7 @@ export function CompaniesDashboard({
       filterLabel="Filter firiem"
       dialogTitle="Filter firiem"
       dialogHelp="Vyber firmy, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
-      ariaLabelPrefix="Filtrovať dashboard podľa firmy"
+      ariaLabelPrefix="Filtrovať prehľad podľa firmy"
       items={companies}
       selectedItems={selectedCompanies}
       availableItemNames={availableCompanyNames}

@@ -324,7 +324,7 @@ export default function CashflowPage() {
 
   return (
     <DashboardShell
-      title="Peňažný dashboard"
+      title="Peňažný prehľad"
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >

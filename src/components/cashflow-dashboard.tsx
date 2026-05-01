@@ -37,7 +37,7 @@ export function CashflowDashboard({
   onResetCompanyFilter
 }: Props) {
   const legendRef = useRef<HTMLUListElement | null>(null);
-  const suppressNextLegendClickRef = useRef(false);
+  const lastLegendDragEndedAtRef = useRef(0);
   const dragStateRef = useRef<{ isPointerDown: boolean; isDragging: boolean; startX: number; startScrollLeft: number }>({
     isPointerDown: false,
     isDragging: false,
@@ -127,7 +127,7 @@ export function CashflowDashboard({
 
   const stopLegendDragging = () => {
     if (dragStateRef.current.isDragging) {
-      suppressNextLegendClickRef.current = true;
+      lastLegendDragEndedAtRef.current = Date.now();
     }
     dragStateRef.current.isPointerDown = false;
     dragStateRef.current.isDragging = false;
@@ -135,8 +135,8 @@ export function CashflowDashboard({
   };
 
   const handleLegendClickCapture = (event: React.MouseEvent<HTMLUListElement>) => {
-    if (!suppressNextLegendClickRef.current) return;
-    suppressNextLegendClickRef.current = false;
+    // Ignore only the immediate ghost click right after drag end.
+    if (Date.now() - lastLegendDragEndedAtRef.current > 90) return;
     event.preventDefault();
     event.stopPropagation();
   };
@@ -146,8 +146,8 @@ export function CashflowDashboard({
     activeSliceId === "all" ? points : (accountPointsById[activeSliceId] ?? points);
   const filteredRecentTransactions =
     activeSliceId === "all"
-      ? recentTransactions
-      : recentTransactions.filter((transaction) => transaction.accountId === activeSliceId);
+      ? recentTransactions.slice(0, 10)
+      : recentTransactions.filter((transaction) => transaction.accountId === activeSliceId).slice(0, 10);
   const filteredUnsettledTransactions =
     activeSliceId === "all"
       ? unsettledTransactions
@@ -449,7 +449,7 @@ export function CashflowDashboard({
           >
             <header className="tag-filter-head">
               <div>
-                <h4>Nenapárované platby</h4>
+                <h4>Platby ku ktorým chýba doklad</h4>
                 <p className="tag-filter-help">Tieto platby vyžadujú tvoju pozornosť.</p>
               </div>
               <button type="button" className="filter-close" onClick={() => setIsUnsettledSheetOpen(false)}>

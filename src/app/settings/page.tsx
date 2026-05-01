@@ -157,7 +157,7 @@ export default function SettingsPage() {
     await clearInvoiceCache();
     localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
     setIsCacheClearOpen(false);
-    setStatusMessage("Lokálna cache faktúr bola vymazaná. Dashboard sa pri ďalšom otvorení načíta odznova.");
+    setStatusMessage("Lokálna cache faktúr bola vymazaná. Prehľad sa pri ďalšom otvorení načíta odznova.");
   };
 
   return (
@@ -295,7 +295,7 @@ export default function SettingsPage() {
           >
             <h4>Vymazať lokálnu cache?</h4>
             <p className="tag-sub">
-              Vymažú sa lokálne uložené faktúry a stav synchronizácie. Pri ďalšom otvorení dashboardu sa dáta natiahnu odznova z KROS.
+              Vymažú sa lokálne uložené faktúry a stav synchronizácie. Pri ďalšom otvorení prehľadu sa dáta natiahnu odznova z KROS.
             </p>
             <div className="tag-filter-actions">
               <button type="button" className="secondary-button" onClick={() => setIsCacheClearOpen(false)}>

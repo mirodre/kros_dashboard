@@ -10,7 +10,7 @@ export default function Error({ error, reset }: Props) {
     <main className="app-shell">
       <section className="panel">
         <p className="eyebrow">Niečo sa pokazilo</p>
-        <h2>Dashboard sa nepodarilo načítať</h2>
+        <h2>Prehľad sa nepodarilo načítať</h2>
         <p>{error.message}</p>
         <button className="sync-button" type="button" onClick={reset}>
           Skúsiť znovu

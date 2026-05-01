@@ -15,7 +15,7 @@ export function DashboardShell({
   children,
   isSyncing = false,
   onRefresh,
-  title = "Biznis dashboard"
+  title = "Biznis prehľad"
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
   const pullStartYRef = useRef<number | null>(null);
@@ -75,7 +75,7 @@ export function DashboardShell({
       <header className="app-header">
         <div>
           <h1>{title}</h1>
-          <nav className="header-nav desktop-only-nav" aria-label="Dashboard navigácia">
+          <nav className="header-nav desktop-only-nav" aria-label="Navigácia prehľadov">
             <Link href="/" className={pathname === "/" ? "header-nav-link active" : "header-nav-link"}>
               Biznis
             </Link>

@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "KROS Dashboard",
-    short_name: "KROS Dash",
-    description: "Mobile-first dashboard pre KROS tržby a štítky",
+    name: "KROS Prehľad",
+    short_name: "KROS Prehľad",
+    description: "Mobile-first prehľad pre KROS tržby a štítky",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

@@ -26,7 +26,7 @@ export function TagsDashboard({
       filterLabel="Filter štítkov"
       dialogTitle="Filter štítkov"
       dialogHelp="Vyber štítky, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
-      ariaLabelPrefix="Filtrovať dashboard podľa štítku"
+      ariaLabelPrefix="Filtrovať prehľad podľa štítku"
       items={tags}
       selectedItems={selectedTags}
       focusedItem={focusedTag}
