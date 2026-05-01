@@ -29,3 +29,29 @@ export type AggregatedBreakdownPoint = {
   amount: number;
   previousAmount: number;
 };
+
+export type NormalizedPaymentAccount = {
+  id: string;
+  companyId?: number;
+  companyName: string;
+  name: string;
+  type: "bank" | "cash" | "gateway" | "other";
+  currency: string;
+  startingBalance: number;
+};
+
+export type NormalizedPaymentTransaction = {
+  id: string;
+  companyId?: number;
+  companyName: string;
+  accountId: string;
+  accountName: string;
+  partnerName?: string;
+  remittanceInformation?: string;
+  hasMatchedDocuments: boolean;
+  isWithoutDocument: boolean;
+  amount: number;
+  bookedAt: string;
+  description?: string;
+  currency: string;
+};

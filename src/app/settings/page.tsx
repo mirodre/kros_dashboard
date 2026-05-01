@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
@@ -161,14 +161,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <h1>Nastavenia</h1>
-        <Link className="secondary-button" href="/">
-          Späť na dashboard
-        </Link>
-      </header>
-
+    <DashboardShell title="Nastavenia">
       <KrosConnectionCard
         connections={connections}
         statusMessage={statusMessage}
@@ -315,6 +308,6 @@ export default function SettingsPage() {
           </div>
         </div>
       ) : null}
-    </main>
+    </DashboardShell>
   );
 }

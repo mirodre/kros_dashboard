@@ -148,6 +148,7 @@ export function RevenueDashboard({
                 tabIndex={0}
                 className={activePoint?.label === point.label ? "bar-item active" : "bar-item"}
                 key={point.label}
+                style={{ "--bar-index": index } as React.CSSProperties}
                 onMouseEnter={() => setActivePoint(point)}
                 onFocus={() => setActivePoint(point)}
                 onTouchStart={() => showTemporaryTooltip(point)}
