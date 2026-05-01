@@ -1,6 +1,6 @@
 import type { CompanyPoint, Granularity, KpiCard } from "./mock-data";
 
-type CashflowAccountType = "bank" | "cash" | "gateway";
+type CashflowAccountType = "bank" | "cash" | "gateway" | "other";
 
 type CashflowAccount = {
   id: string;
