@@ -204,7 +204,7 @@ body {
   );
   border: 1px solid rgba(152, 178, 255, 0.36);
   border-radius: 26px;
-  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  bottom: max(0.35rem, env(safe-area-inset-bottom));
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.42),
     0 1px 0 rgba(225, 234, 255, 0.28) inset,
@@ -987,6 +987,48 @@ body {
   width: 100%;
 }
 
+.cashflow-donut-skeleton {
+  align-items: center;
+  aspect-ratio: 1;
+  display: grid;
+  max-width: 360px;
+  place-items: center;
+  position: relative;
+  width: 100%;
+}
+
+.cashflow-donut-skeleton-ring {
+  border: 20px solid rgba(74, 93, 151, 0.48);
+  border-radius: 999px;
+  height: 78%;
+  width: 78%;
+}
+
+.cashflow-donut-skeleton-center {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  inset: 0;
+  justify-content: center;
+  justify-items: center;
+  position: absolute;
+}
+
+.cashflow-donut-skeleton-center span {
+  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
+  border-radius: 999px;
+  display: block;
+  height: 12px;
+}
+
+.cashflow-donut-skeleton-center span:first-child {
+  width: 110px;
+}
+
+.cashflow-donut-skeleton-center span:last-child {
+  width: 72px;
+}
+
 .cashflow-donut-svg {
   display: block;
   max-width: 360px;
@@ -1014,7 +1056,7 @@ body {
 
 .cashflow-donut-slice.is-active {
   filter: brightness(1.17) saturate(1.1) drop-shadow(0 8px 14px rgba(6, 10, 22, 0.5));
-  transform: translate(var(--slice-lift-x, 0), var(--slice-lift-y, 0)) scale(1.09);
+  transform: scale(1) !important;
 }
 
 .cashflow-donut-slice.is-dimmed {
@@ -1096,8 +1138,8 @@ body {
 
 .cashflow-donut-legend li {
   display: flex;
-  flex: 0 0 160px;
-  min-width: 160px;
+  flex: 0 0 136px;
+  min-width: 136px;
   scroll-snap-align: start;
 }
 
@@ -1110,32 +1152,45 @@ body {
   cursor: pointer;
   display: grid;
   gap: 0.38rem;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "dot label"
-    "value value"
-    "trend trend";
-  grid-template-rows: 46px minmax(28px, auto) minmax(22px, auto);
+    "label"
+    "value"
+    "trend";
+  grid-template-rows: minmax(52px, auto) minmax(30px, auto) minmax(24px, auto);
   min-height: 180px;
-  padding: 0.88rem 0.76rem;
+  padding: 0.88rem 0.76rem 0.88rem 1.04rem;
   text-align: left;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.cashflow-legend-item::before {
+  background: var(--legend-accent, #86f0be);
+  border-radius: 99px;
+  content: "";
+  height: 56px;
+  left: 0.48rem;
+  opacity: 0.78;
+  position: absolute;
+  top: 0.62rem;
+  width: 4px;
+}
+
+.cashflow-legend-item.skeleton {
+  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
+  border-color: rgba(77, 96, 158, 0.28);
 }
 
 .cashflow-legend-item.active {
   border-color: rgba(162, 187, 255, 0.82);
-  box-shadow: 0 6px 16px rgba(16, 26, 54, 0.28), 0 0 0 1px rgba(195, 214, 255, 0.34) inset;
+  box-shadow:
+    0 6px 16px rgba(16, 26, 54, 0.28),
+    0 0 0 1px rgba(195, 214, 255, 0.34) inset,
+    inset 0 0 0 999px color-mix(in srgb, var(--legend-accent, #86f0be) 9%, transparent);
   transform: none;
-}
-
-.cashflow-legend-dot {
-  border-radius: 999px;
-  display: inline-block;
-  height: 11px;
-  grid-area: dot;
-  margin-top: 0.1rem;
-  width: 11px;
 }
 
 .cashflow-legend-label {
@@ -1149,7 +1204,7 @@ body {
   word-break: break-word;
   align-self: start;
   line-height: 1.2;
-  max-height: calc(1.2em * 2);
+  max-height: calc(1.2em * 3);
 }
 
 .cashflow-legend-value {
@@ -1432,11 +1487,10 @@ body {
 
 .today-movement-indicator {
   align-items: center;
-  background: linear-gradient(180deg, #66a8ff 0%, #488cff 100%);
-  border: 1px solid rgba(165, 204, 255, 0.78);
+  background: rgba(84, 128, 232, 0.18);
+  border: 1px solid rgba(122, 157, 238, 0.38);
   border-radius: 99px;
-  box-shadow: 0 4px 10px rgba(54, 125, 255, 0.35);
-  color: #eef5ff;
+  color: #cfdcff;
   display: inline-flex;
   font-size: 0.58rem;
   font-weight: 800;
@@ -1730,7 +1784,7 @@ body {
     );
     border: 1px solid rgba(152, 178, 255, 0.36);
     border-radius: 26px;
-    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
     box-shadow:
       0 18px 48px rgba(0, 0, 0, 0.42),
       0 1px 0 rgba(225, 234, 255, 0.28) inset,
@@ -1896,8 +1950,8 @@ body {
   }
 
   .cashflow-donut-legend li {
-    flex-basis: 150px;
-    min-width: 150px;
+    flex-basis: 128px;
+    min-width: 128px;
   }
 
   .cashflow-legend-item {

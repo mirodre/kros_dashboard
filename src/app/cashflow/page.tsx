@@ -19,6 +19,14 @@ import type {
 import type { Granularity } from "@/lib/mock-data";
 
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
+const CASHFLOW_LIVE_CACHE_KEY = "kros_dashboard_cashflow_live_cache_v1";
+
+type CashflowLiveCachePayload = {
+  companyIds: number[];
+  accounts: NormalizedPaymentAccount[];
+  transactions: NormalizedPaymentTransaction[];
+  savedAt: string;
+};
 
 declare global {
   var __krosDashboardGranularity: Granularity | undefined;
@@ -36,6 +44,8 @@ export default function CashflowPage() {
   const [liveTransactions, setLiveTransactions] = useState<NormalizedPaymentTransaction[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [hasHydratedLiveCache, setHasHydratedLiveCache] = useState(false);
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -87,6 +97,46 @@ export default function CashflowPage() {
   }, [granularity]);
 
   useEffect(() => {
+    if (!hasLoadedPersistedFilters) return;
+    if (connections.length === 0) {
+      setHasHydratedLiveCache(true);
+      return;
+    }
+
+    const connectionIds = connections.map((connection) => connection.companyId).sort((a, b) => a - b);
+    try {
+      const rawCache = sessionStorage.getItem(CASHFLOW_LIVE_CACHE_KEY);
+      if (!rawCache) {
+        setHasHydratedLiveCache(true);
+        return;
+      }
+
+      const parsed = JSON.parse(rawCache) as CashflowLiveCachePayload;
+      const cachedIds = Array.isArray(parsed?.companyIds)
+        ? parsed.companyIds.slice().sort((a, b) => a - b)
+        : [];
+      const hasSameScope =
+        cachedIds.length === connectionIds.length &&
+        cachedIds.every((id, index) => id === connectionIds[index]);
+      if (!hasSameScope) {
+        setHasHydratedLiveCache(true);
+        return;
+      }
+
+      if (Array.isArray(parsed?.accounts) && Array.isArray(parsed?.transactions)) {
+        setLiveAccounts(parsed.accounts);
+        setLiveTransactions(parsed.transactions);
+        setLiveError(null);
+      }
+    } catch {
+      // Ignore invalid cache payload.
+    } finally {
+      setHasHydratedLiveCache(true);
+    }
+  }, [connections, hasLoadedPersistedFilters]);
+
+  useEffect(() => {
+    if (!hasHydratedLiveCache) return;
     if (connections.length === 0) {
       setLiveAccounts([]);
       setLiveTransactions([]);
@@ -94,10 +144,12 @@ export default function CashflowPage() {
       return;
     }
 
-    const companyScope =
-      normalizedSelectedCompanies.length > 0
-        ? connections.filter((connection) => normalizedSelectedCompanies.includes(connection.companyName))
-        : connections;
+    // Keep dashboard loaded between menu switches and re-fetch only on manual pull-to-refresh.
+    // Fresh load is triggered when cache is missing (both arrays empty).
+    const hasCachedLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
+    if (refreshNonce === 0 && hasCachedLiveData) return;
+
+    const companyScope = connections;
 
     if (companyScope.length === 0) {
       setLiveAccounts([]);
@@ -176,6 +228,17 @@ export default function CashflowPage() {
           setLiveAccounts(normalizedAccounts);
           setLiveTransactions(normalizedTransactions);
           setLiveError(null);
+          try {
+            const payload: CashflowLiveCachePayload = {
+              companyIds: companyScope.map((connection) => connection.companyId),
+              accounts: normalizedAccounts,
+              transactions: normalizedTransactions,
+              savedAt: new Date().toISOString()
+            };
+            sessionStorage.setItem(CASHFLOW_LIVE_CACHE_KEY, JSON.stringify(payload));
+          } catch {
+            // Ignore cache write failures.
+          }
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -194,7 +257,7 @@ export default function CashflowPage() {
     return () => {
       abortController.abort();
     };
-  }, [connections, normalizedSelectedCompanies]);
+  }, [connections, liveAccounts.length, liveTransactions.length, refreshNonce, hasHydratedLiveCache]);
 
   const hasLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
   const liveOverview = useMemo(
@@ -236,10 +299,15 @@ export default function CashflowPage() {
   const shouldShowMockData = connections.length === 0 || (!!liveError && !hasLiveData);
 
   return (
-    <DashboardShell title="Peňažný dashboard">
+    <DashboardShell
+      title="Peňažný dashboard"
+      isSyncing={isLoadingLiveData}
+      onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+    >
       <CashflowDashboard
         kpis={overview.kpis}
         points={overview.points}
+        accountPointsById={overview.accountPointsById}
         accounts={overview.accountBreakdown}
         recentTransactions={overview.recentTransactions}
         unsettledTransactions={overview.unsettledTransactions}

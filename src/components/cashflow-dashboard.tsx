@@ -12,6 +12,7 @@ import { formatCurrency, formatDelta } from "@/lib/format";
 type Props = {
   kpis: KpiCard[];
   points: CashflowPoint[];
+  accountPointsById: Record<string, CashflowPoint[]>;
   accounts: CashflowAccountPoint[];
   recentTransactions: CashflowRecentTransaction[];
   unsettledTransactions: CashflowRecentTransaction[];
@@ -25,6 +26,7 @@ type Props = {
 export function CashflowDashboard({
   kpis,
   points,
+  accountPointsById,
   accounts,
   recentTransactions,
   unsettledTransactions,
@@ -139,22 +141,33 @@ export function CashflowDashboard({
     event.stopPropagation();
   };
 
-  const totalInflow = points.reduce((sum, point) => sum + point.inflow, 0);
-  const totalOutflow = points.reduce((sum, point) => sum + point.outflow, 0);
-  const netFlow = totalInflow - totalOutflow;
   const previousNetFlow = kpis.find((item) => item.title === "Netto tok")?.previousValue ?? 0;
-  const flowDelta = previousNetFlow === 0 ? 100 : ((netFlow - previousNetFlow) / Math.abs(previousNetFlow)) * 100;
+  const filteredPoints =
+    activeSliceId === "all" ? points : (accountPointsById[activeSliceId] ?? points);
+  const filteredRecentTransactions =
+    activeSliceId === "all"
+      ? recentTransactions
+      : recentTransactions.filter((transaction) => transaction.accountId === activeSliceId);
+  const filteredUnsettledTransactions =
+    activeSliceId === "all"
+      ? unsettledTransactions
+      : unsettledTransactions.filter((transaction) => transaction.accountId === activeSliceId);
+  const filteredInflow = filteredPoints.reduce((sum, point) => sum + point.inflow, 0);
+  const filteredOutflow = filteredPoints.reduce((sum, point) => sum + point.outflow, 0);
+  const filteredNetFlow = filteredInflow - filteredOutflow;
+  const filteredFlowDelta =
+    previousNetFlow === 0 ? 100 : ((filteredNetFlow - previousNetFlow) / Math.abs(previousNetFlow)) * 100;
   const maxFlowValue = Math.max(
     1,
-    ...points.map((point) => Math.max(point.inflow, point.outflow, Math.abs(point.inflow - point.outflow)))
+    ...filteredPoints.map((point) => Math.max(point.inflow, point.outflow, Math.abs(point.inflow - point.outflow)))
   );
-  const activeFlowPoint = points.find((point) => point.label === activeFlowLabel) ?? null;
-  const activeFlowNet = activeFlowPoint ? activeFlowPoint.inflow - activeFlowPoint.outflow : netFlow;
+  const activeFlowPoint = filteredPoints.find((point) => point.label === activeFlowLabel) ?? null;
+  const activeFlowNet = activeFlowPoint ? activeFlowPoint.inflow - activeFlowPoint.outflow : filteredNetFlow;
   const activeFlowDelta =
     activeFlowPoint && activeFlowPoint.previousBalance !== 0
       ? ((activeFlowPoint.balance - activeFlowPoint.previousBalance) / Math.abs(activeFlowPoint.previousBalance)) * 100
-      : flowDelta;
-  const shouldStretchFlowChart = points.length > 0 && points.length <= 8;
+      : filteredFlowDelta;
+  const shouldStretchFlowChart = filteredPoints.length > 0 && filteredPoints.length <= 8;
   const unsettledCount = unsettledTransactions.length;
 
   return (
@@ -194,11 +207,21 @@ export function CashflowDashboard({
       ) : null}
 
       <article className="panel">
-        <div className="cashflow-donut-wrap">
+        <div className={isLoading ? "cashflow-donut-wrap loading" : "cashflow-donut-wrap"}>
           <div className="cashflow-donut-card">
+            {isLoading ? (
+              <div className="cashflow-donut-skeleton" aria-hidden="true">
+                <div className="cashflow-donut-skeleton-ring" />
+                <div className="cashflow-donut-skeleton-center">
+                  <span />
+                  <span />
+                </div>
+              </div>
+            ) : (
             <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Zostatok podľa účtov">
               {chartData.map((slice, sliceIndex) => {
-                const outerRadius = 126;
+                const isActive = activeSliceId === slice.id;
+                const outerRadius = isActive ? 136 : 126;
                 const innerRadius = 90;
                 const center = 160;
                 const startOuterX = center + outerRadius * Math.cos(slice.startAngle);
@@ -210,7 +233,6 @@ export function CashflowDashboard({
                 const endInnerX = center + innerRadius * Math.cos(slice.endAngle);
                 const endInnerY = center + innerRadius * Math.sin(slice.endAngle);
                 const isLargeArc = slice.endAngle - slice.startAngle > Math.PI ? 1 : 0;
-                const midAngle = (slice.startAngle + slice.endAngle) / 2;
                 const path = [
                   `M ${startOuterX} ${startOuterY}`,
                   `A ${outerRadius} ${outerRadius} 0 ${isLargeArc} 1 ${endOuterX} ${endOuterY}`,
@@ -218,9 +240,7 @@ export function CashflowDashboard({
                   `A ${innerRadius} ${innerRadius} 0 ${isLargeArc} 0 ${startInnerX} ${startInnerY}`,
                   "Z"
                 ].join(" ");
-                const isActive = activeSliceId === slice.id;
                 const isDimmed = activeSliceId !== "all" && !isActive;
-                const liftDistance = 20;
                 return (
                   <path
                     key={slice.id}
@@ -229,9 +249,7 @@ export function CashflowDashboard({
                     style={
                       {
                         fill: slice.color,
-                        "--slice-index": sliceIndex,
-                        "--slice-lift-x": `${Math.cos(midAngle) * liftDistance}px`,
-                        "--slice-lift-y": `${Math.sin(midAngle) * liftDistance}px`
+                        "--slice-index": sliceIndex
                       } as React.CSSProperties
                     }
                     onClick={() => setActiveSliceId((prev) => (prev === slice.id ? "all" : slice.id))}
@@ -245,6 +263,7 @@ export function CashflowDashboard({
                 className={isPieAnimated ? "cashflow-donut-hole is-animated" : "cashflow-donut-hole"}
               />
             </svg>
+            )}
             <div className="cashflow-donut-center">
               <p className="cashflow-donut-title">
                 {activeSlice ? activeSlice.name : "Všetky účty"}
@@ -260,39 +279,49 @@ export function CashflowDashboard({
             </div>
           </div>
 
-          <ul
-            ref={legendRef}
-            className={isLegendDragging ? "cashflow-donut-legend is-dragging" : "cashflow-donut-legend"}
-            onPointerDown={handleLegendPointerDown}
-            onPointerMove={handleLegendPointerMove}
-            onPointerUp={stopLegendDragging}
-            onPointerCancel={stopLegendDragging}
-            onPointerLeave={() => stopLegendDragging()}
-            onClickCapture={handleLegendClickCapture}
-          >
-            {chartData.map((slice) => (
-              <li key={slice.id}>
-                <button
-                  type="button"
-                  className={activeSliceId === slice.id ? "cashflow-legend-item active" : "cashflow-legend-item"}
-                  onClick={() => setActiveSliceId((prev) => (prev === slice.id ? "all" : slice.id))}
-                >
-                  <span className="cashflow-legend-dot" style={{ backgroundColor: slice.color }} />
-                  <span className="cashflow-legend-label">{slice.name}</span>
-                  <span className="cashflow-legend-value">{formatCurrency(slice.value)}</span>
-                  {(() => {
-                    const deltaValue = slice.value - Math.max(slice.previousAmount, 0);
-                    return (
-                      <span className={deltaValue >= 0 ? "cashflow-legend-trend up" : "cashflow-legend-trend down"}>
-                        {deltaValue >= 0 ? "+" : "-"}
-                        {formatCurrency(Math.abs(deltaValue))}
-                      </span>
-                    );
-                  })()}
-                </button>
-              </li>
-            ))}
-          </ul>
+          {isLoading ? (
+            <ul className="cashflow-donut-legend skeleton" aria-hidden="true">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <li key={`legend-skeleton-${index}`}>
+                  <div className="cashflow-legend-item skeleton" />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul
+              ref={legendRef}
+              className={isLegendDragging ? "cashflow-donut-legend is-dragging" : "cashflow-donut-legend"}
+              onPointerDown={handleLegendPointerDown}
+              onPointerMove={handleLegendPointerMove}
+              onPointerUp={stopLegendDragging}
+              onPointerCancel={stopLegendDragging}
+              onPointerLeave={() => stopLegendDragging()}
+              onClickCapture={handleLegendClickCapture}
+            >
+              {chartData.map((slice) => (
+                <li key={slice.id}>
+                  <button
+                    type="button"
+                    className={activeSliceId === slice.id ? "cashflow-legend-item active" : "cashflow-legend-item"}
+                  style={{ "--legend-accent": slice.color } as React.CSSProperties}
+                    onClick={() => setActiveSliceId((prev) => (prev === slice.id ? "all" : slice.id))}
+                  >
+                    <span className="cashflow-legend-label">{slice.name}</span>
+                    <span className="cashflow-legend-value">{formatCurrency(slice.value)}</span>
+                    {(() => {
+                      const deltaValue = slice.value - Math.max(slice.previousAmount, 0);
+                      return (
+                        <span className={deltaValue >= 0 ? "cashflow-legend-trend up" : "cashflow-legend-trend down"}>
+                          {deltaValue >= 0 ? "+" : "-"}
+                          {formatCurrency(Math.abs(deltaValue))}
+                        </span>
+                      );
+                    })()}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </article>
 
@@ -310,8 +339,7 @@ export function CashflowDashboard({
           </span>
         </div>
         <div className={shouldStretchFlowChart ? "cashflow-time-chart stretch" : "cashflow-time-chart"}>
-          {points.map((point) => {
-            const net = point.inflow - point.outflow;
+          {filteredPoints.map((point) => {
             const isActiveFlowPoint = activeFlowLabel === point.label;
             return (
               <div
@@ -350,7 +378,7 @@ export function CashflowDashboard({
             <h3>Posledné pohyby</h3>
           </header>
           <ul className="tag-list">
-            {recentTransactions.map((transaction) => {
+            {filteredRecentTransactions.map((transaction) => {
               const movementDate = new Date(transaction.bookedAt);
               const now = new Date();
               const isToday =
@@ -429,7 +457,7 @@ export function CashflowDashboard({
               </button>
             </header>
             <ul className="tag-list unsettled-sheet-list">
-              {unsettledTransactions.map((transaction) => {
+              {filteredUnsettledTransactions.map((transaction) => {
                 const movementDate = new Date(transaction.bookedAt);
                 const now = new Date();
                 const isToday =

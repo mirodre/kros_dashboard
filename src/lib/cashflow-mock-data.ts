@@ -41,6 +41,7 @@ export type CashflowAccountPoint = {
 
 export type CashflowRecentTransaction = {
   id: string;
+  accountId: string;
   accountName: string;
   companyName: string;
   partnerName?: string;
@@ -126,6 +127,27 @@ export function getCashflowOverview(granularity: Granularity, selectedCompanies:
       outflow: bucket.outflow
     };
   });
+  const accountPointsById = accountScope.reduce<Record<string, CashflowPoint[]>>((acc, account) => {
+    const accountTransactions = transactionScope.filter((transaction) => transaction.accountId === account.id);
+    const openingCurrentAccount = computeOpeningBalance([account], accountTransactions, currentPeriod.start);
+    const openingPreviousAccount = computeOpeningBalance([account], accountTransactions, previousPeriod.start);
+    const accountCurrentBuckets = computeBucketMetrics(currentBuckets, accountTransactions);
+    const accountPreviousBuckets = computeBucketMetrics(previousBuckets, accountTransactions);
+    let runningCurrentAccount = openingCurrentAccount;
+    let runningPreviousAccount = openingPreviousAccount;
+    acc[account.id] = accountCurrentBuckets.map((bucket, index) => {
+      runningCurrentAccount += bucket.net;
+      runningPreviousAccount += accountPreviousBuckets[index]?.net ?? 0;
+      return {
+        label: bucket.label,
+        balance: runningCurrentAccount,
+        previousBalance: runningPreviousAccount,
+        inflow: bucket.inflow,
+        outflow: bucket.outflow
+      };
+    });
+    return acc;
+  }, {});
 
   const currentInflow = currentBucketMetrics.reduce((sum, bucket) => sum + bucket.inflow, 0);
   const currentOutflow = currentBucketMetrics.reduce((sum, bucket) => sum + bucket.outflow, 0);
@@ -165,6 +187,7 @@ export function getCashflowOverview(granularity: Granularity, selectedCompanies:
     .slice(0, 10)
     .map((transaction) => ({
       id: transaction.id,
+      accountId: transaction.accountId,
       accountName: accountNameById.get(transaction.accountId) ?? transaction.accountId,
       companyName: transaction.companyName,
       partnerName: transaction.partnerName,
@@ -196,6 +219,7 @@ export function getCashflowOverview(granularity: Granularity, selectedCompanies:
 
   return {
     points,
+    accountPointsById,
     kpis,
     accountBreakdown,
     recentTransactions,
