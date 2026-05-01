@@ -64,7 +64,9 @@ export const CASHFLOW_MOCK_COMPANIES = Array.from(
   new Set(accounts.map((account) => account.companyName))
 );
 
-const monthlyCurrentYearTransactions: Omit<CashflowTransaction, "id" | "bookedAt">[] = [
+type MonthlyTransactionSeed = Pick<CashflowTransaction, "accountId" | "companyName" | "amount">;
+
+const monthlyCurrentYearTransactions: MonthlyTransactionSeed[] = [
   { accountId: "a1", companyName: "Kros Trade", amount: 22800 },
   { accountId: "a2", companyName: "Kros Trade", amount: -13200 },
   { accountId: "a5", companyName: "Kros Services", amount: 18100 },
@@ -75,7 +77,7 @@ const monthlyCurrentYearTransactions: Omit<CashflowTransaction, "id" | "bookedAt
   { accountId: "a2", companyName: "Kros Trade", amount: -2400 }
 ];
 
-const monthlyPreviousYearTransactions: Omit<CashflowTransaction, "id" | "bookedAt">[] = [
+const monthlyPreviousYearTransactions: MonthlyTransactionSeed[] = [
   { accountId: "a1", companyName: "Kros Trade", amount: 19700 },
   { accountId: "a2", companyName: "Kros Trade", amount: -12400 },
   { accountId: "a5", companyName: "Kros Services", amount: 15200 },
