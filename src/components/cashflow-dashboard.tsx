@@ -416,52 +416,50 @@ export function CashflowDashboard({
                 movementDate.getFullYear() === now.getFullYear() &&
                 movementDate.getMonth() === now.getMonth() &&
                 movementDate.getDate() === now.getDate();
-              const docState = transaction.hasMatchedDocuments
-                ? "matched"
-                : transaction.isWithoutDocument
-                  ? "without-doc"
-                  : "unmatched";
-              const docStateLabel =
-                docState === "matched"
-                  ? "Napárované na doklad"
-                  : docState === "without-doc"
-                    ? "Bez dokladu"
-                    : "Nenapárované";
-              const docStateIcon = docState === "unmatched" ? "!" : "✓";
+              const isUnmatched = !transaction.hasMatchedDocuments && !transaction.isWithoutDocument;
+              const rowClass = isUnmatched ? "movement-row attention" : "movement-row";
 
               return (
-                <li key={transaction.id} className={docState === "unmatched" ? "movement-row attention" : "movement-row settled"}>
-                  <div
-                    className={docState === "unmatched" ? "movement-state-icon warn" : "movement-state-icon ok"}
-                    aria-label={docStateLabel}
-                    title={docStateLabel}
-                  >
-                    {docStateIcon}
-                  </div>
-                  <div className="movement-main">
+                <li key={transaction.id} className={rowClass}>
+                  <div className="movement-row-head">
                     <p className="tag-name with-today-indicator">
+                      {isUnmatched ? (
+                        <span
+                          className="today-movement-indicator today-movement-indicator--unmatched-warn"
+                          aria-label="Nenapárované — chýba doklad"
+                          title="Nenapárované — chýba doklad"
+                        >
+                          CHÝBA DOKLAD
+                        </span>
+                      ) : null}
                       {isToday ? (
                         <span
-                          className="today-movement-indicator"
-                          aria-label="Dnešný pohyb"
-                          title="Dnešný pohyb"
+                          className="today-movement-indicator today-movement-indicator--new-invoice"
+                          aria-label="Dnešná platba"
+                          title="Dnešná platba"
                         >
                           NEW
                         </span>
                       ) : null}
-                      {transaction.partnerName ?? "Neznámy partner"}
+                      <span className="movement-row-partner" title={transaction.partnerName ?? "Neznámy partner"}>
+                        {transaction.partnerName ?? "Neznámy partner"}
+                      </span>
                     </p>
-                    <p className="tag-sub">
-                      {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
-                    </p>
-                    {transaction.remittanceInformation ? (
-                      <p className="tag-sub">{transaction.remittanceInformation}</p>
-                    ) : null}
                   </div>
-                  <div className="tag-values">
-                    <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
-                      {formatCurrencyPrecise(transaction.amount)}
-                    </p>
+                  <div className="movement-row-body">
+                    <div className="movement-row-meta">
+                      <p className="tag-sub">
+                        {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
+                      </p>
+                      {transaction.remittanceInformation ? (
+                        <p className="tag-sub">{transaction.remittanceInformation}</p>
+                      ) : null}
+                    </div>
+                    <div className="tag-values movement-row-amount">
+                      <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
+                        {formatCurrencyPrecise(transaction.amount)}
+                      </p>
+                    </div>
                   </div>
                 </li>
               );
@@ -497,33 +495,43 @@ export function CashflowDashboard({
                   movementDate.getDate() === now.getDate();
                 return (
                   <li key={`unsettled-${transaction.id}`} className="movement-row attention">
-                    <div className="movement-state-icon warn" aria-label="Nenapárované" title="Nenapárované">
-                      !
-                    </div>
-                    <div className="movement-main">
+                    <div className="movement-row-head">
                       <p className="tag-name with-today-indicator">
+                        <span
+                          className="today-movement-indicator today-movement-indicator--unmatched-warn"
+                          aria-label="Nenapárované — chýba doklad"
+                          title="Nenapárované — chýba doklad"
+                        >
+                          CHÝBA DOKLAD
+                        </span>
                         {isToday ? (
                           <span
-                            className="today-movement-indicator"
-                            aria-label="Dnešný pohyb"
-                            title="Dnešný pohyb"
+                            className="today-movement-indicator today-movement-indicator--new-invoice"
+                            aria-label="Dnešná platba"
+                            title="Dnešná platba"
                           >
                             NEW
                           </span>
                         ) : null}
-                        {transaction.partnerName ?? "Neznámy partner"}
+                        <span className="movement-row-partner" title={transaction.partnerName ?? "Neznámy partner"}>
+                          {transaction.partnerName ?? "Neznámy partner"}
+                        </span>
                       </p>
-                      <p className="tag-sub">
-                        {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
-                      </p>
-                      {transaction.remittanceInformation ? (
-                        <p className="tag-sub">{transaction.remittanceInformation}</p>
-                      ) : null}
                     </div>
-                    <div className="tag-values">
-                      <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
-                        {formatCurrencyPrecise(transaction.amount)}
-                      </p>
+                    <div className="movement-row-body">
+                      <div className="movement-row-meta">
+                        <p className="tag-sub">
+                          {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
+                        </p>
+                        {transaction.remittanceInformation ? (
+                          <p className="tag-sub">{transaction.remittanceInformation}</p>
+                        ) : null}
+                      </div>
+                      <div className="tag-values movement-row-amount">
+                        <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
+                          {formatCurrencyPrecise(transaction.amount)}
+                        </p>
+                      </div>
                     </div>
                   </li>
                 );

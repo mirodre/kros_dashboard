@@ -1493,49 +1493,69 @@ body {
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.movement-row {
-  align-items: center;
-  column-gap: 0.75rem;
-  display: grid !important;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  justify-content: start !important;
+.tag-list li.movement-row {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 0.55rem;
+  justify-content: flex-start;
+  width: 100%;
 }
 
-.movement-main {
-  justify-self: start;
+.movement-row-head {
+  width: 100%;
+}
+
+.movement-row-head .with-today-indicator {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  min-height: 1.35rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.movement-row-head .with-today-indicator .today-movement-indicator {
+  flex-shrink: 0;
+}
+
+.movement-row-head .movement-row-partner {
+  flex: 1 1 0%;
   min-width: 0;
-  width: clamp(180px, 58vw, 340px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-row-body {
+  align-items: start;
+  column-gap: 0.85rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+}
+
+.movement-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.movement-row-meta .tag-sub {
+  margin: 0;
+}
+
+.movement-row-body .movement-row-amount.tag-values {
+  flex-shrink: 0;
+  justify-self: end;
+  min-width: 0;
+  text-align: right;
 }
 
 .movement-row.attention {
   border-color: rgba(255, 147, 171, 0.52);
   box-shadow: 0 10px 26px rgba(34, 8, 16, 0.34), 0 0 0 1px rgba(255, 147, 171, 0.2) inset;
-}
-
-.movement-state-icon {
-  align-items: center;
-  border-radius: 999px;
-  display: inline-flex;
-  flex: 0 0 22px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  height: 22px;
-  justify-content: center;
-  line-height: 1;
-  margin-right: 0.1rem;
-  width: 22px;
-}
-
-.movement-state-icon.ok {
-  background: rgba(158, 167, 194, 0.1);
-  border: 1px solid rgba(158, 167, 194, 0.28);
-  color: #b8c0dc;
-}
-
-.movement-state-icon.warn {
-  background: rgba(255, 111, 143, 0.2);
-  border: 1px solid rgba(255, 147, 171, 0.56);
-  color: #ffb4c8;
 }
 
 .tag-list li:hover {
@@ -1581,7 +1601,7 @@ body {
 }
 
 /*
- * NEW pri faktúrach: tonal amber chip (jedna paleta — plnka jemná, okraj sýtejší, text v odtieni amber).
+ * Amber pill: NEW (dnes) — Biznis faktúry + Peniaze platby.
  */
 .today-movement-indicator--new-invoice {
   background: linear-gradient(
@@ -1596,7 +1616,21 @@ body {
     0 2px 12px rgba(55, 35, 8, 0.28);
   color: #fde68a;
   letter-spacing: 0.055em;
+  min-width: auto;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+/* Farby bývalého movement-state-icon.warn — štítok CHÝBA DOKLAD (nenapárované platby). */
+.today-movement-indicator--unmatched-warn {
+  background: rgba(255, 111, 143, 0.2);
+  border: 1px solid rgba(255, 147, 171, 0.56);
+  box-shadow: 0 2px 10px rgba(160, 50, 85, 0.28);
+  color: #ffb4c8;
+  letter-spacing: 0.05em;
+  min-width: auto;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.32);
+  white-space: nowrap;
 }
 
 .tag-sub {
