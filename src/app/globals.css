@@ -833,6 +833,28 @@ body {
   box-shadow: 0 5px 12px rgba(92, 125, 242, 0.38);
 }
 
+/*
+ * YoY „tento rok“: zelená = lepšie ako vlani, červená = horšie.
+ * Teal hore; dole jemná ružovo‑červená medzi prachovou mauve a pôvodnou sýtou červenou.
+ */
+.bar-item.bar-yoy-up .bar.current {
+  background: linear-gradient(180deg, #5eead4 0%, #2dd4bf 40%, #0d9488 100%);
+  box-shadow: 0 5px 18px rgba(13, 148, 136, 0.42);
+}
+
+.bar-item.bar-yoy-down .bar.current {
+  background: linear-gradient(180deg, #f6ccd4 0%, #d6738a 46%, #943d50 100%);
+  box-shadow: 0 5px 16px rgba(120, 45, 65, 0.34);
+}
+
+.bar-item.active.bar-yoy-up .bar.current {
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.55), 0 5px 18px rgba(13, 148, 136, 0.42);
+}
+
+.bar-item.active.bar-yoy-down .bar.current {
+  box-shadow: 0 0 0 2px rgba(220, 115, 140, 0.48), 0 5px 16px rgba(120, 45, 65, 0.34);
+}
+
 .bar.previous {
   background: linear-gradient(180deg, #4d5679 0%, #3f4767 100%);
   opacity: 0.58;
@@ -1556,6 +1578,25 @@ body {
   min-width: 34px;
   padding: 0 0.34rem;
   text-transform: uppercase;
+}
+
+/*
+ * NEW pri faktúrach: tonal amber chip (jedna paleta — plnka jemná, okraj sýtejší, text v odtieni amber).
+ */
+.today-movement-indicator--new-invoice {
+  background: linear-gradient(
+    168deg,
+    rgba(254, 243, 199, 0.28) 0%,
+    rgba(251, 191, 36, 0.18) 48%,
+    rgba(180, 83, 9, 0.14) 100%
+  );
+  border: 1px solid rgba(253, 224, 71, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 251, 235, 0.18),
+    0 2px 12px rgba(55, 35, 8, 0.28);
+  color: #fde68a;
+  letter-spacing: 0.055em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 
 .tag-sub {

@@ -74,6 +74,12 @@ export function RevenueDashboard({
     return ((point.current - point.previous) / point.previous) * 100;
   };
 
+  const getYoyBarClass = (point: RevenuePoint) => {
+    if (point.current > point.previous) return "bar-yoy-up";
+    if (point.current < point.previous) return "bar-yoy-down";
+    return "bar-yoy-flat";
+  };
+
   const showTemporaryTooltip = (point: RevenuePoint) => {
     setActivePoint(point);
     if (tooltipTimeoutRef.current) {
@@ -146,7 +152,7 @@ export function RevenueDashboard({
               <div
                 role="button"
                 tabIndex={0}
-                className={activePoint?.label === point.label ? "bar-item active" : "bar-item"}
+                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}`}
                 key={point.label}
                 style={{ "--bar-index": index } as React.CSSProperties}
                 onMouseEnter={() => setActivePoint(point)}

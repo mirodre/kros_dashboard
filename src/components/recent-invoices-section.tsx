@@ -52,7 +52,7 @@ export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
                       <p className="tag-name invoice-title-line with-today-indicator">
                         {isToday ? (
                           <span
-                            className="today-movement-indicator"
+                            className="today-movement-indicator today-movement-indicator--new-invoice"
                             aria-label="Nová faktúra — vystavená dnes"
                             title="Nová faktúra — vystavená dnes"
                           >
