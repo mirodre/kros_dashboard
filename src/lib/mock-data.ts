@@ -1,3 +1,5 @@
+import type { NormalizedInvoice } from "./kros-types";
+
 export type Granularity = "week" | "month" | "year";
 
 export type KpiCard = {
@@ -156,6 +158,136 @@ export function getTagsBreakdown(granularity: Granularity): TagPoint[] {
 
 export function getCompaniesBreakdown(granularity: Granularity): CompanyPoint[] {
   return companyDataByGranularity[granularity];
+}
+
+/** Demo faktúry pre sekciu „Posledné faktúry“ bez pripojených firiem (rovnaké názvy firiem a štítkov ako v mock grafoch). */
+export function getMockRecentInvoices(referenceDate: Date = new Date()): NormalizedInvoice[] {
+  const iso = (daysAgo: number) => {
+    const d = new Date(referenceDate);
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const rows: Omit<NormalizedInvoice, "id">[] = [
+    {
+      companyName: "Kros Trade",
+      partnerName: "TechPartner SK s.r.o.",
+      issueDate: iso(0),
+      totalPrice: 18_200,
+      tags: ["B2B"],
+      invoiceNumber: "FV 2026/188"
+    },
+    {
+      companyName: "Kros Services",
+      partnerName: "GreenFood a.s.",
+      issueDate: iso(1),
+      totalPrice: 9_450,
+      tags: ["Retail"],
+      invoiceNumber: "FV 2026/042"
+    },
+    {
+      companyName: "Kros Retail",
+      partnerName: "Mestský úrad Bratislava",
+      issueDate: iso(2),
+      totalPrice: 42_800,
+      tags: ["B2B"],
+      invoiceNumber: "FV 2026/301"
+    },
+    {
+      companyName: "Kros Trade",
+      partnerName: "Logistika Plus s.r.o.",
+      issueDate: iso(3),
+      totalPrice: 6_200,
+      tags: ["Nedefinované"],
+      invoiceNumber: "FV 2026/187"
+    },
+    {
+      companyName: "Kros Services",
+      partnerName: "Streamio EU",
+      issueDate: iso(4),
+      totalPrice: 3_990,
+      tags: ["Subscriptions"],
+      invoiceNumber: "FV 2026/041"
+    },
+    {
+      companyName: "Kros Retail",
+      partnerName: "Nákupné centrum Central",
+      issueDate: iso(6),
+      totalPrice: 28_300,
+      tags: ["Retail"],
+      invoiceNumber: "FV 2026/300"
+    },
+    {
+      companyName: "Kros Trade",
+      partnerName: "AutoServis Novák",
+      issueDate: iso(8),
+      totalPrice: 2_180,
+      tags: ["Retail"],
+      invoiceNumber: "FV 2026/186"
+    },
+    {
+      companyName: "Kros Services",
+      partnerName: "BuildMax s.r.o.",
+      issueDate: iso(10),
+      totalPrice: 55_600,
+      tags: ["B2B"],
+      invoiceNumber: "FV 2026/040"
+    },
+    {
+      companyName: "Kros Retail",
+      partnerName: "E-shop Slovensko",
+      issueDate: iso(12),
+      totalPrice: 4_120,
+      tags: ["Subscriptions"],
+      invoiceNumber: "FV 2026/299"
+    },
+    {
+      companyName: "Kros Trade",
+      partnerName: "Kancelárske potreby s.r.o.",
+      issueDate: iso(14),
+      totalPrice: 890,
+      tags: ["Retail"],
+      invoiceNumber: "FV 2026/185"
+    },
+    {
+      companyName: "Kros Services",
+      partnerName: "Wellness Club",
+      issueDate: iso(18),
+      totalPrice: 12_400,
+      tags: ["Retail"],
+      invoiceNumber: "FV 2026/039"
+    },
+    {
+      companyName: "Kros Retail",
+      partnerName: "Dopravný podnik",
+      issueDate: iso(22),
+      totalPrice: 71_200,
+      tags: ["B2B"],
+      invoiceNumber: "FV 2026/298"
+    },
+    {
+      companyName: "Kros Trade",
+      partnerName: "SoftHouse EU",
+      issueDate: iso(30),
+      totalPrice: 19_900,
+      tags: ["B2B"],
+      invoiceNumber: "FV 2026/184"
+    },
+    {
+      companyName: "Kros Services",
+      partnerName: "Farmárska predajňa",
+      issueDate: iso(45),
+      totalPrice: 1_650,
+      tags: ["Nedefinované"],
+      invoiceNumber: "FV 2026/038"
+    }
+  ];
+
+  return rows.map((row, index) => ({
+    ...row,
+    id: `mock-invoice-${index}-${row.issueDate}`
+  }));
 }
 
 function getTagWeight(granularity: Granularity, selectedTags: string[]) {

@@ -7,7 +7,7 @@ import type {
   CashflowPoint,
   CashflowRecentTransaction
 } from "@/lib/cashflow-mock-data";
-import { formatCurrency, formatDelta } from "@/lib/format";
+import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
 
 type Props = {
   kpis: KpiCard[];
@@ -24,7 +24,7 @@ type Props = {
 };
 
 export function CashflowDashboard({
-  kpis,
+  kpis: _kpis,
   points,
   accountPointsById,
   accounts,
@@ -82,7 +82,7 @@ export function CashflowDashboard({
   }, [accounts]);
 
   const totalBalance = useMemo(
-    () => chartData.reduce((sum, item) => sum + item.value, 0),
+    () => chartData.reduce((sum, item) => sum + item.amount, 0),
     [chartData]
   );
 
@@ -90,6 +90,14 @@ export function CashflowDashboard({
     () => chartData.find((item) => item.id === activeSliceId),
     [chartData, activeSliceId]
   );
+
+  /** Share of real aggregate balance (signed); falls back to pie share when total ≈ 0. */
+  const activeAccountSharePercent = useMemo(() => {
+    if (!activeSlice) return null;
+    const t = totalBalance;
+    if (Math.abs(t) < 1e-9) return activeSlice.share * 100;
+    return (activeSlice.amount / t) * 100;
+  }, [activeSlice, totalBalance]);
 
   useEffect(() => {
     setActiveSliceId("all");
@@ -141,7 +149,6 @@ export function CashflowDashboard({
     event.stopPropagation();
   };
 
-  const previousNetFlow = kpis.find((item) => item.title === "Netto tok")?.previousValue ?? 0;
   const filteredPoints =
     activeSliceId === "all" ? points : (accountPointsById[activeSliceId] ?? points);
   const filteredRecentTransactions =
@@ -154,19 +161,14 @@ export function CashflowDashboard({
       : unsettledTransactions.filter((transaction) => transaction.accountId === activeSliceId);
   const filteredInflow = filteredPoints.reduce((sum, point) => sum + point.inflow, 0);
   const filteredOutflow = filteredPoints.reduce((sum, point) => sum + point.outflow, 0);
-  const filteredNetFlow = filteredInflow - filteredOutflow;
-  const filteredFlowDelta =
-    previousNetFlow === 0 ? 100 : ((filteredNetFlow - previousNetFlow) / Math.abs(previousNetFlow)) * 100;
   const maxFlowValue = Math.max(
     1,
     ...filteredPoints.map((point) => Math.max(point.inflow, point.outflow, Math.abs(point.inflow - point.outflow)))
   );
   const activeFlowPoint = filteredPoints.find((point) => point.label === activeFlowLabel) ?? null;
-  const activeFlowNet = activeFlowPoint ? activeFlowPoint.inflow - activeFlowPoint.outflow : filteredNetFlow;
-  const activeFlowDelta =
-    activeFlowPoint && activeFlowPoint.previousBalance !== 0
-      ? ((activeFlowPoint.balance - activeFlowPoint.previousBalance) / Math.abs(activeFlowPoint.previousBalance)) * 100
-      : filteredFlowDelta;
+  const flowSummaryInflow = activeFlowPoint ? activeFlowPoint.inflow : filteredInflow;
+  const flowSummaryOutflow = activeFlowPoint ? activeFlowPoint.outflow : filteredOutflow;
+  const flowSummaryNet = flowSummaryInflow - flowSummaryOutflow;
   const shouldStretchFlowChart = filteredPoints.length > 0 && filteredPoints.length <= 8;
   const unsettledCount = unsettledTransactions.length;
 
@@ -269,11 +271,11 @@ export function CashflowDashboard({
                 {activeSlice ? activeSlice.name : "Všetky účty"}
               </p>
               <strong>
-                {formatCurrency(activeSlice ? activeSlice.value : totalBalance)}
+                {formatCurrency(activeSlice ? activeSlice.amount : totalBalance)}
               </strong>
               <span>
-                {activeSlice
-                  ? `${(activeSlice.share * 100).toFixed(1)} %`
+                {activeSlice && activeAccountSharePercent !== null
+                  ? `${activeAccountSharePercent.toFixed(1)} %`
                   : `${accounts.length} účtov`}
               </span>
             </div>
@@ -307,9 +309,9 @@ export function CashflowDashboard({
                     onClick={() => setActiveSliceId((prev) => (prev === slice.id ? "all" : slice.id))}
                   >
                     <span className="cashflow-legend-label">{slice.name}</span>
-                    <span className="cashflow-legend-value">{formatCurrency(slice.value)}</span>
+                    <span className="cashflow-legend-value">{formatCurrency(slice.amount)}</span>
                     {(() => {
-                      const deltaValue = slice.value - Math.max(slice.previousAmount, 0);
+                      const deltaValue = slice.amount - slice.previousAmount;
                       return (
                         <span className={deltaValue >= 0 ? "cashflow-legend-trend up" : "cashflow-legend-trend down"}>
                           {deltaValue >= 0 ? "+" : "-"}
@@ -330,13 +332,42 @@ export function CashflowDashboard({
           <h3>Tok peňazí v čase</h3>
         </header>
         <div className="cashflow-flow-summary">
-          <span>
-            {activeFlowPoint ? `${activeFlowPoint.label}: ` : "Netto: "}
-            {formatCurrency(activeFlowNet)}
-          </span>
-          <span className={activeFlowDelta >= 0 ? "delta up" : "delta down"}>
-            {formatDelta(activeFlowDelta)}
-          </span>
+          <div className="cashflow-flow-summary-row" role="group" aria-label="Súhrn toku peňazí">
+            {activeFlowPoint ? (
+              <>
+                <span className="cashflow-flow-summary-period-inline">{activeFlowPoint.label}</span>
+                <span className="cashflow-flow-summary-sep" aria-hidden="true">
+                  ·
+                </span>
+              </>
+            ) : null}
+            <span className="cashflow-flow-summary-seg">
+              <span className="cashflow-flow-summary-seg-label">Príjem</span>{" "}
+              <span className="cashflow-flow-summary-seg-value">{formatCurrency(flowSummaryInflow)}</span>
+            </span>
+            <span className="cashflow-flow-summary-sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="cashflow-flow-summary-seg">
+              <span className="cashflow-flow-summary-seg-label">Výdaj</span>{" "}
+              <span className="cashflow-flow-summary-seg-value">{formatCurrency(flowSummaryOutflow)}</span>
+            </span>
+            <span className="cashflow-flow-summary-sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="cashflow-flow-summary-seg">
+              <span className="cashflow-flow-summary-seg-label">Rozdiel</span>{" "}
+              <span
+                className={
+                  flowSummaryNet >= 0
+                    ? "cashflow-flow-summary-seg-value delta up"
+                    : "cashflow-flow-summary-seg-value delta down"
+                }
+              >
+                {formatCurrency(flowSummaryNet)}
+              </span>
+            </span>
+          </div>
         </div>
         <div className={shouldStretchFlowChart ? "cashflow-time-chart stretch" : "cashflow-time-chart"}>
           {filteredPoints.map((point) => {
@@ -375,7 +406,7 @@ export function CashflowDashboard({
       <section className="dashboard-body">
         <article className="panel">
           <header className="panel-head">
-            <h3>Posledné pohyby</h3>
+            <h3>Posledné platby</h3>
           </header>
           <ul className="tag-list">
             {filteredRecentTransactions.map((transaction) => {
@@ -429,7 +460,7 @@ export function CashflowDashboard({
                   </div>
                   <div className="tag-values">
                     <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
-                      {formatCurrency(transaction.amount)}
+                      {formatCurrencyPrecise(transaction.amount)}
                     </p>
                   </div>
                 </li>
@@ -491,7 +522,7 @@ export function CashflowDashboard({
                     </div>
                     <div className="tag-values">
                       <p className={transaction.amount >= 0 ? "movement-amount-text up" : "movement-amount-text down"}>
-                        {formatCurrency(transaction.amount)}
+                        {formatCurrencyPrecise(transaction.amount)}
                       </p>
                     </div>
                   </li>

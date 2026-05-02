@@ -475,3 +475,42 @@ export function computeCompanyBreakdown(
     previousAmount: Math.round(values.previous)
   }));
 }
+
+/** Latest invoices for the home dashboard, respecting the same tag/company/date window as revenue charts. */
+export function getFilteredRecentInvoices(
+  invoices: NormalizedInvoice[],
+  options: {
+    granularity: Granularity;
+    selectedTags: string[];
+    selectedCompanies: string[];
+    limit?: number;
+  }
+): NormalizedInvoice[] {
+  const range = getDateRange(options.granularity);
+  const selectedTagSet = new Set(options.selectedTags);
+  const selectedCompanySet = new Set(options.selectedCompanies);
+  const limit = options.limit ?? 10;
+
+  const filtered = invoices.filter((invoice) => {
+    const invoiceDate = new Date(invoice.issueDate);
+    if (Number.isNaN(invoiceDate.getTime())) return false;
+    const inWindow = invoiceDate >= range.previousFrom && invoiceDate <= range.currentTo;
+    const companyPass =
+      selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
+    const tagPass =
+      selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
+    return inWindow && companyPass && tagPass;
+  });
+
+  return filtered
+    .slice()
+    .sort((a, b) => {
+      const da = new Date(a.issueDate).getTime();
+      const db = new Date(b.issueDate).getTime();
+      if (db !== da) return db - da;
+      const ma = a.lastModifiedTimestamp ? new Date(a.lastModifiedTimestamp).getTime() : 0;
+      const mb = b.lastModifiedTimestamp ? new Date(b.lastModifiedTimestamp).getTime() : 0;
+      return mb - ma;
+    })
+    .slice(0, limit);
+}

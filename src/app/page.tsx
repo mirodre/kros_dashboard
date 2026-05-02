@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
 import { TagsDashboard } from "@/components/tags-dashboard";
+import { RecentInvoicesSection } from "@/components/recent-invoices-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import {
   getCompaniesBreakdown,
+  getMockRecentInvoices,
   getRevenueChartPointsByTags,
   getTagsBreakdown,
   type Granularity
@@ -18,6 +20,7 @@ import {
   computeKpis,
   computeRevenueSeries,
   computeTagBreakdown,
+  getFilteredRecentInvoices,
   normalizeInvoices
 } from "@/lib/dashboard-live";
 import {
@@ -404,6 +407,16 @@ export default function HomePage() {
     return getCompaniesBreakdown(granularity);
   }, [hasLiveMode, liveInvoices, effectiveTags, granularity]);
 
+  const recentInvoices = useMemo(() => {
+    const source = hasLiveMode ? liveInvoices : getMockRecentInvoices();
+    return getFilteredRecentInvoices(source, {
+      granularity,
+      selectedTags: effectiveTags,
+      selectedCompanies: effectiveCompanies,
+      limit: 10
+    });
+  }, [hasLiveMode, liveInvoices, granularity, effectiveTags, effectiveCompanies]);
+
   const updateSelectionWithFocusedGuard = (
     nextSelection: string[],
     focusedValue: string | null,
@@ -445,6 +458,7 @@ export default function HomePage() {
         onFocusedTagChange={setFocusedTag}
         isLoading={isLoadingLiveData}
       />
+      <RecentInvoicesSection invoices={recentInvoices} isLoading={isLoadingLiveData} />
       <CompaniesDashboard
         companies={companiesData}
         selectedCompanies={selectedCompanies}

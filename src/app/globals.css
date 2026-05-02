@@ -898,10 +898,56 @@ body {
 }
 
 .cashflow-flow-summary {
+  margin-top: 0.3rem;
+}
+
+.cashflow-flow-summary-row {
   align-items: baseline;
   display: flex;
-  gap: 0.7rem;
-  margin-top: 0.3rem;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  margin: 0;
+  overflow-x: auto;
+  padding-bottom: 0.12rem;
+  scrollbar-width: none;
+}
+
+.cashflow-flow-summary-row::-webkit-scrollbar {
+  display: none;
+}
+
+.cashflow-flow-summary-period-inline {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.cashflow-flow-summary-sep {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  user-select: none;
+}
+
+.cashflow-flow-summary-seg {
+  align-items: baseline;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0.2rem;
+  white-space: nowrap;
+}
+
+.cashflow-flow-summary-seg-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cashflow-flow-summary-seg-value {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .cashflow-time-chart {
@@ -1306,6 +1352,15 @@ body {
   width: 100%;
 }
 
+.recent-invoices-list {
+  flex: unset;
+  margin-top: 0.85rem;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding-bottom: 0;
+}
+
 .invoice-list li {
   align-items: stretch;
   background: linear-gradient(150deg, #1b2440 0%, #18203a 55%, #141a31 100%);
@@ -1435,10 +1490,6 @@ body {
   box-shadow: 0 10px 26px rgba(34, 8, 16, 0.34), 0 0 0 1px rgba(255, 147, 171, 0.2) inset;
 }
 
-.movement-row.settled {
-  border-color: rgba(111, 198, 159, 0.4);
-}
-
 .movement-state-icon {
   align-items: center;
   border-radius: 999px;
@@ -1454,9 +1505,9 @@ body {
 }
 
 .movement-state-icon.ok {
-  background: rgba(57, 212, 153, 0.18);
-  border: 1px solid rgba(85, 231, 172, 0.46);
-  color: #8df3ca;
+  background: rgba(158, 167, 194, 0.1);
+  border: 1px solid rgba(158, 167, 194, 0.28);
+  color: #b8c0dc;
 }
 
 .movement-state-icon.warn {
@@ -1734,6 +1785,10 @@ body {
   color: var(--muted);
   font-size: 0.84rem;
   margin: 0.7rem 0 0;
+}
+
+.recent-invoices-empty {
+  margin-top: 0.35rem;
 }
 
 .tag-filter-options {
