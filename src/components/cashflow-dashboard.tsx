@@ -51,17 +51,28 @@ export function CashflowDashboard({
   const [isUnsettledSheetOpen, setIsUnsettledSheetOpen] = useState(false);
 
   const chartData = useMemo(() => {
+    // Largest slices get rank 0,1,… — mint / teal / limetka sú rozostúpené medzi modrou, koralom a fialou.
     const palette = [
       "#86f0be",
       "#67c9ff",
-      "#9f8bff",
       "#ff9f6e",
-      "#ffc46b",
+      "#9f8bff",
       "#6de0d8",
       "#f68fc9",
-      "#7aa6ff"
+      "#9edc7a",
+      "#ffc46b"
     ];
     const total = accounts.reduce((sum, account) => sum + Math.max(account.amount, 0), 0);
+
+    const valueById = new Map(
+      accounts.map((account) => [account.id, Math.max(account.amount, 0)])
+    );
+    const rankById = new Map<string, number>();
+    [...valueById.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([id], rank) => {
+        rankById.set(id, rank);
+      });
 
     let cumulative = -Math.PI / 2;
     return accounts.map((account, index) => {
@@ -70,11 +81,12 @@ export function CashflowDashboard({
       const startAngle = cumulative;
       const endAngle = cumulative + share * Math.PI * 2;
       cumulative = endAngle;
+      const colorRank = rankById.get(account.id) ?? index;
       return {
         ...account,
         value,
         share,
-        color: palette[index % palette.length],
+        color: palette[colorRank % palette.length],
         startAngle,
         endAngle
       };
