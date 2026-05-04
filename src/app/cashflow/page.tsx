@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -10,6 +10,7 @@ import {
   normalizePaymentAccounts,
   normalizePaymentTransactions
 } from "@/lib/cashflow-live";
+import { CASHFLOW_LIVE_CACHE_KEY } from "@/lib/cashflow-live-cache";
 import { readConnections } from "@/lib/kros-storage";
 import type {
   KrosConnection,
@@ -19,7 +20,6 @@ import type {
 import type { Granularity } from "@/lib/mock-data";
 
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
-const CASHFLOW_LIVE_CACHE_KEY = "kros_dashboard_cashflow_live_cache_v1";
 
 type CashflowLiveCachePayload = {
   companyIds: number[];
@@ -47,6 +47,7 @@ export default function CashflowPage() {
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasHydratedLiveCache, setHasHydratedLiveCache] = useState(false);
+  const lastLiveScopeKeyRef = useRef("");
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -67,6 +68,18 @@ export default function CashflowPage() {
     if (focusedCompany && preferredCompanySet.has(focusedCompany)) return [focusedCompany];
     return normalizedSelectedCompanies;
   }, [focusedCompany, normalizedSelectedCompanies, preferredCompanySet]);
+
+  /**
+   * Same idea as Biznis: empty selection = all connected companies; otherwise only selected names.
+   * If the user has a non-empty persisted selection but no name matches current connections, sync nothing
+   * (do not fall back to loading every firm).
+   */
+  const syncConnections = useMemo(() => {
+    if (selectedCompanies.length === 0) return connections;
+    if (normalizedSelectedCompanies.length === 0) return [];
+    const selectedSet = new Set(normalizedSelectedCompanies);
+    return connections.filter((connection) => selectedSet.has(connection.companyName));
+  }, [connections, selectedCompanies, normalizedSelectedCompanies]);
 
   useEffect(() => {
     setConnections(readConnections());
@@ -104,7 +117,8 @@ export default function CashflowPage() {
       return;
     }
 
-    const connectionIds = connections.map((connection) => connection.companyId).sort((a, b) => a - b);
+    const scopeIds = syncConnections.map((connection) => connection.companyId).sort((a, b) => a - b);
+    const scopeKey = scopeIds.join("|");
     try {
       const memoryCache = globalThis.__krosCashflowLiveCache;
       if (memoryCache) {
@@ -112,8 +126,8 @@ export default function CashflowPage() {
           ? memoryCache.companyIds.slice().sort((a, b) => a - b)
           : [];
         const hasSameScope =
-          cachedIds.length === connectionIds.length &&
-          cachedIds.every((id, index) => id === connectionIds[index]);
+          cachedIds.length === scopeIds.length &&
+          cachedIds.every((id, index) => id === scopeIds[index]);
         if (
           hasSameScope &&
           Array.isArray(memoryCache.accounts) &&
@@ -122,6 +136,7 @@ export default function CashflowPage() {
           setLiveAccounts(memoryCache.accounts);
           setLiveTransactions(memoryCache.transactions);
           setLiveError(null);
+          lastLiveScopeKeyRef.current = scopeKey;
           setHasHydratedLiveCache(true);
           return;
         }
@@ -138,8 +153,8 @@ export default function CashflowPage() {
         ? parsed.companyIds.slice().sort((a, b) => a - b)
         : [];
       const hasSameScope =
-        cachedIds.length === connectionIds.length &&
-        cachedIds.every((id, index) => id === connectionIds[index]);
+        cachedIds.length === scopeIds.length &&
+        cachedIds.every((id, index) => id === scopeIds[index]);
       if (!hasSameScope) {
         setHasHydratedLiveCache(true);
         return;
@@ -150,13 +165,14 @@ export default function CashflowPage() {
         setLiveTransactions(parsed.transactions);
         setLiveError(null);
         globalThis.__krosCashflowLiveCache = parsed;
+        lastLiveScopeKeyRef.current = scopeKey;
       }
     } catch {
       // Ignore invalid cache payload.
     } finally {
       setHasHydratedLiveCache(true);
     }
-  }, [connections, hasLoadedPersistedFilters]);
+  }, [connections, hasLoadedPersistedFilters, syncConnections]);
 
   useEffect(() => {
     if (!hasHydratedLiveCache) return;
@@ -164,21 +180,28 @@ export default function CashflowPage() {
       setLiveAccounts([]);
       setLiveTransactions([]);
       setLiveError(null);
+      lastLiveScopeKeyRef.current = "";
       return;
     }
 
-    // Keep dashboard loaded between menu switches and re-fetch only on manual pull-to-refresh.
-    // Fresh load is triggered when cache is missing (both arrays empty).
-    const hasCachedLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
-    if (refreshNonce === 0 && hasCachedLiveData) return;
-
-    const companyScope = connections;
-
-    if (companyScope.length === 0) {
+    if (syncConnections.length === 0) {
       setLiveAccounts([]);
       setLiveTransactions([]);
+      setLiveError(null);
+      lastLiveScopeKeyRef.current = "";
+      setIsLoadingLiveData(false);
       return;
     }
+
+    const scopeKey = syncConnections.map((c) => c.companyId).sort((a, b) => a - b).join("|");
+    // Keep dashboard loaded between menu switches and re-fetch only on manual pull-to-refresh,
+    // or when the set of firms to sync (company filter) changes.
+    const hasCachedLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
+    if (refreshNonce === 0 && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey) {
+      return;
+    }
+
+    const companyScope = syncConnections;
 
     const abortController = new AbortController();
     setIsLoadingLiveData(true);
@@ -251,6 +274,7 @@ export default function CashflowPage() {
           setLiveAccounts(normalizedAccounts);
           setLiveTransactions(normalizedTransactions);
           setLiveError(null);
+          lastLiveScopeKeyRef.current = scopeKey;
           try {
             const payload: CashflowLiveCachePayload = {
               companyIds: companyScope.map((connection) => connection.companyId),
@@ -269,6 +293,7 @@ export default function CashflowPage() {
           setLiveError(error instanceof Error ? error.message : "Nepodarilo sa načítať payments dáta.");
           setLiveAccounts([]);
           setLiveTransactions([]);
+          lastLiveScopeKeyRef.current = "";
         }
       } finally {
         if (!abortController.signal.aborted) {
@@ -281,7 +306,14 @@ export default function CashflowPage() {
     return () => {
       abortController.abort();
     };
-  }, [connections, liveAccounts.length, liveTransactions.length, refreshNonce, hasHydratedLiveCache]);
+  }, [
+    connections,
+    syncConnections,
+    liveAccounts.length,
+    liveTransactions.length,
+    refreshNonce,
+    hasHydratedLiveCache
+  ]);
 
   const hasLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
   const liveOverview = useMemo(
@@ -291,10 +323,11 @@ export default function CashflowPage() {
             accounts: liveAccounts,
             transactions: liveTransactions,
             granularity,
-            selectedCompanies: effectiveCompanies
+            selectedCompanies: effectiveCompanies,
+            allowedCompanyIds: syncConnections.map((connection) => connection.companyId)
           })
         : null,
-    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies]
+    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies, syncConnections]
   );
 
   const mockOverview = useMemo(

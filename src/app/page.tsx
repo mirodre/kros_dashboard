@@ -403,9 +403,11 @@ export default function HomePage() {
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
 
   const companiesData = useMemo(() => {
-    if (hasLiveMode) return computeCompanyBreakdown(liveInvoices, effectiveTags);
-    return getCompaniesBreakdown(granularity);
-  }, [hasLiveMode, liveInvoices, effectiveTags, granularity]);
+    if (hasLiveMode) return computeCompanyBreakdown(liveInvoices, effectiveTags, effectiveCompanies);
+    const all = getCompaniesBreakdown(granularity);
+    if (effectiveCompanies.length === 0) return all;
+    return all.filter((company) => effectiveCompanies.includes(company.name));
+  }, [hasLiveMode, liveInvoices, effectiveTags, effectiveCompanies, granularity]);
 
   const recentInvoices = useMemo(() => {
     const source = hasLiveMode ? liveInvoices : getMockRecentInvoices();

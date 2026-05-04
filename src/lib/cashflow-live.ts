@@ -291,17 +291,25 @@ export function computeCashflowOverviewFromLiveData({
   accounts,
   transactions,
   granularity,
-  selectedCompanies
+  selectedCompanies,
+  allowedCompanyIds
 }: {
   accounts: NormalizedPaymentAccount[];
   transactions: NormalizedPaymentTransaction[];
   granularity: Granularity;
   selectedCompanies: string[];
+  /** When set (e.g. from filtered KROS connections), match accounts by `companyId` in addition to `companyName`. */
+  allowedCompanyIds?: number[];
 }): CashflowOverview {
   const selectedCompanySet = new Set(selectedCompanies);
-  const accountScope = accounts.filter(
-    (account) => selectedCompanySet.size === 0 || selectedCompanySet.has(account.companyName)
-  );
+  const allowedIdSet =
+    allowedCompanyIds && allowedCompanyIds.length > 0 ? new Set(allowedCompanyIds) : null;
+
+  const accountScope = accounts.filter((account) => {
+    if (selectedCompanySet.size === 0) return true;
+    if (allowedIdSet && account.companyId != null && allowedIdSet.has(account.companyId)) return true;
+    return selectedCompanySet.has(account.companyName);
+  });
   const accountIdScope = new Set(accountScope.map((account) => account.id));
   const transactionScope = transactions.filter((transaction) => accountIdScope.has(transaction.accountId));
 

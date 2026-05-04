@@ -443,13 +443,17 @@ export function computeTagBreakdown(
 
 export function computeCompanyBreakdown(
   invoices: NormalizedInvoice[],
-  selectedTags: string[]
+  selectedTags: string[],
+  selectedCompanies: string[] = []
 ): AggregatedBreakdownPoint[] {
   const tagSet = new Set(selectedTags);
+  const companySet = new Set(selectedCompanies);
   const map = new Map<string, { current: number; previous: number }>();
   const range = getDateRange("month");
 
   for (const invoice of invoices) {
+    if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
+
     const tagPass = tagSet.size === 0 || invoice.tags.some((tag) => tagSet.has(tag));
     if (!tagPass) continue;
 

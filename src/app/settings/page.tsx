@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
+import { clearCashflowLiveCache } from "@/lib/cashflow-live-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
 import type { KrosConnection } from "@/lib/kros-types";
@@ -155,9 +156,12 @@ export default function SettingsPage() {
 
   const handleClearInvoiceCache = async () => {
     await clearInvoiceCache();
+    clearCashflowLiveCache();
     localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
     setIsCacheClearOpen(false);
-    setStatusMessage("Lokálna cache faktúr bola vymazaná. Prehľad sa pri ďalšom otvorení načíta odznova.");
+    setStatusMessage(
+      "Lokálna cache faktúr (Biznis) a platieb (Peniaze) bola vymazaná. Prehľady sa pri ďalšom otvorení načítajú odznova."
+    );
   };
 
   return (
@@ -178,7 +182,8 @@ export default function SettingsPage() {
             </button>
           </header>
           <p className="tag-sub">
-            Vymaže lokálne uložené faktúry a stav synchronizácie v tomto prehliadači. Prepojenie na KROS zostane zachované.
+            Vymaže lokálne uložené faktúry, stav synchronizácie a dočasnú cache platobného prehľadu (Peniaze) v tomto
+            prehliadači. Prepojenie na KROS zostane zachované.
           </p>
         </article>
       </section>
@@ -295,7 +300,8 @@ export default function SettingsPage() {
           >
             <h4>Vymazať lokálnu cache?</h4>
             <p className="tag-sub">
-              Vymažú sa lokálne uložené faktúry a stav synchronizácie. Pri ďalšom otvorení prehľadu sa dáta natiahnu odznova z KROS.
+              Vymažú sa lokálne uložené faktúry, stav synchronizácie a cache platobných údajov pre prehľad Peniaze. Pri
+              ďalšom otvorení prehľadov sa dáta natiahnu odznova z KROS.
             </p>
             <div className="tag-filter-actions">
               <button type="button" className="secondary-button" onClick={() => setIsCacheClearOpen(false)}>
