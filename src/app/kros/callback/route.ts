@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { consumeOAuthState } from "@/lib/kros-oauth-state";
 
 type CallbackCompany = {
   companyId: number;
@@ -76,6 +77,16 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const state = String(formData.get("state") ?? "") || null;
     const companies = parseCompanies(formData);
+
+    if (!state || !(await consumeOAuthState(state))) {
+      await appendKrosLog({
+        direction: "error",
+        endpoint: "/kros/callback",
+        method: "POST",
+        message: "Callback odmietnutý: neplatný alebo expirovaný state parameter"
+      });
+      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url));
+    }
 
     await appendKrosLog({
       direction: "response",

@@ -62,30 +62,6 @@ async function fetchCompanyAccounts(company: CompanyConnection) {
     ? (payload as { data: unknown[] }).data
     : [];
 
-  const firstItem =
-    items.length > 0 && typeof items[0] === "object" && items[0] !== null
-      ? (items[0] as Record<string, unknown>)
-      : null;
-  // #region agent log
-  fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-    body: JSON.stringify({
-      sessionId: "a548d4",
-      runId: "pre-fix-payments-empty",
-      hypothesisId: "H2",
-      location: "src/app/api/kros/payments/accounts/route.ts:fetchCompanyAccounts-shape",
-      message: "Accounts payload shape",
-      data: {
-        companyName: company.companyName,
-        itemsCount: items.length,
-        firstItemKeys: firstItem ? Object.keys(firstItem).slice(0, 20) : []
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-
   return items.map((account) => ({
     ...((account as object) ?? {}),
     __company: company.companyName,

@@ -155,32 +155,6 @@ export function normalizePaymentAccounts(rawAccounts: unknown[]): NormalizedPaym
     })
     .filter((account) => account.id.length > 0);
 
-  const firstRaw =
-    rawAccounts.length > 0 && typeof rawAccounts[0] === "object" && rawAccounts[0] !== null
-      ? (rawAccounts[0] as Record<string, unknown>)
-      : null;
-  // #region agent log
-  fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-    body: JSON.stringify({
-      sessionId: "a548d4",
-      runId: "pre-fix-payments-empty",
-      hypothesisId: "H2",
-      location: "src/lib/cashflow-live.ts:normalizePaymentAccounts-summary",
-      message: "Normalized payment accounts summary",
-      data: {
-        rawCount: rawAccounts.length,
-        normalizedCount: normalized.length,
-        firstRawKeys: firstRaw ? Object.keys(firstRaw).slice(0, 20) : [],
-        firstNormalized:
-          normalized.length > 0 ? { id: normalized[0].id, name: normalized[0].name } : null
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-
   return normalized;
 }
 
@@ -239,51 +213,6 @@ export function normalizePaymentTransactions(
     })
     .filter((payment) => payment.bookedAt.length > 0);
 
-  const unmatchedAccountIds = normalized.filter((payment) => !accountById.has(payment.accountId)).length;
-  const firstRaw =
-    rawPayments.length > 0 && typeof rawPayments[0] === "object" && rawPayments[0] !== null
-      ? (rawPayments[0] as Record<string, unknown>)
-      : null;
-
-  // #region agent log
-  fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-    body: JSON.stringify({
-      sessionId: "a548d4",
-      runId: "pre-fix-payments-empty",
-      hypothesisId: "H2",
-      location: "src/lib/cashflow-live.ts:normalizePaymentTransactions-summary",
-      message: "Normalized payment transactions summary",
-      data: {
-        rawCount: rawPayments.length,
-        normalizedCount: normalized.length,
-        unmatchedAccountIds,
-        firstRawKeys: firstRaw ? Object.keys(firstRaw).slice(0, 20) : [],
-        firstRawAccountCandidates: firstRaw
-          ? {
-              accountId: firstRaw.accountId,
-              AccountId: firstRaw.AccountId,
-              paymentAccountId: firstRaw.paymentAccountId,
-              PaymentAccountId: firstRaw.PaymentAccountId
-            }
-          : null,
-        firstRawAmountCandidates: firstRaw
-          ? {
-              amount: firstRaw.amount,
-              totalAmount: firstRaw.totalAmount,
-              sumOfPayment: firstRaw.sumOfPayment,
-              originalSumOfPayment: firstRaw.originalSumOfPayment,
-              debitAmount: firstRaw.debitAmount,
-              creditAmount: firstRaw.creditAmount
-            }
-          : null
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-
   return normalized;
 }
 
@@ -312,27 +241,6 @@ export function computeCashflowOverviewFromLiveData({
   });
   const accountIdScope = new Set(accountScope.map((account) => account.id));
   const transactionScope = transactions.filter((transaction) => accountIdScope.has(transaction.accountId));
-
-  // #region agent log
-  fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-    body: JSON.stringify({
-      sessionId: "a548d4",
-      runId: "pre-fix-payments-empty",
-      hypothesisId: "H2",
-      location: "src/lib/cashflow-live.ts:computeCashflowOverviewFromLiveData-scope",
-      message: "Live compute scope sizes",
-      data: {
-        accountsCount: accounts.length,
-        accountScopeCount: accountScope.length,
-        transactionsCount: transactions.length,
-        transactionScopeCount: transactionScope.length
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
 
   const now = new Date();
   const currentPeriod = getPeriodWindow(granularity, now, 0);

@@ -241,35 +241,6 @@ export default function CashflowPage() {
           accountById
         );
 
-        // #region agent log
-        fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-          body: JSON.stringify({
-            sessionId: "a548d4",
-            runId: "pre-fix-payments-empty",
-            hypothesisId: "H3",
-            location: "src/app/cashflow/page.tsx:loadLivePayments-normalized",
-            message: "Normalized live payload summary",
-            data: {
-              rawAccountsCount: Array.isArray(accountsPayload?.data) ? accountsPayload.data.length : -1,
-              rawPaymentsCount: Array.isArray(paymentsPayload?.data) ? paymentsPayload.data.length : -1,
-              normalizedAccountsCount: normalizedAccounts.length,
-              normalizedTransactionsCount: normalizedTransactions.length,
-              samplePayment:
-                normalizedTransactions.length > 0
-                  ? {
-                      accountId: normalizedTransactions[0]?.accountId,
-                      amount: normalizedTransactions[0]?.amount,
-                      bookedAt: normalizedTransactions[0]?.bookedAt
-                    }
-                  : null
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
-
         if (!abortController.signal.aborted) {
           setLiveAccounts(normalizedAccounts);
           setLiveTransactions(normalizedTransactions);

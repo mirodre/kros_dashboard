@@ -115,12 +115,34 @@ export default function SettingsPage() {
     return `${consentBase}?${params.toString()}`;
   };
 
-  const handleConnectClick = () => {
+  const handleConnectClick = async () => {
     const state = crypto.randomUUID().replace(/-/g, "");
     savePendingState(state);
     setPendingState(state);
+    setStatusMessage("Pripravujem bezpečné prepojenie s KROS...");
+
+    try {
+      const response = await fetch("/api/kros/oauth-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state })
+      });
+      if (!response.ok) {
+        setStatusMessage("Nepodarilo sa pripraviť OAuth prepojenie. Skús to znova.");
+        return;
+      }
+    } catch {
+      setStatusMessage("Nepodarilo sa kontaktovať server. Skús to znova.");
+      return;
+    }
+
     setStatusMessage("Presmerovávam do KROS prepojenia...");
     window.location.assign(createIntegrationConsentUrl(state));
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
   };
 
   const handleDisconnectCompany = (companyId: number) => {
@@ -172,6 +194,18 @@ export default function SettingsPage() {
         onConnectClick={handleConnectClick}
         onDisconnectCompany={handleDisconnectCompany}
       />
+
+      <section className="dashboard-body">
+        <article className="panel">
+          <header className="panel-head">
+            <h3>Bezpečnosť</h3>
+            <button type="button" className="secondary-button" onClick={() => void handleLogout()}>
+              Odhlásiť sa
+            </button>
+          </header>
+          <p className="tag-sub">Ukončí prihlásenie do dashboardu v tomto prehliadači.</p>
+        </article>
+      </section>
 
       <section className="dashboard-body">
         <article className="panel">

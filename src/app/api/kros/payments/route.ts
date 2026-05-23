@@ -67,39 +67,6 @@ async function fetchCompanyPayments(
       payload = payloadText;
     }
 
-    if (skip === 0) {
-      const firstArrayItem =
-        Array.isArray(payload) && payload.length > 0 && typeof payload[0] === "object" && payload[0] !== null
-          ? (payload[0] as Record<string, unknown>)
-          : null;
-      // #region agent log
-      fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-        body: JSON.stringify({
-          sessionId: "a548d4",
-          runId: "pre-fix-payments-empty",
-          hypothesisId: "H1",
-          location: "src/app/api/kros/payments/route.ts:fetchCompanyPayments-payload-shape",
-          message: "Payments payload shape",
-          data: {
-            companyName: company.companyName,
-            payloadKeys:
-              payload && typeof payload === "object" ? Object.keys(payload as Record<string, unknown>).slice(0, 8) : [],
-            firstItemKeys: firstArrayItem ? Object.keys(firstArrayItem).slice(0, 20) : [],
-            dataCount: Array.isArray((payload as { data?: unknown[] })?.data)
-              ? (payload as { data: unknown[] }).data.length
-              : -1,
-            itemsCount: Array.isArray((payload as { items?: unknown[] })?.items)
-              ? (payload as { items: unknown[] }).items.length
-              : -1
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
-    }
-
     await appendKrosLog({
       direction: response.ok ? "response" : "error",
       endpoint: "/api/payments",
@@ -161,22 +128,6 @@ export async function POST(request: Request) {
         });
       }
     }
-
-    // #region agent log
-    fetch("http://127.0.0.1:7292/ingest/2c760ae1-6116-4d9d-ad94-448f7b07322c", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a548d4" },
-      body: JSON.stringify({
-        sessionId: "a548d4",
-        runId: "pre-fix-payments-empty",
-        hypothesisId: "H5",
-        location: "src/app/api/kros/payments/route.ts:POST-summary",
-        message: "Payments route summary",
-        data: { companiesCount: body.companies.length, paymentsCount: allPayments.length, errorsCount: errors.length },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
 
     return NextResponse.json({ data: allPayments, errors });
   } catch (error) {
