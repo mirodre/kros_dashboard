@@ -1,8 +1,13 @@
 export const SESSION_COOKIE_NAME = "kros_dashboard_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
+function readEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : undefined;
+}
+
 function getAuthSecret() {
-  const secret = process.env.AUTH_SECRET;
+  const secret = readEnv("AUTH_SECRET");
   if (!secret || secret.length < 32) {
     return null;
   }
@@ -22,7 +27,7 @@ function timingSafeEqualText(a: string, b: string) {
 }
 
 export function isAuthConfigured() {
-  const password = process.env.DASHBOARD_PASSWORD;
+  const password = readEnv("DASHBOARD_PASSWORD");
   return Boolean(getAuthSecret() && password && password.length >= 8);
 }
 
@@ -76,12 +81,12 @@ export async function verifySessionToken(token: string | undefined) {
 }
 
 export function verifyDashboardPassword(password: string) {
-  const expected = process.env.DASHBOARD_PASSWORD;
+  const expected = readEnv("DASHBOARD_PASSWORD");
   if (!expected) {
     return false;
   }
 
-  return timingSafeEqualText(password, expected);
+  return timingSafeEqualText(password.trim(), expected);
 }
 
 export function getSessionCookieOptions() {
