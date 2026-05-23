@@ -38,6 +38,8 @@ npm run dev
 
 ## Nasadenie na server
 
+**Coolify / Nixpacks:** projekt obsahuje `.nvmrc` a `nixpacks.toml` (Node 20). Bez toho build zlyhá na Node 18.
+
 Po `git pull` na serveri (Node.js 20+):
 
 ```bash
