@@ -63,9 +63,10 @@ npm run build
 ## Bezpečnosť (verejné nasadenie)
 
 - Všetky stránky a API route sú chránené session cookie (middleware).
-- Verejne dostupné sú len `/login` a `POST /api/auth/login`.
+- Verejne dostupné sú `/login`, `POST /api/auth/login` a `POST /kros/callback` (KROS vracia cross-site POST bez session cookie).
 - KROS OAuth callback vyžaduje platný server-side `state` (CSRF ochrana).
 - Po aktualizácii nasaď `next@16.2.6+` kvôli opraveným CVE v starších verziách Next.js.
+- **Cloudflare loader** (ochrana pred botmi pred appkou): návod [docs/cloudflare-loader.md](docs/cloudflare-loader.md) — doplnok k env heslu, nie náhrada.
 
 ## Poznámka
 

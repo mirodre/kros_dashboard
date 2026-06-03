@@ -6,7 +6,9 @@ import {
   verifySessionToken
 } from "@/lib/auth-session";
 
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/login"]);
+// KROS POST callback prichádza cross-site (firma.kros.sk) — session cookie sa pri POST neposiela (SameSite=Lax).
+// Callback je chránený server-side overením OAuth state, nie session cookie.
+const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/kros/callback"]);
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest).*)"]
