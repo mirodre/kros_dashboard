@@ -1797,58 +1797,6 @@ body {
   color: #f2f5ff;
 }
 
-.panel-head-actions {
-  align-items: center;
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.5rem;
-}
-
-.icon-button {
-  align-items: center;
-  background: #1b2442;
-  border: 1px solid #2a3765;
-  border-radius: 999px;
-  color: var(--text);
-  cursor: pointer;
-  display: inline-flex;
-  height: 38px;
-  justify-content: center;
-  position: relative;
-  width: 38px;
-}
-
-.icon-button:hover {
-  border-color: #5a76cb;
-  color: #f2f5ff;
-}
-
-.icon-button.active {
-  background: #3452ad;
-  border-color: #5e82f4;
-  color: #eef2ff;
-}
-
-.icon-button svg {
-  height: 18px;
-  width: 18px;
-}
-
-.icon-button-count {
-  background: linear-gradient(180deg, #6a8eff 0%, #8f74ff 100%);
-  border-radius: 999px;
-  color: #fff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
-  min-width: 15px;
-  padding: 2px 4px;
-  position: absolute;
-  right: -3px;
-  text-align: center;
-  top: -3px;
-}
-
 .tag-row-hitbox {
   background: transparent;
   border: 0;

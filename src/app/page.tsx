@@ -38,7 +38,6 @@ import {
 } from "@/lib/invoice-cache";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
-const TAG_DISPLAY_STORAGE_KEY = "kros_dashboard_displayed_tags";
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
@@ -118,8 +117,7 @@ export default function HomePage() {
   const [granularity, setGranularity] = useState<Granularity>(
     globalThis.__krosDashboardGranularity ?? "month"
   );
-  const [displayedTags, setDisplayedTags] = useState<string[]>([]);
-  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
@@ -132,8 +130,8 @@ export default function HomePage() {
   const handledRefreshNonceRef = useRef(0);
 
   const effectiveTags = useMemo(
-    () => (focusedTag ? [focusedTag] : filterTags),
-    [focusedTag, filterTags]
+    () => (focusedTag ? [focusedTag] : selectedTags),
+    [focusedTag, selectedTags]
   );
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
@@ -153,21 +151,13 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      const rawFilterTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
-      const rawDisplayedTags = localStorage.getItem(TAG_DISPLAY_STORAGE_KEY);
+      const rawTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
       const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
 
-      if (rawFilterTags) {
-        const parsedTags = JSON.parse(rawFilterTags) as string[];
+      if (rawTags) {
+        const parsedTags = JSON.parse(rawTags) as string[];
         if (Array.isArray(parsedTags)) {
-          setFilterTags(parsedTags);
-        }
-      }
-
-      if (rawDisplayedTags) {
-        const parsedTags = JSON.parse(rawDisplayedTags) as string[];
-        if (Array.isArray(parsedTags)) {
-          setDisplayedTags(parsedTags);
+          setSelectedTags(parsedTags);
         }
       }
 
@@ -186,13 +176,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(filterTags));
-  }, [hasLoadedPersistedFilters, filterTags]);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_DISPLAY_STORAGE_KEY, JSON.stringify(displayedTags));
-  }, [hasLoadedPersistedFilters, displayedTags]);
+    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(selectedTags));
+  }, [hasLoadedPersistedFilters, selectedTags]);
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
@@ -467,13 +452,11 @@ export default function HomePage() {
       />
       <TagsDashboard
         tags={tagsData}
-        displayedTags={displayedTags}
-        filterTags={filterTags}
+        selectedTags={selectedTags}
         focusedTag={focusedTag}
-        onDisplayedTagsChange={(tags) =>
-          updateSelectionWithFocusedGuard(tags, focusedTag, setDisplayedTags, setFocusedTag)
+        onSelectionChange={(tags) =>
+          updateSelectionWithFocusedGuard(tags, focusedTag, setSelectedTags, setFocusedTag)
         }
-        onFilterTagsChange={setFilterTags}
         onFocusedTagChange={setFocusedTag}
         isLoading={isLoadingLiveData}
       />

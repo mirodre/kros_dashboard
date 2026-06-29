@@ -9,17 +9,6 @@ type BreakdownItem = {
   previousAmount: number;
 };
 
-type IconName = "eye" | "filter";
-
-type SecondaryControl = {
-  selectedItems: string[];
-  onSelectionChange: (items: string[]) => void;
-  ariaLabel: string;
-  dialogTitle: string;
-  dialogHelp: string;
-  icon?: IconName;
-};
-
 type Props = {
   title: string;
   filterLabel: string;
@@ -33,40 +22,7 @@ type Props = {
   onSelectionChange: (items: string[]) => void;
   onFocusedItemChange: (item: string | null) => void;
   isLoading?: boolean;
-  /** When set, the primary control renders as an icon button instead of a text button. */
-  primaryIcon?: IconName;
-  /** Optional second control that only collects a selection (e.g. data filter) without changing the visible rows. */
-  secondaryControl?: SecondaryControl;
 };
-
-function ControlIcon({ name }: { name: IconName }) {
-  if (name === "eye") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-        <path
-          d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.6" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8L4 5Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export function FilterableBreakdownSection({
   title,
@@ -80,11 +36,9 @@ export function FilterableBreakdownSection({
   focusedItem,
   onSelectionChange,
   onFocusedItemChange,
-  isLoading = false,
-  primaryIcon,
-  secondaryControl
+  isLoading = false
 }: Props) {
-  const [activeControl, setActiveControl] = useState<"primary" | "secondary" | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
 
   const availableNames = useMemo(
@@ -96,29 +50,12 @@ export function FilterableBreakdownSection({
     return items.filter((item) => selectedItems.includes(item.name));
   }, [selectedItems, items]);
 
-  const activeConfig =
-    activeControl === "secondary" && secondaryControl
-      ? {
-          selectedItems: secondaryControl.selectedItems,
-          onSelectionChange: secondaryControl.onSelectionChange,
-          dialogTitle: secondaryControl.dialogTitle,
-          dialogHelp: secondaryControl.dialogHelp,
-          clearsFocus: false
-        }
-      : {
-          selectedItems,
-          onSelectionChange,
-          dialogTitle,
-          dialogHelp,
-          clearsFocus: true
-        };
-
-  const openControl = (control: "primary" | "secondary") => {
-    setPendingSelection(control === "secondary" && secondaryControl ? secondaryControl.selectedItems : selectedItems);
-    setActiveControl(control);
+  const openFilter = () => {
+    setPendingSelection(selectedItems);
+    setIsFilterOpen(true);
   };
 
-  const closeControl = () => setActiveControl(null);
+  const closeFilter = () => setIsFilterOpen(false);
 
   const togglePendingItem = (itemName: string) => {
     setPendingSelection((prev) =>
@@ -127,17 +64,15 @@ export function FilterableBreakdownSection({
   };
 
   const applyFilter = () => {
-    activeConfig.onSelectionChange(pendingSelection);
-    closeControl();
+    onSelectionChange(pendingSelection);
+    closeFilter();
   };
 
   const resetFilter = () => {
     setPendingSelection([]);
-    activeConfig.onSelectionChange([]);
-    if (activeConfig.clearsFocus) {
-      onFocusedItemChange(null);
-    }
-    closeControl();
+    onSelectionChange([]);
+    onFocusedItemChange(null);
+    closeFilter();
   };
 
   const handleItemClick = (itemName: string) => {
@@ -149,46 +84,14 @@ export function FilterableBreakdownSection({
   };
 
   return (
-    <section className={activeControl ? "dashboard-body overlay-open" : "dashboard-body"}>
+    <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
       <article className="panel panel-with-skeleton">
         <header className="panel-head">
           <h3>{title}</h3>
-          <div className="panel-head-actions">
-            {primaryIcon ? (
-              <button
-                type="button"
-                className={selectedItems.length > 0 ? "icon-button active" : "icon-button"}
-                onClick={() => openControl("primary")}
-                aria-label={filterLabel}
-                title={filterLabel}
-              >
-                <ControlIcon name={primaryIcon} />
-                {selectedItems.length > 0 ? (
-                  <span className="icon-button-count">{selectedItems.length}</span>
-                ) : null}
-              </button>
-            ) : (
-              <button type="button" className="secondary-button" onClick={() => openControl("primary")}>
-                {filterLabel}
-                {selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}
-              </button>
-            )}
-
-            {secondaryControl ? (
-              <button
-                type="button"
-                className={secondaryControl.selectedItems.length > 0 ? "icon-button active" : "icon-button"}
-                onClick={() => openControl("secondary")}
-                aria-label={secondaryControl.ariaLabel}
-                title={secondaryControl.ariaLabel}
-              >
-                <ControlIcon name={secondaryControl.icon ?? "filter"} />
-                {secondaryControl.selectedItems.length > 0 ? (
-                  <span className="icon-button-count">{secondaryControl.selectedItems.length}</span>
-                ) : null}
-              </button>
-            ) : null}
-          </div>
+          <button type="button" className="secondary-button" onClick={openFilter}>
+            {filterLabel}
+            {selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}
+          </button>
         </header>
 
         {isLoading ? (
@@ -229,23 +132,23 @@ export function FilterableBreakdownSection({
         </ul>
       </article>
 
-      {activeControl ? (
-        <div className="tag-filter-overlay" onClick={closeControl} role="presentation">
+      {isFilterOpen ? (
+        <div className="tag-filter-overlay" onClick={closeFilter} role="presentation">
           <div
             className="tag-filter-sheet"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={activeConfig.dialogTitle}
+            aria-label={dialogTitle}
           >
             <header className="tag-filter-head">
-              <h4>{activeConfig.dialogTitle}</h4>
-              <button type="button" className="filter-close" onClick={closeControl}>
+              <h4>{dialogTitle}</h4>
+              <button type="button" className="filter-close" onClick={closeFilter}>
                 Zavrieť
               </button>
             </header>
 
-            <p className="tag-filter-help">{activeConfig.dialogHelp}</p>
+            <p className="tag-filter-help">{dialogHelp}</p>
 
             <div className="tag-filter-options">
               {availableNames.map((itemName) => {
@@ -268,7 +171,7 @@ export function FilterableBreakdownSection({
                 Reset
               </button>
               <button type="button" className="sync-button" onClick={applyFilter}>
-                Použiť
+                Použiť filter
               </button>
             </footer>
           </div>
