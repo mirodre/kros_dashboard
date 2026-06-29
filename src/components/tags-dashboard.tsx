@@ -22,7 +22,7 @@ export function TagsDashboard({
 }: Props) {
   return (
     <FilterableBreakdownSection
-      title="Výkon podľa štítkov"
+      title="Tržby podľa štítkov"
       filterLabel="Filter štítkov"
       dialogTitle="Filter štítkov"
       dialogHelp="Vyber štítky, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."

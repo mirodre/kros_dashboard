@@ -349,6 +349,7 @@ export default function CashflowPage() {
         }}
       />
       <CompaniesDashboard
+        title="Peniaze podľa firiem"
         companies={filteredCompanies}
         selectedCompanies={selectedCompanies}
         availableCompanyNames={availableCompanyNames}

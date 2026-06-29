@@ -11,6 +11,7 @@ type Props = {
   onSelectionChange: (companies: string[]) => void;
   onFocusedCompanyChange: (company: string | null) => void;
   isLoading?: boolean;
+  title?: string;
 };
 
 export function CompaniesDashboard({
@@ -20,11 +21,12 @@ export function CompaniesDashboard({
   focusedCompany,
   onSelectionChange,
   onFocusedCompanyChange,
-  isLoading = false
+  isLoading = false,
+  title = "Tržby podľa firiem"
 }: Props) {
   return (
     <FilterableBreakdownSection
-      title="Výkon podľa firiem"
+      title={title}
       filterLabel="Filter firiem"
       dialogTitle="Filter firiem"
       dialogHelp="Vyber firmy, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
