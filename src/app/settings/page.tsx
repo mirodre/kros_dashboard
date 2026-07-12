@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
-import { clearCashflowLiveCache } from "@/lib/cashflow-live-cache";
+import { clearCashflowCache } from "@/lib/cashflow-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
 import type { KrosConnection } from "@/lib/kros-types";
@@ -178,7 +178,7 @@ export default function SettingsPage() {
 
   const handleClearInvoiceCache = async () => {
     await clearInvoiceCache();
-    clearCashflowLiveCache();
+    await clearCashflowCache();
     localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
     setIsCacheClearOpen(false);
     setStatusMessage(

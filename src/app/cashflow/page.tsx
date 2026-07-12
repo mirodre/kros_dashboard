@@ -10,7 +10,15 @@ import {
   normalizePaymentAccounts,
   normalizePaymentTransactions
 } from "@/lib/cashflow-live";
-import { CASHFLOW_LIVE_CACHE_KEY } from "@/lib/cashflow-live-cache";
+import {
+  cashflowCompanyMetaKey,
+  getCachedPaymentAccounts,
+  getCachedPaymentTransactions,
+  readCashflowSyncMeta,
+  replaceCachedPaymentAccounts,
+  upsertCachedPaymentTransactions,
+  writeCashflowSyncMeta
+} from "@/lib/cashflow-cache";
 import { readConnections } from "@/lib/kros-storage";
 import type {
   KrosConnection,
@@ -21,20 +29,9 @@ import type { Granularity } from "@/lib/mock-data";
 
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
 
-type CashflowLiveCachePayload = {
-  companyIds: number[];
-  accounts: NormalizedPaymentAccount[];
-  transactions: NormalizedPaymentTransaction[];
-  /** Max `lastModifiedTimestamp` per firma – rovnaká logika ako sync meta v module Biznis. */
-  lastModifiedByCompanyId?: Record<string, string>;
-  savedAt: string;
-};
-
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
   var __krosDashboardGranularity: Granularity | undefined;
-  // eslint-disable-next-line no-var -- globalThis typing requires `var`
-  var __krosCashflowLiveCache: CashflowLiveCachePayload | undefined;
 }
 
 function getMaxLastModified(transactions: NormalizedPaymentTransaction[], fallback?: string) {
@@ -63,10 +60,6 @@ function withLastModifiedOverlap(value: string) {
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
 }
 
-function transactionMergeKey(transaction: NormalizedPaymentTransaction) {
-  return `${transaction.companyId ?? transaction.companyName}:${transaction.id}`;
-}
-
 export default function CashflowPage() {
   const [granularity] = useState<Granularity>(
     globalThis.__krosDashboardGranularity ?? "month"
@@ -80,10 +73,7 @@ export default function CashflowPage() {
   const [liveError, setLiveError] = useState<string | null>(null);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const [hasHydratedLiveCache, setHasHydratedLiveCache] = useState(false);
-  const lastLiveScopeKeyRef = useRef("");
   const handledRefreshNonceRef = useRef(0);
-  const lastModifiedByCompanyRef = useRef<Record<string, string>>({});
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -148,78 +138,11 @@ export default function CashflowPage() {
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
-    if (connections.length === 0) {
-      setHasHydratedLiveCache(true);
-      return;
-    }
 
-    const scopeIds = syncConnections.map((connection) => connection.companyId).sort((a, b) => a - b);
-    const scopeKey = scopeIds.join("|");
-    try {
-      const memoryCache = globalThis.__krosCashflowLiveCache;
-      if (memoryCache) {
-        const cachedIds = Array.isArray(memoryCache.companyIds)
-          ? memoryCache.companyIds.slice().sort((a, b) => a - b)
-          : [];
-        const hasSameScope =
-          cachedIds.length === scopeIds.length &&
-          cachedIds.every((id, index) => id === scopeIds[index]);
-        if (
-          hasSameScope &&
-          Array.isArray(memoryCache.accounts) &&
-          Array.isArray(memoryCache.transactions)
-        ) {
-          setLiveAccounts(memoryCache.accounts);
-          setLiveTransactions(memoryCache.transactions);
-          setLiveError(null);
-          lastLiveScopeKeyRef.current = scopeKey;
-          lastModifiedByCompanyRef.current = memoryCache.lastModifiedByCompanyId ?? {};
-          setHasHydratedLiveCache(true);
-          return;
-        }
-      }
-
-      const rawCache = sessionStorage.getItem(CASHFLOW_LIVE_CACHE_KEY);
-      if (!rawCache) {
-        setHasHydratedLiveCache(true);
-        return;
-      }
-
-      const parsed = JSON.parse(rawCache) as CashflowLiveCachePayload;
-      const cachedIds = Array.isArray(parsed?.companyIds)
-        ? parsed.companyIds.slice().sort((a, b) => a - b)
-        : [];
-      const hasSameScope =
-        cachedIds.length === scopeIds.length &&
-        cachedIds.every((id, index) => id === scopeIds[index]);
-      if (!hasSameScope) {
-        setHasHydratedLiveCache(true);
-        return;
-      }
-
-      if (Array.isArray(parsed?.accounts) && Array.isArray(parsed?.transactions)) {
-        setLiveAccounts(parsed.accounts);
-        setLiveTransactions(parsed.transactions);
-        setLiveError(null);
-        globalThis.__krosCashflowLiveCache = parsed;
-        lastLiveScopeKeyRef.current = scopeKey;
-        lastModifiedByCompanyRef.current = parsed.lastModifiedByCompanyId ?? {};
-      }
-    } catch {
-      // Ignore invalid cache payload.
-    } finally {
-      setHasHydratedLiveCache(true);
-    }
-  }, [connections, hasLoadedPersistedFilters, syncConnections]);
-
-  useEffect(() => {
-    if (!hasHydratedLiveCache) return;
     if (connections.length === 0) {
       setLiveAccounts([]);
       setLiveTransactions([]);
       setLiveError(null);
-      lastLiveScopeKeyRef.current = "";
-      lastModifiedByCompanyRef.current = {};
       return;
     }
 
@@ -227,31 +150,33 @@ export default function CashflowPage() {
       setLiveAccounts([]);
       setLiveTransactions([]);
       setLiveError(null);
-      lastLiveScopeKeyRef.current = "";
-      lastModifiedByCompanyRef.current = {};
       setIsLoadingLiveData(false);
       return;
     }
 
-    const scopeKey = syncConnections.map((c) => c.companyId).sort((a, b) => a - b).join("|");
-    // Keep dashboard loaded between menu switches and re-fetch only on manual pull-to-refresh,
-    // or when the set of firms to sync (company filter) changes.
-    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
-    const hasCachedLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
-    if (!isManualRefresh && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey) {
-      return;
-    }
-
-    // Same as Biznis: a manual refresh over an already synced scope only pulls payments
-    // changed since the stored per-company LastModifiedTimestamp and merges them into cache.
-    const isIncrementalRefresh =
-      isManualRefresh && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey;
-
-    const companyScope = syncConnections;
-
     const abortController = new AbortController();
-    setIsLoadingLiveData(true);
-    setLiveError(null);
+    // Same flow as Biznis: hydrate from the persistent IndexedDB cache first; companies
+    // without a completed sync get a full fetch, a manual refresh pulls only payments
+    // changed since the stored per-company LastModifiedTimestamp.
+    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
+    const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
+
+    const fetchAccounts = async (companies: KrosConnection[]) => {
+      const response = await fetch("/api/kros/payments/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companies }),
+        signal: abortController.signal
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error("Nepodarilo sa načítať payments dáta.");
+      }
+      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
+      }
+      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
+    };
 
     const fetchPayments = async (body: {
       companies: KrosConnection[];
@@ -273,105 +198,67 @@ export default function CashflowPage() {
       return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
     };
 
-    const loadLivePayments = async () => {
+    const refreshFromCache = async () => {
+      const [cachedAccounts, cachedTransactions] = await Promise.all([
+        getCachedPaymentAccounts(syncCompanyIds),
+        getCachedPaymentTransactions(syncCompanyIds)
+      ]);
+      if (!abortController.signal.aborted) {
+        setLiveAccounts(cachedAccounts);
+        setLiveTransactions(cachedTransactions);
+      }
+    };
+
+    const loadCashflowData = async () => {
+      await refreshFromCache();
+      setLiveError(null);
+
       try {
-        const accountsResponse = await fetch("/api/kros/payments/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companies: companyScope }),
-          signal: abortController.signal
-        });
-        const accountsPayload = await accountsResponse.json();
-        if (!accountsResponse.ok) {
-          throw new Error("Nepodarilo sa načítať payments dáta.");
-        }
+        for (const connection of syncConnections) {
+          if (abortController.signal.aborted) return;
 
-        const normalizedAccounts = normalizePaymentAccounts(
-          Array.isArray(accountsPayload?.data) ? accountsPayload.data : []
-        );
-        const accountById = new Map(normalizedAccounts.map((account) => [account.id, account]));
+          const metaKey = cashflowCompanyMetaKey(connection.companyId);
+          const meta = await readCashflowSyncMeta(metaKey);
+          const needsFullSync = !meta?.completedAt;
+          if (!needsFullSync && !isManualRefresh) continue;
 
-        const nextLastModified: Record<string, string> = {};
-        let normalizedTransactions: NormalizedPaymentTransaction[];
+          setIsLoadingLiveData(true);
 
-        if (isIncrementalRefresh) {
-          const merged = new Map(
-            liveTransactions.map((transaction) => [transactionMergeKey(transaction), transaction])
+          // Account list and balances are small and change over time — always fetch in full.
+          const rawAccounts = await fetchAccounts([connection]);
+          const companyAccounts = normalizePaymentAccounts(rawAccounts).filter(
+            (account) =>
+              account.companyId === connection.companyId ||
+              account.companyName === connection.companyName
           );
+          await replaceCachedPaymentAccounts(connection.companyId, companyAccounts);
 
-          for (const connection of companyScope) {
-            if (abortController.signal.aborted) return;
+          const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
+          const previousLastModified = meta?.lastModifiedTimestamp;
+          const rawPayments = await fetchPayments({
+            companies: [connection],
+            ...(!needsFullSync && previousLastModified
+              ? { lastModifiedTimestamp: withLastModifiedOverlap(previousLastModified) }
+              : {})
+          });
+          const companyTransactions = normalizePaymentTransactions(rawPayments, accountById).filter(
+            (transaction) =>
+              transaction.companyId === connection.companyId ||
+              transaction.companyName === connection.companyName
+          );
+          await upsertCachedPaymentTransactions(connection.companyId, companyTransactions);
+          await writeCashflowSyncMeta({
+            key: metaKey,
+            companyId: connection.companyId,
+            completedAt: new Date().toISOString(),
+            lastModifiedTimestamp: getMaxLastModified(companyTransactions, previousLastModified)
+          });
 
-            const previousLastModified =
-              lastModifiedByCompanyRef.current[String(connection.companyId)];
-            const rawPayments = await fetchPayments({
-              companies: [connection],
-              ...(previousLastModified
-                ? { lastModifiedTimestamp: withLastModifiedOverlap(previousLastModified) }
-                : {})
-            });
-            const incoming = normalizePaymentTransactions(rawPayments, accountById).filter(
-              (transaction) =>
-                transaction.companyId === connection.companyId ||
-                transaction.companyName === connection.companyName
-            );
-            for (const transaction of incoming) {
-              merged.set(transactionMergeKey(transaction), transaction);
-            }
-
-            const maxLastModified = getMaxLastModified(incoming, previousLastModified);
-            if (maxLastModified) {
-              nextLastModified[String(connection.companyId)] = maxLastModified;
-            }
-          }
-
-          normalizedTransactions = Array.from(merged.values());
-        } else {
-          const rawPayments = await fetchPayments({ companies: companyScope });
-          normalizedTransactions = normalizePaymentTransactions(rawPayments, accountById);
-
-          for (const connection of companyScope) {
-            const companyTransactions = normalizedTransactions.filter(
-              (transaction) =>
-                transaction.companyId === connection.companyId ||
-                transaction.companyName === connection.companyName
-            );
-            const maxLastModified = getMaxLastModified(companyTransactions);
-            if (maxLastModified) {
-              nextLastModified[String(connection.companyId)] = maxLastModified;
-            }
-          }
-        }
-
-        if (!abortController.signal.aborted) {
-          setLiveAccounts(normalizedAccounts);
-          setLiveTransactions(normalizedTransactions);
-          setLiveError(null);
-          lastLiveScopeKeyRef.current = scopeKey;
-          lastModifiedByCompanyRef.current = nextLastModified;
-          try {
-            const payload: CashflowLiveCachePayload = {
-              companyIds: companyScope.map((connection) => connection.companyId),
-              accounts: normalizedAccounts,
-              transactions: normalizedTransactions,
-              lastModifiedByCompanyId: nextLastModified,
-              savedAt: new Date().toISOString()
-            };
-            globalThis.__krosCashflowLiveCache = payload;
-            sessionStorage.setItem(CASHFLOW_LIVE_CACHE_KEY, JSON.stringify(payload));
-          } catch {
-            // Ignore cache write failures.
-          }
+          await refreshFromCache();
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
           setLiveError(error instanceof Error ? error.message : "Nepodarilo sa načítať payments dáta.");
-          if (!isIncrementalRefresh) {
-            setLiveAccounts([]);
-            setLiveTransactions([]);
-            lastLiveScopeKeyRef.current = "";
-            lastModifiedByCompanyRef.current = {};
-          }
         }
       } finally {
         if (!abortController.signal.aborted) {
@@ -381,18 +268,11 @@ export default function CashflowPage() {
       }
     };
 
-    loadLivePayments();
+    loadCashflowData();
     return () => {
       abortController.abort();
     };
-  }, [
-    connections,
-    syncConnections,
-    liveAccounts.length,
-    liveTransactions,
-    refreshNonce,
-    hasHydratedLiveCache
-  ]);
+  }, [connections, syncConnections, refreshNonce, hasLoadedPersistedFilters]);
 
   const hasLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
   const liveOverview = useMemo(
