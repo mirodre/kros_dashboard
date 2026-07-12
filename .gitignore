@@ -28,3 +28,7 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+.cursor/
+
+# TypeScript
+*.tsbuildinfo
