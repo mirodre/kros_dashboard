@@ -9,6 +9,7 @@ type CompanyConnection = {
 
 type PaymentsRequestBody = {
   companies: CompanyConnection[];
+  lastModifiedTimestamp?: string;
 };
 
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
@@ -34,7 +35,8 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
 }
 
 async function fetchCompanyPayments(
-  company: CompanyConnection
+  company: CompanyConnection,
+  lastModifiedTimestamp?: string
 ) {
   const top = 100;
   let skip = 0;
@@ -42,13 +44,16 @@ async function fetchCompanyPayments(
 
   while (true) {
     const query = new URLSearchParams({ Top: String(top), Skip: String(skip) });
+    if (lastModifiedTimestamp) {
+      query.set("LastModifiedTimestamp", lastModifiedTimestamp);
+    }
 
     await appendKrosLog({
       direction: "request",
       endpoint: "/api/payments",
       method: "GET",
       companyName: company.companyName,
-      message: `Skip=${skip}, Top=${top}`
+      message: `Skip=${skip}, Top=${top}${lastModifiedTimestamp ? `, LastModifiedTimestamp=${lastModifiedTimestamp}` : ""}`
     });
 
     const response = await fetchWithRetry(`${KROS_API_BASE}/api/payments?${query.toString()}`, {
@@ -119,7 +124,7 @@ export async function POST(request: Request) {
 
     for (const company of body.companies) {
       try {
-        const companyPayments = await fetchCompanyPayments(company);
+        const companyPayments = await fetchCompanyPayments(company, body.lastModifiedTimestamp);
         allPayments.push(...companyPayments);
       } catch (error) {
         errors.push({

@@ -52,6 +52,7 @@ export type NormalizedPaymentTransaction = {
   isWithoutDocument: boolean;
   amount: number;
   bookedAt: string;
+  lastModifiedTimestamp?: string;
   description?: string;
   currency: string;
 };

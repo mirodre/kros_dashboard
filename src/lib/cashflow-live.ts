@@ -207,6 +207,7 @@ export function normalizePaymentTransactions(
         isWithoutDocument,
         amount: inferSignedAmount(record),
         bookedAt,
+        lastModifiedTimestamp: pickString(record, ["lastModifiedTimestamp", "LastModifiedTimestamp"]),
         description: pickString(record, ["description", "note", "message", "reference"]),
         currency
       } satisfies NormalizedPaymentTransaction;

@@ -25,12 +25,44 @@ type CashflowLiveCachePayload = {
   companyIds: number[];
   accounts: NormalizedPaymentAccount[];
   transactions: NormalizedPaymentTransaction[];
+  /** Max `lastModifiedTimestamp` per firma – rovnaká logika ako sync meta v module Biznis. */
+  lastModifiedByCompanyId?: Record<string, string>;
   savedAt: string;
 };
 
 declare global {
   var __krosDashboardGranularity: Granularity | undefined;
   var __krosCashflowLiveCache: CashflowLiveCachePayload | undefined;
+}
+
+function getMaxLastModified(transactions: NormalizedPaymentTransaction[], fallback?: string) {
+  return transactions.reduce<string | undefined>((max, transaction) => {
+    if (!transaction.lastModifiedTimestamp) return max;
+    if (!max) return transaction.lastModifiedTimestamp;
+    return new Date(transaction.lastModifiedTimestamp).getTime() > new Date(max).getTime()
+      ? transaction.lastModifiedTimestamp
+      : max;
+  }, fallback);
+}
+
+function withLastModifiedOverlap(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setMinutes(date.getMinutes() - 5);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  const milliseconds = date.getUTCMilliseconds();
+  const fraction =
+    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
+}
+
+function transactionMergeKey(transaction: NormalizedPaymentTransaction) {
+  return `${transaction.companyId ?? transaction.companyName}:${transaction.id}`;
 }
 
 export default function CashflowPage() {
@@ -48,6 +80,8 @@ export default function CashflowPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasHydratedLiveCache, setHasHydratedLiveCache] = useState(false);
   const lastLiveScopeKeyRef = useRef("");
+  const handledRefreshNonceRef = useRef(0);
+  const lastModifiedByCompanyRef = useRef<Record<string, string>>({});
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -137,6 +171,7 @@ export default function CashflowPage() {
           setLiveTransactions(memoryCache.transactions);
           setLiveError(null);
           lastLiveScopeKeyRef.current = scopeKey;
+          lastModifiedByCompanyRef.current = memoryCache.lastModifiedByCompanyId ?? {};
           setHasHydratedLiveCache(true);
           return;
         }
@@ -166,6 +201,7 @@ export default function CashflowPage() {
         setLiveError(null);
         globalThis.__krosCashflowLiveCache = parsed;
         lastLiveScopeKeyRef.current = scopeKey;
+        lastModifiedByCompanyRef.current = parsed.lastModifiedByCompanyId ?? {};
       }
     } catch {
       // Ignore invalid cache payload.
@@ -181,6 +217,7 @@ export default function CashflowPage() {
       setLiveTransactions([]);
       setLiveError(null);
       lastLiveScopeKeyRef.current = "";
+      lastModifiedByCompanyRef.current = {};
       return;
     }
 
@@ -189,6 +226,7 @@ export default function CashflowPage() {
       setLiveTransactions([]);
       setLiveError(null);
       lastLiveScopeKeyRef.current = "";
+      lastModifiedByCompanyRef.current = {};
       setIsLoadingLiveData(false);
       return;
     }
@@ -196,10 +234,16 @@ export default function CashflowPage() {
     const scopeKey = syncConnections.map((c) => c.companyId).sort((a, b) => a - b).join("|");
     // Keep dashboard loaded between menu switches and re-fetch only on manual pull-to-refresh,
     // or when the set of firms to sync (company filter) changes.
+    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
     const hasCachedLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
-    if (refreshNonce === 0 && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey) {
+    if (!isManualRefresh && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey) {
       return;
     }
+
+    // Same as Biznis: a manual refresh over an already synced scope only pulls payments
+    // changed since the stored per-company LastModifiedTimestamp and merges them into cache.
+    const isIncrementalRefresh =
+      isManualRefresh && hasCachedLiveData && lastLiveScopeKeyRef.current === scopeKey;
 
     const companyScope = syncConnections;
 
@@ -207,28 +251,36 @@ export default function CashflowPage() {
     setIsLoadingLiveData(true);
     setLiveError(null);
 
+    const fetchPayments = async (body: {
+      companies: KrosConnection[];
+      lastModifiedTimestamp?: string;
+    }) => {
+      const response = await fetch("/api/kros/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: abortController.signal
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error("Nepodarilo sa načítať payments dáta.");
+      }
+      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
+      }
+      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
+    };
+
     const loadLivePayments = async () => {
       try {
-        const [accountsResponse, paymentsResponse] = await Promise.all([
-          fetch("/api/kros/payments/accounts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ companies: companyScope }),
-            signal: abortController.signal
-          }),
-          fetch("/api/kros/payments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              companies: companyScope
-            }),
-            signal: abortController.signal
-          })
-        ]);
-
+        const accountsResponse = await fetch("/api/kros/payments/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companies: companyScope }),
+          signal: abortController.signal
+        });
         const accountsPayload = await accountsResponse.json();
-        const paymentsPayload = await paymentsResponse.json();
-        if (!accountsResponse.ok || !paymentsResponse.ok) {
+        if (!accountsResponse.ok) {
           throw new Error("Nepodarilo sa načítať payments dáta.");
         }
 
@@ -236,21 +288,71 @@ export default function CashflowPage() {
           Array.isArray(accountsPayload?.data) ? accountsPayload.data : []
         );
         const accountById = new Map(normalizedAccounts.map((account) => [account.id, account]));
-        const normalizedTransactions = normalizePaymentTransactions(
-          Array.isArray(paymentsPayload?.data) ? paymentsPayload.data : [],
-          accountById
-        );
+
+        const nextLastModified: Record<string, string> = {};
+        let normalizedTransactions: NormalizedPaymentTransaction[];
+
+        if (isIncrementalRefresh) {
+          const merged = new Map(
+            liveTransactions.map((transaction) => [transactionMergeKey(transaction), transaction])
+          );
+
+          for (const connection of companyScope) {
+            if (abortController.signal.aborted) return;
+
+            const previousLastModified =
+              lastModifiedByCompanyRef.current[String(connection.companyId)];
+            const rawPayments = await fetchPayments({
+              companies: [connection],
+              ...(previousLastModified
+                ? { lastModifiedTimestamp: withLastModifiedOverlap(previousLastModified) }
+                : {})
+            });
+            const incoming = normalizePaymentTransactions(rawPayments, accountById).filter(
+              (transaction) =>
+                transaction.companyId === connection.companyId ||
+                transaction.companyName === connection.companyName
+            );
+            for (const transaction of incoming) {
+              merged.set(transactionMergeKey(transaction), transaction);
+            }
+
+            const maxLastModified = getMaxLastModified(incoming, previousLastModified);
+            if (maxLastModified) {
+              nextLastModified[String(connection.companyId)] = maxLastModified;
+            }
+          }
+
+          normalizedTransactions = Array.from(merged.values());
+        } else {
+          const rawPayments = await fetchPayments({ companies: companyScope });
+          normalizedTransactions = normalizePaymentTransactions(rawPayments, accountById);
+
+          for (const connection of companyScope) {
+            const companyTransactions = normalizedTransactions.filter(
+              (transaction) =>
+                transaction.companyId === connection.companyId ||
+                transaction.companyName === connection.companyName
+            );
+            const maxLastModified = getMaxLastModified(companyTransactions);
+            if (maxLastModified) {
+              nextLastModified[String(connection.companyId)] = maxLastModified;
+            }
+          }
+        }
 
         if (!abortController.signal.aborted) {
           setLiveAccounts(normalizedAccounts);
           setLiveTransactions(normalizedTransactions);
           setLiveError(null);
           lastLiveScopeKeyRef.current = scopeKey;
+          lastModifiedByCompanyRef.current = nextLastModified;
           try {
             const payload: CashflowLiveCachePayload = {
               companyIds: companyScope.map((connection) => connection.companyId),
               accounts: normalizedAccounts,
               transactions: normalizedTransactions,
+              lastModifiedByCompanyId: nextLastModified,
               savedAt: new Date().toISOString()
             };
             globalThis.__krosCashflowLiveCache = payload;
@@ -262,12 +364,16 @@ export default function CashflowPage() {
       } catch (error) {
         if (!abortController.signal.aborted) {
           setLiveError(error instanceof Error ? error.message : "Nepodarilo sa načítať payments dáta.");
-          setLiveAccounts([]);
-          setLiveTransactions([]);
-          lastLiveScopeKeyRef.current = "";
+          if (!isIncrementalRefresh) {
+            setLiveAccounts([]);
+            setLiveTransactions([]);
+            lastLiveScopeKeyRef.current = "";
+            lastModifiedByCompanyRef.current = {};
+          }
         }
       } finally {
         if (!abortController.signal.aborted) {
+          handledRefreshNonceRef.current = refreshNonce;
           setIsLoadingLiveData(false);
         }
       }
@@ -281,7 +387,7 @@ export default function CashflowPage() {
     connections,
     syncConnections,
     liveAccounts.length,
-    liveTransactions.length,
+    liveTransactions,
     refreshNonce,
     hasHydratedLiveCache
   ]);
