@@ -44,6 +44,7 @@ const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 type LiveDataRange = "ytd" | "history";
 
 declare global {
+  // eslint-disable-next-line no-var -- globalThis typing requires `var`
   var __krosDashboardGranularity: Granularity | undefined;
 }
 
@@ -124,7 +125,7 @@ export default function HomePage() {
   const [connections, setConnections] = useState<KrosConnection[]>([]);
   const [liveInvoices, setLiveInvoices] = useState<NormalizedInvoice[]>([]);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
-  const [liveError, setLiveError] = useState<string | null>(null);
+  const [, setLiveError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);

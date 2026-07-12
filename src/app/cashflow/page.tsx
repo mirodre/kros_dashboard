@@ -31,7 +31,9 @@ type CashflowLiveCachePayload = {
 };
 
 declare global {
+  // eslint-disable-next-line no-var -- globalThis typing requires `var`
   var __krosDashboardGranularity: Granularity | undefined;
+  // eslint-disable-next-line no-var -- globalThis typing requires `var`
   var __krosCashflowLiveCache: CashflowLiveCachePayload | undefined;
 }
 
@@ -66,7 +68,7 @@ function transactionMergeKey(transaction: NormalizedPaymentTransaction) {
 }
 
 export default function CashflowPage() {
-  const [granularity, setGranularity] = useState<Granularity>(
+  const [granularity] = useState<Granularity>(
     globalThis.__krosDashboardGranularity ?? "month"
   );
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);

@@ -13,7 +13,7 @@ const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 export default function SettingsPage() {
   const [connections, setConnections] = useState<KrosConnection[]>([]);
-  const [pendingState, setPendingState] = useState<string | null>(null);
+  const [, setPendingState] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Pre napojenie klikni na Prepojiť s KROS.");
   const [logs, setLogs] = useState<KrosApiLogEntry[]>([]);
   const [selectedLog, setSelectedLog] = useState<KrosApiLogEntry | null>(null);

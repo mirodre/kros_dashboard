@@ -24,7 +24,7 @@ async function ensureFs() {
 
 export async function appendKrosLog(entry: Omit<KrosApiLogEntry, "id" | "timestamp">) {
   try {
-    const { readFile, writeFile, filePath } = await ensureFs();
+    const { writeFile, filePath } = await ensureFs();
     const previous = await readKrosLogs();
     const next: KrosApiLogEntry[] = [
       ...previous,

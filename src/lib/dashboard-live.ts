@@ -85,7 +85,7 @@ function toBucketKey(date: Date, granularity: Granularity) {
   return `y-${date.getFullYear()}`;
 }
 
-function toComparableBucketKey(date: Date, granularity: Granularity, periodStart: Date) {
+function toComparableBucketKey(date: Date, granularity: Granularity, _periodStart: Date) {
   if (granularity === "week") {
     return `w-${getWeekOfYear(date)}`;
   }
@@ -205,15 +205,6 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
       } satisfies NormalizedInvoice;
     })
     .filter((invoice): invoice is NormalizedInvoice => Boolean(invoice));
-}
-
-function toBucketLabel(date: Date, granularity: Granularity) {
-  if (granularity === "year") return String(date.getFullYear());
-  if (granularity === "week") {
-    const week = Math.ceil((date.getDate() + new Date(date.getFullYear(), date.getMonth(), 1).getDay()) / 7);
-    return `${date.toLocaleString("sk-SK", { month: "short" })} T${week}`;
-  }
-  return date.toLocaleString("sk-SK", { month: "short" });
 }
 
 type ComputeInput = {
