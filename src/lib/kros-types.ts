@@ -48,9 +48,11 @@ export type NormalizedExpense = {
   dueDate?: string;
   receivedDate?: string;
   lastModifiedTimestamp?: string;
-  /** Suma bez DPH v legislatívnej mene — z nej počítajú analytické prehľady (rovnako ako tržby). */
-  totalPrice: number;
-  /** Suma s DPH so znamienkom — dobropisy sú záporné; používajú ju platobné pohľady (splatnosti, zoznamy). */
+  /**
+   * Suma s DPH so znamienkom (dobropisy sú záporné). KROS pri výdavkoch plní iba
+   * documentPrices.totalPriceInclVat — sumu bez DPH ani rozpis DPH neposkytuje
+   * (totalPrice aj vatTotalPrice sú vždy 0), preto z nej počítajú aj analytiky.
+   */
   totalPriceInclVat: number;
   vatTotalPrice: number;
   paymentStatus: ExpensePaymentStatus;

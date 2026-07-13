@@ -6,9 +6,10 @@ import type { NormalizedExpense } from "./kros-types";
  * incremental refresh via LastModifiedTimestamp.
  */
 const DB_NAME = "kros_dashboard_expenses_cache";
-// v7: analytiky počítajú zo sumy bez DPH v legislatívnej mene (totalPrice) —
-// doklady zo starších verzií toto pole nemajú (a chýbal im aj deliveryDate),
-// upgrade preto starú cache premaže a stiahne sa nanovo.
+// v7: sync aj analytiky idú podľa dátumu dodania (deliveryDate) — staršie verzie
+// ho nemajú, upgrade preto starú cache premaže a stiahne sa nanovo.
+// Pozn.: analytiky počítajú z totalPriceInclVat (suma s DPH) — KROS pri výdavkoch
+// sumu bez DPH ani rozpis DPH neposkytuje, pozri readPrices v expenses-live.ts.
 const DB_VERSION = 7;
 const EXPENSES_STORE = "expenses";
 const SYNC_META_STORE = "syncMeta";

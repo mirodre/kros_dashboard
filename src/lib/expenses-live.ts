@@ -128,31 +128,24 @@ function normalizeTag(rawTag: unknown): string | null {
 }
 
 function readPrices(row: Record<string, unknown>) {
-  const empty = { total: 0, totalInclVat: 0, vat: 0 };
+  const empty = { totalInclVat: 0, vat: 0 };
   const prices = row.prices;
   if (!prices || typeof prices !== "object") return empty;
   const pricesRow = prices as Record<string, unknown>;
 
-  const readPriceGroup = (group: unknown, rate: number) => {
+  const readPriceGroup = (group: unknown) => {
     if (!group || typeof group !== "object") return null;
     const groupRow = group as Record<string, unknown>;
     const totalInclVat = getNumber(groupRow.totalPriceInclVat);
     if (totalInclVat === undefined) return null;
-    const vatRaw = getNumber(groupRow.vatTotalPrice) ?? 0;
-    const totalRaw = getNumber(groupRow.totalPrice) ?? totalInclVat - vatRaw;
-    return { total: totalRaw * rate, totalInclVat: totalInclVat * rate, vat: vatRaw * rate };
+    return { totalInclVat, vat: getNumber(groupRow.vatTotalPrice) ?? 0 };
   };
 
-  // legislativePrices sú priamo v legislatívnej mene (EUR); documentPrices sú
-  // v mene dokladu, preto ich prepočítavame kurzom z prices.exchangeRate.
-  const exchangeRate = getNumber(pricesRow.exchangeRate);
-  const documentRate = exchangeRate && exchangeRate > 0 ? exchangeRate : 1;
+  const legislative = readPriceGroup(pricesRow.legislativePrices);
+  const documentGroup = readPriceGroup(pricesRow.documentPrices);
 
-  const legislative = readPriceGroup(pricesRow.legislativePrices, 1);
-  const documentGroup = readPriceGroup(pricesRow.documentPrices, documentRate);
-
-  // KROS pri výdavkoch bežne vracia legislativePrices vynulované a reálnu sumu
-  // nesie documentPrices — preferujeme skupinu s nenulovou sumou.
+  // KROS pri výdavkoch reálnu sumu nesie v documentPrices.totalPriceInclVat,
+  // legislativePrices býva vynulované — preferujeme skupinu s nenulovou sumou.
   if (legislative && legislative.totalInclVat !== 0) return legislative;
   if (documentGroup && documentGroup.totalInclVat !== 0) return documentGroup;
   return legislative ?? documentGroup ?? empty;
@@ -172,7 +165,6 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
       const prices = readPrices(row);
       // Dobropis znižuje výdavky — ak API vráti kladnú sumu, otočíme znamienko.
       const sign = documentType === RECEIVED_CREDIT_NOTE ? -1 : 1;
-      const totalPrice = sign < 0 ? -Math.abs(prices.total) : prices.total;
       const totalPriceInclVat =
         sign < 0 ? -Math.abs(prices.totalInclVat) : prices.totalInclVat;
       const vatTotalPrice = sign < 0 ? -Math.abs(prices.vat) : prices.vat;
@@ -199,7 +191,6 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         dueDate: pickString(row, ["dueDate"]),
         receivedDate: pickString(row, ["receivedDate"]),
         lastModifiedTimestamp: pickString(row, ["lastModifiedTimestamp"]),
-        totalPrice,
         totalPriceInclVat,
         vatTotalPrice,
         paymentStatus:
@@ -355,18 +346,18 @@ export function computeExpenseSeries({
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
       const previousBucket = bucketMap.get(`y-${date.getFullYear() + 1}`);
-      if (currentBucket) currentBucket.current += expense.totalPrice;
-      if (previousBucket) previousBucket.previous += expense.totalPrice;
+      if (currentBucket) currentBucket.current += expense.totalPriceInclVat;
+      if (previousBucket) previousBucket.previous += expense.totalPriceInclVat;
       continue;
     }
 
     if (date.getFullYear() === currentYear && date <= range.currentTo) {
       const bucket = bucketMap.get(toBucketKey(date, granularity));
-      if (bucket) bucket.current += expense.totalPrice;
+      if (bucket) bucket.current += expense.totalPriceInclVat;
     }
     if (date.getFullYear() === currentYear - 1 && date <= range.previousTo) {
       const bucket = bucketMap.get(toBucketKey(date, granularity));
-      if (bucket) bucket.previous += expense.totalPrice;
+      if (bucket) bucket.previous += expense.totalPriceInclVat;
     }
   }
 
@@ -439,9 +430,9 @@ export function computeComparableExpenseYtdTotals({
 
     const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      current += expense.totalPrice;
+      current += expense.totalPriceInclVat;
     } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      previous += expense.totalPrice;
+      previous += expense.totalPriceInclVat;
     }
   }
 
@@ -528,7 +519,7 @@ export function computeExpenseTagStructure(
     for (const tag of expense.tags) {
       if (tagSet.size > 0 && !tagSet.has(tag)) continue;
       const bucket = map.get(tag) ?? { current: 0, previous: 0, documentCount: 0 };
-      bucket[yearBucket] += expense.totalPrice;
+      bucket[yearBucket] += expense.totalPriceInclVat;
       if (yearBucket === "current") bucket.documentCount += 1;
       map.set(tag, bucket);
     }
@@ -581,7 +572,7 @@ export function computeExpenseCompanyBreakdown(
     if (!yearBucket) continue;
 
     const bucket = map.get(expense.companyName) ?? { current: 0, previous: 0 };
-    bucket[yearBucket] += expense.totalPrice;
+    bucket[yearBucket] += expense.totalPriceInclVat;
     map.set(expense.companyName, bucket);
   }
 
@@ -617,7 +608,7 @@ export function computeExpenseVendorBreakdown(
 
     const vendor = expense.partnerName ?? "Neznámy dodávateľ";
     const bucket = map.get(vendor) ?? { current: 0, previous: 0, documentCount: 0 };
-    bucket[yearBucket] += expense.totalPrice;
+    bucket[yearBucket] += expense.totalPriceInclVat;
     if (yearBucket === "current") bucket.documentCount += 1;
     map.set(vendor, bucket);
   }
