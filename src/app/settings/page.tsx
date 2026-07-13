@@ -141,11 +141,6 @@ export default function SettingsPage() {
     window.location.assign(createIntegrationConsentUrl(state));
   };
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.assign("/login");
-  };
-
   const handleDisconnectCompany = (companyId: number) => {
     const company = connections.find((connection) => connection.companyId === companyId);
     if (company) {
@@ -196,18 +191,6 @@ export default function SettingsPage() {
         onConnectClick={handleConnectClick}
         onDisconnectCompany={handleDisconnectCompany}
       />
-
-      <section className="dashboard-body">
-        <article className="panel">
-          <header className="panel-head">
-            <h3>Bezpečnosť</h3>
-            <button type="button" className="secondary-button" onClick={() => void handleLogout()}>
-              Odhlásiť sa
-            </button>
-          </header>
-          <p className="tag-sub">Ukončí prihlásenie do dashboardu v tomto prehliadači.</p>
-        </article>
-      </section>
 
       <section className="dashboard-body">
         <article className="panel">

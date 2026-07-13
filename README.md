@@ -1,6 +1,6 @@
 # KROS Dashboard (Fáza A)
 
-Mobilný dashboard pre KROS (tržby, štítky, firmy, cashflow). Verejné nasadenie vyžaduje `.env` s `AUTH_SECRET` a `DASHBOARD_PASSWORD` — pozri [Premenné prostredia](#premenné-prostredia) a [Nasadenie na server](#nasadenie-na-server).
+Mobilný dashboard pre KROS (tržby, štítky, firmy, cashflow). Prístup k dátam je viazaný na prepojenie s KROS (výmena OAuth tokenov) — pozri [Live napojenie na KROS](#live-napojenie-na-kros-fáza-b).
 
 Frontend-first prototyp pre mobilný dashboard:
 - Dashboard 1: Vývoj tržieb
@@ -12,29 +12,24 @@ Frontend-first prototyp pre mobilný dashboard:
 
 ## Premenné prostredia
 
-Skopíruj `.env.example` → `.env` a vyplň hodnoty pred prvým spustením (lokálne aj na serveri).
+Všetky premenné sú voliteľné (majú rozumné defaulty v kóde). Ak ich chceš prepísať, skopíruj `.env.example` → `.env`.
 
 | Premenná | Povinné | Popis |
 |----------|---------|--------|
-| `AUTH_SECRET` | áno | Tajný kľúč min. 32 znakov na podpis session cookie. Generovanie: `openssl rand -hex 32` |
-| `DASHBOARD_PASSWORD` | áno | Heslo pre prihlásenie na `/login` (min. 8 znakov) |
 | `KROS_API_BASE_URL` | nie | Default `https://api-economy.kros.sk` |
 | `NEXT_PUBLIC_KROS_CONSENT_BASE_URL` | nie | Default `https://firma.kros.sk/integration-consent` |
-
-Bez `AUTH_SECRET` a `DASHBOARD_PASSWORD` aplikácia na verejnom serveri vráti chybu 503 (zámerne nič neexponuje).
 
 ## Spustenie (vývoj)
 
 1. Nainštaluj Node.js 20+.
-2. Nastav `.env` podľa tabuľky vyššie.
-3. V koreni projektu spusti:
+2. V koreni projektu spusti:
 
 ```bash
 npm install
 npm run dev
 ```
 
-4. Otvor `http://localhost:3000` a prihlás sa heslom z `DASHBOARD_PASSWORD`.
+3. Otvor `http://localhost:3000` — dashboard je dostupný priamo.
 
 ## Nasadenie na server
 
@@ -49,7 +44,7 @@ npm run build
 npm run start
 ```
 
-Nastav v `.env` (alebo v systemd / Docker) aspoň `AUTH_SECRET` a `DASHBOARD_PASSWORD`. Po reštarte otvor URL aplikácie — presmeruje na `/login`.
+Po reštarte otvor URL aplikácie — dashboard je dostupný priamo, prístup k dátam vyžaduje prepojenie s KROS.
 
 Aktualizácia z repozitára:
 
@@ -62,11 +57,10 @@ npm run build
 
 ## Bezpečnosť (verejné nasadenie)
 
-- Všetky stránky a API route sú chránené session cookie (middleware).
-- Verejne dostupné sú `/login`, `POST /api/auth/login` a `POST /kros/callback` (KROS vracia cross-site POST bez session cookie).
+- Dashboard nemá vlastné prihlásenie — prístup k dátam je viazaný na prepojenie s KROS (OAuth tokeny sa ukladajú lokálne v prehliadači).
 - KROS OAuth callback vyžaduje platný server-side `state` (CSRF ochrana).
 - Po aktualizácii nasaď `next@16.2.6+` kvôli opraveným CVE v starších verziách Next.js.
-- **Cloudflare loader** (ochrana pred botmi pred appkou): návod [docs/cloudflare-loader.md](docs/cloudflare-loader.md) — doplnok k env heslu, nie náhrada.
+- **Cloudflare loader** (ochrana pred botmi pred appkou): návod [docs/cloudflare-loader.md](docs/cloudflare-loader.md).
 
 ## Poznámka
 
