@@ -399,8 +399,10 @@ export default function HomePage() {
   const kpis = useMemo(() => computeKpis(revenueData, ytdTotals), [revenueData, ytdTotals]);
 
   const tagsData = useMemo(() => {
-    if (hasLiveMode) return computeTagBreakdown(liveInvoices, effectiveCompanies);
-    return getTagsBreakdown(granularity);
+    const points = hasLiveMode
+      ? computeTagBreakdown(liveInvoices, effectiveCompanies)
+      : getTagsBreakdown(granularity);
+    return [...points].sort((a, b) => b.amount - a.amount);
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
 
   const companiesData = useMemo(() => {
