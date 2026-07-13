@@ -475,8 +475,10 @@ export function computeExpenseKpis(
  */
 export function computeExpenseTagStructure(
   expenses: NormalizedExpense[],
+  selectedTags: string[],
   selectedCompanies: string[]
 ): ExpenseTagSlice[] {
+  const tagSet = new Set(selectedTags);
   const companySet = new Set(selectedCompanies);
   const range = getDateRange("month");
   const map = new Map<string, { current: number; previous: number; documentCount: number }>();
@@ -495,6 +497,7 @@ export function computeExpenseTagStructure(
     if (!yearBucket) continue;
 
     for (const tag of expense.tags) {
+      if (tagSet.size > 0 && !tagSet.has(tag)) continue;
       const bucket = map.get(tag) ?? { current: 0, previous: 0, documentCount: 0 };
       bucket[yearBucket] += expense.totalPriceInclVat;
       if (yearBucket === "current") bucket.documentCount += 1;
@@ -519,7 +522,8 @@ export function computeExpenseTagBreakdown(
   expenses: NormalizedExpense[],
   selectedCompanies: string[]
 ): AggregatedBreakdownPoint[] {
-  return computeExpenseTagStructure(expenses, selectedCompanies).map((slice) => ({
+  // Zoznam vo Filtri štítkov musí ukazovať všetky štítky, preto sem filter neposielame.
+  return computeExpenseTagStructure(expenses, [], selectedCompanies).map((slice) => ({
     name: slice.name,
     amount: slice.amount,
     previousAmount: slice.previousAmount

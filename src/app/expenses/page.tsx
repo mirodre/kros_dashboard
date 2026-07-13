@@ -379,10 +379,14 @@ export default function ExpensesPage() {
    * Perzistovaný filter môže obsahovať štítky z demo dát alebo odpojenej firmy —
    * neexistujúce štítky ignorujeme, inak by po prepnutí na živé dáta ostal prehľad prázdny.
    */
+  const sanitizedSelectedTags = useMemo(
+    () => selectedTags.filter((tag) => availableTagSet.has(tag)),
+    [selectedTags, availableTagSet]
+  );
   const effectiveTags = useMemo(() => {
     if (focusedTag && availableTagSet.has(focusedTag)) return [focusedTag];
-    return selectedTags.filter((tag) => availableTagSet.has(tag));
-  }, [focusedTag, selectedTags, availableTagSet]);
+    return sanitizedSelectedTags;
+  }, [focusedTag, sanitizedSelectedTags, availableTagSet]);
 
   const points = useMemo(
     () =>
@@ -415,9 +419,11 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
+  // Donut filtrujeme viacnásobným výberom z Filtra štítkov, ale nie focusnutým štítkom —
+  // klik na výsek má slice len zvýrazniť, nie zredukovať donut na jediný výsek.
   const tagStructure = useMemo(
-    () => computeExpenseTagStructure(expenses, effectiveCompanies),
-    [expenses, effectiveCompanies]
+    () => computeExpenseTagStructure(expenses, sanitizedSelectedTags, effectiveCompanies),
+    [expenses, sanitizedSelectedTags, effectiveCompanies]
   );
 
   const tagsData = useMemo(
