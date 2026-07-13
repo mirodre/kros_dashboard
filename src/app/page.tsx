@@ -249,8 +249,8 @@ export default function HomePage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   companies: [connection],
-                  issueDateFrom: monthRange.from,
-                  issueDateTo: monthRange.to
+                  deliveryDateFrom: monthRange.from,
+                  deliveryDateTo: monthRange.to
                 }),
                 signal: abortController.signal
               });

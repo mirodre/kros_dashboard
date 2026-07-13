@@ -168,6 +168,12 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         sign < 0 ? -Math.abs(prices.totalInclVat) : prices.totalInclVat;
       const vatTotalPrice = sign < 0 ? -Math.abs(prices.vat) : prices.vat;
 
+      const deliveryDateRaw = pickString(row, ["deliveryDate"]);
+      const deliveryDate =
+        deliveryDateRaw && !Number.isNaN(new Date(deliveryDateRaw).getTime())
+          ? deliveryDateRaw
+          : undefined;
+
       const paymentStatusCode = getNumber(row.paymentStatus);
       const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
       const tags = tagsRaw.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
@@ -180,6 +186,7 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         documentType,
         partnerName: readPartnerName(row),
         issueDate,
+        deliveryDate,
         dueDate: pickString(row, ["dueDate"]),
         receivedDate: pickString(row, ["receivedDate"]),
         lastModifiedTimestamp: pickString(row, ["lastModifiedTimestamp"]),
@@ -201,6 +208,15 @@ type FilterInput = {
   selectedTags: string[];
   selectedCompanies: string[];
 };
+
+/**
+ * Dátum, podľa ktorého analytiky (graf, KPI, donut, breakdowny) zaraďujú doklad
+ * do obdobia — dátum dodania (DUZP); doklady bez neho padajú na dátum vystavenia.
+ * Zoznamy Posledné výdavky a splatnosti zámerne ostávajú na vystavení/splatnosti.
+ */
+export function getExpenseAnalyticsDate(expense: NormalizedExpense) {
+  return expense.deliveryDate ?? expense.issueDate;
+}
 
 function buildExpenseFilter({ selectedTags, selectedCompanies }: FilterInput) {
   const tagSet = new Set(selectedTags);
@@ -318,13 +334,13 @@ export function computeExpenseSeries({
 
   const filtered = expenses.filter((expense) => {
     if (!countsTowardsSpend(expense)) return false;
-    const expenseDate = new Date(expense.issueDate);
+    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     const inWindow = expenseDate >= range.previousFrom && expenseDate <= range.currentTo;
     return inWindow && filterPass(expense);
   });
 
   for (const expense of filtered) {
-    const date = new Date(expense.issueDate);
+    const date = new Date(getExpenseAnalyticsDate(expense));
 
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
@@ -382,10 +398,13 @@ export function getExpenseBucketDocs({
   const filterExpenses = ({ from, to }: { from: Date; to: Date }) =>
     expenses
       .filter((expense) => {
-        const expenseDate = new Date(expense.issueDate);
+        const expenseDate = new Date(getExpenseAnalyticsDate(expense));
         return expenseDate >= from && expenseDate <= to && filterPass(expense);
       })
-      .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+      .sort(
+        (a, b) =>
+          new Date(getExpenseAnalyticsDate(b)).getTime() - new Date(getExpenseAnalyticsDate(a)).getTime()
+      );
 
   return {
     current: filterExpenses(currentRange),
@@ -408,7 +427,7 @@ export function computeComparableExpenseYtdTotals({
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(expense.issueDate);
+    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       current += expense.totalPriceInclVat;
     } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
@@ -487,7 +506,7 @@ export function computeExpenseTagStructure(
     if (!countsTowardsSpend(expense)) continue;
     if (companySet.size > 0 && !companySet.has(expense.companyName)) continue;
 
-    const expenseDate = new Date(expense.issueDate);
+    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";
@@ -542,7 +561,7 @@ export function computeExpenseCompanyBreakdown(
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(expense.issueDate);
+    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";
@@ -577,7 +596,7 @@ export function computeExpenseVendorBreakdown(
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(expense.issueDate);
+    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";

@@ -13,6 +13,8 @@ export type NormalizedInvoice = {
   invoiceNumber?: string;
   partnerName?: string;
   issueDate: string;
+  /** Dátum dodania (DUZP) — analytiky bucketujú podľa neho, s fallbackom na issueDate. */
+  deliveryDate?: string;
   lastModifiedTimestamp?: string;
   totalPrice: number;
   tags: string[];
@@ -41,6 +43,8 @@ export type NormalizedExpense = {
   documentType: number;
   partnerName?: string;
   issueDate: string;
+  /** Dátum dodania (DUZP) — analytiky bucketujú podľa neho, s fallbackom na issueDate. */
+  deliveryDate?: string;
   dueDate?: string;
   receivedDate?: string;
   lastModifiedTimestamp?: string;

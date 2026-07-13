@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import type { NormalizedExpense } from "@/lib/kros-types";
 import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
-import { getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
+import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
 import { formatCurrency, formatCurrencyPrecise, formatDelta } from "@/lib/format";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
@@ -459,7 +459,7 @@ export function ExpensesDashboard({
                       <div className="invoice-item-text">
                         <p className="tag-name invoice-title-line">{expense.partnerName ?? "Neznámy dodávateľ"}</p>
                         <p className="tag-sub">
-                          {new Date(expense.issueDate).toLocaleDateString("sk-SK")} •{" "}
+                          {new Date(getExpenseAnalyticsDate(expense)).toLocaleDateString("sk-SK")} •{" "}
                           {getExpenseDocumentTypeLabel(expense.documentType)}
                           {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
                         </p>

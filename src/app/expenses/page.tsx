@@ -209,8 +209,8 @@ export default function ExpensesPage() {
 
     const fetchExpenses = async (body: {
       companies: KrosConnection[];
-      issueDateFrom?: string;
-      issueDateTo?: string;
+      deliveryDateFrom?: string;
+      deliveryDateTo?: string;
       lastModifiedTimestamp?: string;
     }) => {
       const response = await fetch("/api/kros/expenses", {
@@ -271,8 +271,8 @@ export default function ExpensesPage() {
               await clearSyncLogsOnce();
               const rawExpenses = await fetchExpenses({
                 companies: [connection],
-                issueDateFrom: monthRange.from,
-                issueDateTo: monthRange.to
+                deliveryDateFrom: monthRange.from,
+                deliveryDateTo: monthRange.to
               });
 
               const normalizedExpenses = normalizeExpenses(rawExpenses);

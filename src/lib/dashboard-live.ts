@@ -170,12 +170,26 @@ function readPartnerName(row: Record<string, unknown>) {
   return undefined;
 }
 
+/**
+ * Dátum, podľa ktorého analytiky (graf, KPI, breakdowny) zaraďujú faktúru
+ * do obdobia — dátum dodania (DUZP); faktúry bez neho padajú na dátum vystavenia.
+ * Zoznam Posledné faktúry zámerne ostáva na dátume vystavenia.
+ */
+export function getInvoiceAnalyticsDate(invoice: NormalizedInvoice) {
+  return invoice.deliveryDate ?? invoice.issueDate;
+}
+
 export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
   return rawInvoices
     .map((invoice): NormalizedInvoice | null => {
       const row = invoice as Record<string, unknown>;
       const id = readString(row, ["id", "invoiceId", "documentId", "number"]);
       const issueDate = typeof row.issueDate === "string" ? row.issueDate : null;
+      const deliveryDateRaw = readString(row, ["deliveryDate"]);
+      const deliveryDate =
+        deliveryDateRaw && !Number.isNaN(new Date(deliveryDateRaw).getTime())
+          ? deliveryDateRaw
+          : undefined;
       const companyName = typeof row.__company === "string" ? row.__company : "Neznáma firma";
       const companyId = typeof row.__companyId === "number" ? row.__companyId : undefined;
       const invoiceNumber = readString(row, ["invoiceNumber", "number", "documentNumber", "variableSymbol"]);
@@ -199,6 +213,7 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
         invoiceNumber: invoiceNumber ?? undefined,
         partnerName,
         issueDate,
+        deliveryDate,
         lastModifiedTimestamp,
         totalPrice,
         tags: tags.length > 0 ? tags : ["Nedefinované"]
@@ -231,7 +246,7 @@ export function computeRevenueSeries({
   );
 
   const filtered = invoices.filter((invoice) => {
-    const invoiceDate = new Date(invoice.issueDate);
+    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
     const inWindow = invoiceDate >= range.previousFrom && invoiceDate <= range.currentTo;
     const companyPass =
       selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
@@ -241,7 +256,7 @@ export function computeRevenueSeries({
   });
 
   for (const invoice of filtered) {
-    const date = new Date(invoice.issueDate);
+    const date = new Date(getInvoiceAnalyticsDate(invoice));
 
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
@@ -304,14 +319,17 @@ export function getRevenueBucketInvoices({
   const filterInvoices = ({ from, to }: { from: Date; to: Date }) =>
     invoices
       .filter((invoice) => {
-        const invoiceDate = new Date(invoice.issueDate);
+        const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
         const companyPass =
           selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
         const tagPass =
           selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
         return invoiceDate >= from && invoiceDate <= to && companyPass && tagPass;
       })
-      .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+      .sort(
+        (a, b) =>
+          new Date(getInvoiceAnalyticsDate(b)).getTime() - new Date(getInvoiceAnalyticsDate(a)).getTime()
+      );
 
   return {
     current: filterInvoices(currentRange),
@@ -378,7 +396,7 @@ export function computeComparableYtdTotals({
   let previous = 0;
 
   for (const invoice of invoices) {
-    const invoiceDate = new Date(invoice.issueDate);
+    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
     const companyPass = selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
     const tagPass = selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
     if (!companyPass || !tagPass) continue;
@@ -407,7 +425,7 @@ export function computeTagBreakdown(
   for (const invoice of invoices) {
     if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
 
-    const invoiceDate = new Date(invoice.issueDate);
+    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
     let yearBucket: "current" | "previous" | null = null;
 
     if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
@@ -448,7 +466,7 @@ export function computeCompanyBreakdown(
     const tagPass = tagSet.size === 0 || invoice.tags.some((tag) => tagSet.has(tag));
     if (!tagPass) continue;
 
-    const invoiceDate = new Date(invoice.issueDate);
+    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
     let yearBucket: "current" | "previous" | null = null;
 
     if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {

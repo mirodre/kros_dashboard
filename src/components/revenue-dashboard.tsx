@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import { formatCurrency, formatCurrencyPrecise, formatDelta } from "@/lib/format";
-import { getRevenueBucketInvoices } from "@/lib/dashboard-live";
+import { getInvoiceAnalyticsDate, getRevenueBucketInvoices } from "@/lib/dashboard-live";
 import type { NormalizedInvoice } from "@/lib/kros-types";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
@@ -256,7 +256,7 @@ export function RevenueDashboard({
                       <div className="invoice-item-text">
                         <p className="tag-name invoice-title-line">{invoice.partnerName ?? "Neznámy odberateľ"}</p>
                         <p className="tag-sub">
-                          {new Date(invoice.issueDate).toLocaleDateString("sk-SK")}
+                          {new Date(getInvoiceAnalyticsDate(invoice)).toLocaleDateString("sk-SK")}
                           {invoice.invoiceNumber ? ` • ${invoice.invoiceNumber}` : ""}
                         </p>
                       </div>

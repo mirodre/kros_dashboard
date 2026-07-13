@@ -1,7 +1,10 @@
 import type { NormalizedInvoice } from "./kros-types";
 
 const DB_NAME = "kros_dashboard_cache";
-const DB_VERSION = 1;
+// v3: analytiky aj sync idú podľa dátumu dodania — v1 faktúry nemajú
+// deliveryDate a mesačné sync metadáta znamenali mesiac vystavenia,
+// upgrade preto starú cache premaže a stiahne sa nanovo.
+const DB_VERSION = 3;
 const INVOICES_STORE = "invoices";
 const SYNC_META_STORE = "syncMeta";
 
@@ -23,7 +26,7 @@ function openCacheDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(INVOICES_STORE)) {
         const store = db.createObjectStore(INVOICES_STORE, { keyPath: "cacheKey" });
@@ -31,6 +34,14 @@ function openCacheDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SYNC_META_STORE)) {
         db.createObjectStore(SYNC_META_STORE, { keyPath: "key" });
+      }
+
+      // Cache je len lokálna kópia dát z API — pri akomkoľvek zvýšení verzie ju
+      // premažeme a necháme stiahnuť nanovo (žiadne per-verzia migrácie).
+      const upgradeTransaction = request.transaction;
+      if (event.oldVersion > 0 && event.oldVersion < DB_VERSION && upgradeTransaction) {
+        upgradeTransaction.objectStore(INVOICES_STORE).clear();
+        upgradeTransaction.objectStore(SYNC_META_STORE).clear();
       }
     };
 

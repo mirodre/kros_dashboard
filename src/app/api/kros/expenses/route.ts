@@ -9,8 +9,8 @@ type CompanyConnection = {
 
 type ExpenseRequestBody = {
   companies: CompanyConnection[];
-  issueDateFrom?: string;
-  issueDateTo?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
   lastModifiedTimestamp?: string;
 };
 
@@ -53,12 +53,14 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
 
 async function fetchCompanyExpenses(
   company: CompanyConnection,
-  issueDateFrom?: string,
-  issueDateTo?: string,
+  deliveryDateFrom?: string,
+  deliveryDateTo?: string,
   lastModifiedTimestamp?: string
 ) {
-  const issueFrom = issueDateFrom ? toKrosDate(issueDateFrom) : null;
-  const issueTo = issueDateTo ? toKrosDate(issueDateTo) : null;
+  // Analytiky bucketujú podľa dátumu dodania, preto sa aj sync okná dopytujú
+  // cez DeliveryDateFrom/To — používateľ potvrdil, že dodanie je vyplnené všade.
+  const deliveryFrom = deliveryDateFrom ? toKrosDate(deliveryDateFrom) : null;
+  const deliveryTo = deliveryDateTo ? toKrosDate(deliveryDateTo) : null;
   const top = 100;
   let skip = 0;
   const aggregated: unknown[] = [];
@@ -68,8 +70,8 @@ async function fetchCompanyExpenses(
       Top: String(top),
       Skip: String(skip)
     });
-    if (issueFrom) query.set("IssueDateFrom", issueFrom);
-    if (issueTo) query.set("IssueDateTo", issueTo);
+    if (deliveryFrom) query.set("DeliveryDateFrom", deliveryFrom);
+    if (deliveryTo) query.set("DeliveryDateTo", deliveryTo);
     if (lastModifiedTimestamp) {
       query.set("LastModifiedTimestamp", lastModifiedTimestamp);
     }
@@ -79,7 +81,7 @@ async function fetchCompanyExpenses(
       endpoint: "/api/expenses",
       method: "GET",
       companyName: company.companyName,
-      message: `Skip=${skip}, Top=${top}${issueFrom ? `, IssueDateFrom=${issueFrom}` : ""}${issueTo ? `, IssueDateTo=${issueTo}` : ""}${lastModifiedTimestamp ? `, LastModifiedTimestamp=${lastModifiedTimestamp}` : ""}`
+      message: `Skip=${skip}, Top=${top}${deliveryFrom ? `, DeliveryDateFrom=${deliveryFrom}` : ""}${deliveryTo ? `, DeliveryDateTo=${deliveryTo}` : ""}${lastModifiedTimestamp ? `, LastModifiedTimestamp=${lastModifiedTimestamp}` : ""}`
     });
 
     const response = await fetchWithRetry(`${KROS_API_BASE}/api/expenses?${query.toString()}`, {
@@ -149,7 +151,7 @@ async function fetchCompanyExpenses(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as ExpenseRequestBody;
-    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestamp && (!body.issueDateFrom || !body.issueDateTo))) {
+    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo))) {
       return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
     }
 
@@ -157,14 +159,14 @@ export async function POST(request: Request) {
       direction: "request",
       endpoint: "/api/kros/expenses",
       method: "POST",
-      message: `firmy=${body.companies.length}${body.issueDateFrom ? `, issueDateFrom=${body.issueDateFrom}` : ""}${body.issueDateTo ? `, issueDateTo=${body.issueDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
+      message: `firmy=${body.companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
       payload: {
         companies: body.companies.map((company) => ({
           companyId: company.companyId,
           companyName: company.companyName
         })),
-        issueDateFrom: body.issueDateFrom,
-        issueDateTo: body.issueDateTo,
+        deliveryDateFrom: body.deliveryDateFrom,
+        deliveryDateTo: body.deliveryDateTo,
         lastModifiedTimestamp: body.lastModifiedTimestamp
       }
     });
@@ -176,8 +178,8 @@ export async function POST(request: Request) {
       try {
         const companyExpenses = await fetchCompanyExpenses(
           company,
-          body.issueDateFrom,
-          body.issueDateTo,
+          body.deliveryDateFrom,
+          body.deliveryDateTo,
           body.lastModifiedTimestamp
         );
         allExpenses.push(...companyExpenses);
