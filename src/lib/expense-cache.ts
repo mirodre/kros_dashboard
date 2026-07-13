@@ -6,10 +6,10 @@ import type { NormalizedExpense } from "./kros-types";
  * incremental refresh via LastModifiedTimestamp.
  */
 const DB_NAME = "kros_dashboard_expenses_cache";
-// v6: analytiky aj sync idú podľa dátumu dodania — staršie verzie nemajú
-// deliveryDate a ich mesačné sync metadáta znamenali mesiac vystavenia,
+// v7: analytiky počítajú zo sumy bez DPH v legislatívnej mene (totalPrice) —
+// doklady zo starších verzií toto pole nemajú (a chýbal im aj deliveryDate),
 // upgrade preto starú cache premaže a stiahne sa nanovo.
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const EXPENSES_STORE = "expenses";
 const SYNC_META_STORE = "syncMeta";
 

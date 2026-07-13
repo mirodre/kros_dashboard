@@ -48,7 +48,9 @@ export type NormalizedExpense = {
   dueDate?: string;
   receivedDate?: string;
   lastModifiedTimestamp?: string;
-  /** Suma s DPH so znamienkom — dobropisy sú záporné, ide o reálny peňažný dopad. */
+  /** Suma bez DPH v legislatívnej mene — z nej počítajú analytické prehľady (rovnako ako tržby). */
+  totalPrice: number;
+  /** Suma s DPH so znamienkom — dobropisy sú záporné; používajú ju platobné pohľady (splatnosti, zoznamy). */
   totalPriceInclVat: number;
   vatTotalPrice: number;
   paymentStatus: ExpensePaymentStatus;
