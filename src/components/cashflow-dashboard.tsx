@@ -238,14 +238,17 @@ export function CashflowDashboard({
                 const outerRadius = isActive ? 136 : 126;
                 const innerRadius = 90;
                 const center = 160;
-                const startOuterX = center + outerRadius * Math.cos(slice.startAngle);
-                const startOuterY = center + outerRadius * Math.sin(slice.startAngle);
-                const endOuterX = center + outerRadius * Math.cos(slice.endAngle);
-                const endOuterY = center + outerRadius * Math.sin(slice.endAngle);
-                const startInnerX = center + innerRadius * Math.cos(slice.startAngle);
-                const startInnerY = center + innerRadius * Math.sin(slice.startAngle);
-                const endInnerX = center + innerRadius * Math.cos(slice.endAngle);
-                const endInnerY = center + innerRadius * Math.sin(slice.endAngle);
+                // Math.sin/cos sa líšia v poslednom bite medzi Node a prehliadačom —
+                // bez zaokrúhlenia by sa atribút `d` nezhodoval pri SSR hydratácii.
+                const coord = (value: number) => value.toFixed(2);
+                const startOuterX = coord(center + outerRadius * Math.cos(slice.startAngle));
+                const startOuterY = coord(center + outerRadius * Math.sin(slice.startAngle));
+                const endOuterX = coord(center + outerRadius * Math.cos(slice.endAngle));
+                const endOuterY = coord(center + outerRadius * Math.sin(slice.endAngle));
+                const startInnerX = coord(center + innerRadius * Math.cos(slice.startAngle));
+                const startInnerY = coord(center + innerRadius * Math.sin(slice.startAngle));
+                const endInnerX = coord(center + innerRadius * Math.cos(slice.endAngle));
+                const endInnerY = coord(center + innerRadius * Math.sin(slice.endAngle));
                 const isLargeArc = slice.endAngle - slice.startAngle > Math.PI ? 1 : 0;
                 const path = [
                   `M ${startOuterX} ${startOuterY}`,
