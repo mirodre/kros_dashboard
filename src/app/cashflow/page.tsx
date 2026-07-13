@@ -316,7 +316,7 @@ export default function CashflowPage() {
 
   return (
     <DashboardShell
-      title="Peňažný prehľad"
+      title="Financie"
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
@@ -337,7 +337,7 @@ export default function CashflowPage() {
         }}
       />
       <CompaniesDashboard
-        title="Peniaze podľa firiem"
+        title="Financie podľa firiem"
         companies={filteredCompanies}
         selectedCompanies={selectedCompanies}
         availableCompanyNames={availableCompanyNames}

@@ -22,6 +22,8 @@ type Props = {
   onSelectionChange: (items: string[]) => void;
   onFocusedItemChange: (item: string | null) => void;
   isLoading?: boolean;
+  /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
+  invertDeltaColor?: boolean;
 };
 
 export function FilterableBreakdownSection({
@@ -36,7 +38,8 @@ export function FilterableBreakdownSection({
   focusedItem,
   onSelectionChange,
   onFocusedItemChange,
-  isLoading = false
+  isLoading = false,
+  invertDeltaColor = false
 }: Props) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
@@ -118,7 +121,9 @@ export function FilterableBreakdownSection({
                 </div>
                 <div className="tag-values">
                   <p>{formatCurrency(item.amount)}</p>
-                  <p className={delta >= 0 ? "delta up" : "delta down"}>{formatDelta(delta)}</p>
+                  <p className={(invertDeltaColor ? delta <= 0 : delta >= 0) ? "delta up" : "delta down"}>
+                    {formatDelta(delta)}
+                  </p>
                 </div>
                 <button
                   type="button"

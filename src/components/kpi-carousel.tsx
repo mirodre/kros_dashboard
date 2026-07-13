@@ -6,9 +6,11 @@ import { formatCurrency, formatDelta } from "@/lib/format";
 
 type Props = {
   items: KpiCard[];
+  /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
+  invertDeltaColor?: boolean;
 };
 
-export function KpiCarousel({ items }: Props) {
+export function KpiCarousel({ items, invertDeltaColor = false }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
@@ -62,10 +64,18 @@ export function KpiCarousel({ items }: Props) {
             <p className="kpi-title">{item.title}</p>
             <p className="kpi-current">{formatCurrency(item.currentValue)}</p>
             <div className="kpi-row">
-              <span>vlani {formatCurrency(item.previousValue)}</span>
-              <span className={item.deltaPct >= 0 ? "delta up" : "delta down"}>
-                {formatDelta(item.deltaPct)}
+              <span>
+                {item.previousLabel ?? "vlani"} {formatCurrency(item.previousValue)}
               </span>
+              {item.hideDelta ? null : (
+                <span
+                  className={
+                    (invertDeltaColor ? item.deltaPct <= 0 : item.deltaPct >= 0) ? "delta up" : "delta down"
+                  }
+                >
+                  {formatDelta(item.deltaPct)}
+                </span>
+              )}
             </div>
           </article>
         ))}

@@ -15,7 +15,7 @@ export function DashboardShell({
   children,
   isSyncing = false,
   onRefresh,
-  title = "Biznis prehľad"
+  title = "Príjmy"
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
   const pullStartYRef = useRef<number | null>(null);
@@ -77,13 +77,19 @@ export function DashboardShell({
           <h1>{title}</h1>
           <nav className="header-nav desktop-only-nav" aria-label="Navigácia prehľadov">
             <Link href="/" className={pathname === "/" ? "header-nav-link active" : "header-nav-link"}>
-              Biznis
+              Príjmy
+            </Link>
+            <Link
+              href="/expenses"
+              className={pathname === "/expenses" ? "header-nav-link active" : "header-nav-link"}
+            >
+              Výdavky
             </Link>
             <Link
               href="/cashflow"
               className={pathname === "/cashflow" ? "header-nav-link active" : "header-nav-link"}
             >
-              Peniaze
+              Financie
             </Link>
           </nav>
         </div>
@@ -101,7 +107,23 @@ export function DashboardShell({
             </svg>
             </span>
           </span>
-          <span className="mobile-liquid-label">Biznis</span>
+          <span className="mobile-liquid-label">Príjmy</span>
+        </Link>
+        <Link
+          href="/expenses"
+          className={pathname === "/expenses" ? "mobile-liquid-link active" : "mobile-liquid-link"}
+        >
+          <span className="mobile-liquid-orb" aria-hidden="true">
+            <span className="mobile-liquid-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M6 3.5h12v17l-2.4-1.6-2.4 1.6-1.2-.8-1.2.8-2.4-1.6L6 20.5v-17Z" />
+              <path d="M9 8h6" />
+              <path d="M9 11.5h6" />
+              <path d="M9 15h3.6" />
+            </svg>
+            </span>
+          </span>
+          <span className="mobile-liquid-label">Výdavky</span>
         </Link>
         <Link
           href="/cashflow"
@@ -117,7 +139,7 @@ export function DashboardShell({
             </svg>
             </span>
           </span>
-          <span className="mobile-liquid-label">Peniaze</span>
+          <span className="mobile-liquid-label">Financie</span>
         </Link>
         <Link
           href="/settings"

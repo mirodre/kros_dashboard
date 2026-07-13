@@ -30,6 +30,29 @@ export type AggregatedBreakdownPoint = {
   previousAmount: number;
 };
 
+export type ExpensePaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
+
+export type NormalizedExpense = {
+  id: string;
+  companyId?: number;
+  companyName: string;
+  documentNumber?: string;
+  /** KROS document type (10 ReceivedInvoice, 11 Receipt, 13 InternalDocument, 14 BankNotification, 15 ReceivedProformaInvoice, 17 ReceivedCreditNote, 19 ReceivedDebitNote). */
+  documentType: number;
+  partnerName?: string;
+  issueDate: string;
+  dueDate?: string;
+  receivedDate?: string;
+  lastModifiedTimestamp?: string;
+  /** Suma s DPH so znamienkom — dobropisy sú záporné, ide o reálny peňažný dopad. */
+  totalPriceInclVat: number;
+  vatTotalPrice: number;
+  paymentStatus: ExpensePaymentStatus;
+  paymentType?: string;
+  hasAttachments: boolean;
+  tags: string[];
+};
+
 export type NormalizedPaymentAccount = {
   id: string;
   companyId?: number;

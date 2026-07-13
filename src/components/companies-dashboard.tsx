@@ -12,6 +12,7 @@ type Props = {
   onFocusedCompanyChange: (company: string | null) => void;
   isLoading?: boolean;
   title?: string;
+  invertDeltaColor?: boolean;
 };
 
 export function CompaniesDashboard({
@@ -22,7 +23,8 @@ export function CompaniesDashboard({
   onSelectionChange,
   onFocusedCompanyChange,
   isLoading = false,
-  title = "Tržby podľa firiem"
+  title = "Tržby podľa firiem",
+  invertDeltaColor = false
 }: Props) {
   return (
     <FilterableBreakdownSection
@@ -38,6 +40,7 @@ export function CompaniesDashboard({
       onSelectionChange={onSelectionChange}
       onFocusedItemChange={onFocusedCompanyChange}
       isLoading={isLoading}
+      invertDeltaColor={invertDeltaColor}
     />
   );
 }

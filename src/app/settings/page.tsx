@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
 import { clearCashflowCache } from "@/lib/cashflow-cache";
+import { clearExpenseCache } from "@/lib/expense-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
 import type { KrosConnection } from "@/lib/kros-types";
@@ -179,10 +180,11 @@ export default function SettingsPage() {
   const handleClearInvoiceCache = async () => {
     await clearInvoiceCache();
     await clearCashflowCache();
+    await clearExpenseCache();
     localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
     setIsCacheClearOpen(false);
     setStatusMessage(
-      "Lokálna cache faktúr (Biznis) a platieb (Peniaze) bola vymazaná. Prehľady sa pri ďalšom otvorení načítajú odznova."
+      "Lokálna cache faktúr (Príjmy), dokladov (Výdavky) a platieb (Financie) bola vymazaná. Prehľady sa pri ďalšom otvorení načítajú odznova."
     );
   };
 
@@ -216,8 +218,8 @@ export default function SettingsPage() {
             </button>
           </header>
           <p className="tag-sub">
-            Vymaže lokálne uložené faktúry, stav synchronizácie a dočasnú cache platobného prehľadu (Peniaze) v tomto
-            prehliadači. Prepojenie na KROS zostane zachované.
+            Vymaže lokálne uložené faktúry, výdavkové doklady, stav synchronizácie a dočasnú cache platobného prehľadu
+            (Financie) v tomto prehliadači. Prepojenie na KROS zostane zachované.
           </p>
         </article>
       </section>
@@ -334,7 +336,7 @@ export default function SettingsPage() {
           >
             <h4>Vymazať lokálnu cache?</h4>
             <p className="tag-sub">
-              Vymažú sa lokálne uložené faktúry, stav synchronizácie a cache platobných údajov pre prehľad Peniaze. Pri
+              Vymažú sa lokálne uložené faktúry, stav synchronizácie a cache platobných údajov pre prehľad Financie. Pri
               ďalšom otvorení prehľadov sa dáta natiahnu odznova z KROS.
             </p>
             <div className="tag-filter-actions">

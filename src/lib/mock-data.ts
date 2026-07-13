@@ -7,6 +7,10 @@ export type KpiCard = {
   currentValue: number;
   previousValue: number;
   deltaPct: number;
+  /** Popis porovnávacej hodnoty; predvolene „vlani". */
+  previousLabel?: string;
+  /** Skryje percentuálnu deltu, keď porovnanie nedáva zmysel (napr. stavové KPI). */
+  hideDelta?: boolean;
 };
 
 export type RevenuePoint = {
