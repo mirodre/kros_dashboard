@@ -35,8 +35,8 @@ export function KrosConnectionCard({
           <ul className="tag-list connection-list">
             {connections.map((connection) => (
               <li key={connection.companyId} className="connection-item">
-                <div>
-                  <p className="tag-name">{connection.companyName}</p>
+                <div className="tag-cell">
+                  <p className="tag-name" title={connection.companyName}>{connection.companyName}</p>
                   <p className="tag-sub">ID: {connection.companyId}</p>
                 </div>
                 <div className="tag-values">

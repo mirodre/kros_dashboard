@@ -55,7 +55,7 @@ export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
                 return (
                   <li key={vendor.name}>
                     <div className="vendor-cell">
-                      <p className="tag-name">{vendor.name}</p>
+                      <p className="tag-name" title={vendor.name}>{vendor.name}</p>
                       <p className="tag-sub">
                         {(vendor.share * 100).toFixed(1)} % výdavkov • {vendor.documentCount}{" "}
                         {vendor.documentCount === 1

@@ -143,8 +143,8 @@ export function FilterableBreakdownSection({
 
                 return (
                   <li key={item.name} className={isActive ? "active" : ""}>
-                    <div>
-                      <p className="tag-name">{item.name}</p>
+                    <div className="tag-cell">
+                      <p className="tag-name" title={item.name}>{item.name}</p>
                       <p className="tag-sub">vlani {formatCurrency(item.previousAmount)}</p>
                     </div>
                     <div className="tag-values">

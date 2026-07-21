@@ -1510,6 +1510,7 @@ body {
 .tag-list {
   display: grid;
   gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr);
   list-style: none;
   margin: 1.1rem 0 0;
   min-width: 0;
@@ -1524,6 +1525,8 @@ body {
   box-shadow: 0 8px 22px rgba(8, 11, 22, 0.28);
   display: flex;
   justify-content: space-between;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.9rem 1rem;
   position: relative;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -1626,6 +1629,20 @@ body {
   color: #f3f6ff;
   font-weight: 600;
   margin: 0;
+  min-width: 0;
+}
+
+/* Bunka s dynamickým názvom v riadkoch tag-list (štítky, firmy, prepojenia). */
+.tag-cell {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tag-cell .tag-name,
+.tag-cell .tag-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .with-today-indicator {
@@ -1703,7 +1720,8 @@ body {
   min-width: 0;
 }
 
-.vendor-cell .tag-name {
+.vendor-cell .tag-name,
+.vendor-cell .tag-sub {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
