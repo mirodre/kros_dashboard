@@ -12,6 +12,7 @@ import type { KrosConnection, NormalizedExpense } from "@/lib/kros-types";
 import { readConnections } from "@/lib/kros-storage";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import {
+  categoryForTag,
   documentMatchesTagFilters,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
@@ -42,7 +43,7 @@ import {
 } from "@/lib/expense-cache";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_expenses_selected_tags";
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
+const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_expenses_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 type LiveDataRange = "ytd" | "history";
@@ -396,6 +397,15 @@ export default function ExpensesPage() {
   const effectiveFocusedTag =
     focusedTag && availableTagSet.has(focusedTag) ? focusedTag : null;
 
+  const filterScopedExpenses = useMemo(
+    () =>
+      expenses.filter((expense) =>
+        documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, null)
+      ),
+    [expenses, sanitizedCategoryFilters]
+  );
+
+  // Fokus štítku prispôsobí graf/KPI/doklady, ale zoznamy kategórií ostávajú podľa Filtra štítkov.
   const tagScopedExpenses = useMemo(
     () =>
       expenses.filter((expense) =>
@@ -438,10 +448,7 @@ export default function ExpensesPage() {
   // Donut filtrujeme výberom z Filtra štítkov, ale nie focusnutým štítkom —
   // klik na výsek má slice len zvýrazniť, nie zredukovať donut na jediný výsek.
   const tagStructure = useMemo(() => {
-    const scopedForStructure = expenses.filter((expense) =>
-      documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, null)
-    );
-    const slices = computeExpenseTagStructure(scopedForStructure, [], effectiveCompanies).filter(
+    const slices = computeExpenseTagStructure(filterScopedExpenses, [], effectiveCompanies).filter(
       (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
     );
     const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
@@ -449,20 +456,46 @@ export default function ExpensesPage() {
       ...slice,
       share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
     }));
-  }, [expenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
+  }, [filterScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
 
   const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),
     [expenses, effectiveCompanies]
   );
 
-  const tagsData = useMemo(
-    () =>
-      computeExpenseTagBreakdown(tagScopedExpenses, effectiveCompanies).filter((point) =>
-        isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
-      ),
-    [tagScopedExpenses, effectiveCompanies, sanitizedCategoryFilters, tagCategoryIndex]
-  );
+  const tagsData = useMemo(() => {
+    const filterPoints = computeExpenseTagBreakdown(filterScopedExpenses, effectiveCompanies).filter(
+      (point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
+    );
+    if (!effectiveFocusedTag) {
+      return filterPoints;
+    }
+
+    // V kategórii focusnutého štítku ostávajú sumy podľa Filtra štítkov;
+    // ostatné kategórie sa prepočítajú podľa focusnutého štítku.
+    const focusedCategory = categoryForTag(tagCategoryIndex, effectiveFocusedTag);
+    const focusByName = new Map(
+      computeExpenseTagBreakdown(tagScopedExpenses, effectiveCompanies).map((point) => [
+        point.name,
+        point
+      ])
+    );
+    return filterPoints
+      .flatMap((point) => {
+        const category = categoryForTag(tagCategoryIndex, point.name);
+        if (category === focusedCategory) return [point];
+        const focusedPoint = focusByName.get(point.name);
+        return focusedPoint ? [focusedPoint] : [];
+      })
+      .sort((a, b) => b.amount - a.amount);
+  }, [
+    filterScopedExpenses,
+    tagScopedExpenses,
+    effectiveCompanies,
+    sanitizedCategoryFilters,
+    tagCategoryIndex,
+    effectiveFocusedTag
+  ]);
 
   const vendors = useMemo(
     () => computeExpenseVendorBreakdown(tagScopedExpenses, [], effectiveCompanies),
@@ -470,8 +503,9 @@ export default function ExpensesPage() {
   );
 
   const companiesData = useMemo(
-    () => computeExpenseCompanyBreakdown(tagScopedExpenses, [], effectiveCompanies),
-    [tagScopedExpenses, effectiveCompanies]
+    // Zoznam firiem sa nezužuje focusom — rovnako ako štítky v kategórii.
+    () => computeExpenseCompanyBreakdown(tagScopedExpenses, [], selectedCompanies),
+    [tagScopedExpenses, selectedCompanies]
   );
 
   const recentExpenses = useMemo(

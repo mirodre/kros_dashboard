@@ -27,7 +27,7 @@ import type {
 } from "@/lib/kros-types";
 import type { Granularity } from "@/lib/mock-data";
 
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
+const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`

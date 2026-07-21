@@ -93,7 +93,8 @@ export function isTagAllowedByFilters(
 
 /**
  * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND).
- * V rámci kategórie stačí jeden zo zvolených štítkov (OR). Focusnutý štítok má prednosť.
+ * V rámci kategórie stačí jeden zo zvolených štítkov (OR).
+ * Focusnutý štítok musí byť na doklade a zároveň platia všetky filtre kategórií.
  */
 export function documentMatchesTagFilters(
   documentTags: string[],
@@ -102,7 +103,9 @@ export function documentMatchesTagFilters(
 ): boolean {
   if (focusedTag) {
     const focused = focusedTag.trim().toLowerCase();
-    return documentTags.some((tag) => tag.trim().toLowerCase() === focused);
+    if (!documentTags.some((tag) => tag.trim().toLowerCase() === focused)) {
+      return false;
+    }
   }
 
   const constraints = Object.values(filters).filter((selected) => selected.length > 0);

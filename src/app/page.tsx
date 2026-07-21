@@ -28,6 +28,7 @@ import {
 } from "@/lib/kros-storage";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import {
+  categoryForTag,
   documentMatchesTagFilters,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
@@ -46,7 +47,7 @@ import {
 } from "@/lib/invoice-cache";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_selected_companies";
+const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_revenue_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 type LiveDataRange = "ytd" | "history";
@@ -380,6 +381,15 @@ export default function HomePage() {
     setCategoryFilters((prev) => migrateFlatFiltersToCategories(prev, tagCategoryIndex));
   }, [tagCategoryIndex]);
 
+  const filterScopedInvoices = useMemo(
+    () =>
+      liveInvoices.filter((invoice) =>
+        documentMatchesTagFilters(invoice.tags, categoryFilters, null)
+      ),
+    [liveInvoices, categoryFilters]
+  );
+
+  // Fokus štítku prispôsobí graf/KPI/doklady, ale zoznamy kategórií ostávajú podľa Filtra štítkov.
   const tagScopedInvoices = useMemo(
     () =>
       liveInvoices.filter((invoice) =>
@@ -419,27 +429,50 @@ export default function HomePage() {
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
 
   const tagsData = useMemo(() => {
-    const points = hasLiveMode
-      ? computeTagBreakdown(tagScopedInvoices, effectiveCompanies)
+    const filterPoints = hasLiveMode
+      ? computeTagBreakdown(filterScopedInvoices, effectiveCompanies)
       : getTagsBreakdown(granularity);
-    return [...points]
-      .filter((point) => isTagAllowedByFilters(point.name, categoryFilters, tagCategoryIndex))
-      .sort((a, b) => b.amount - a.amount);
+    const focusPoints = hasLiveMode
+      ? computeTagBreakdown(tagScopedInvoices, effectiveCompanies)
+      : filterPoints;
+
+    const allowedFilter = filterPoints.filter((point) =>
+      isTagAllowedByFilters(point.name, categoryFilters, tagCategoryIndex)
+    );
+    if (!focusedTag) {
+      return [...allowedFilter].sort((a, b) => b.amount - a.amount);
+    }
+
+    // V kategórii focusnutého štítku ostávajú sumy podľa Filtra štítkov;
+    // ostatné kategórie sa prepočítajú podľa focusnutého štítku.
+    const focusedCategory = categoryForTag(tagCategoryIndex, focusedTag);
+    const focusByName = new Map(focusPoints.map((point) => [point.name, point]));
+    const merged = allowedFilter.flatMap((point) => {
+      const category = categoryForTag(tagCategoryIndex, point.name);
+      if (category === focusedCategory) return [point];
+      const focusedPoint = focusByName.get(point.name);
+      return focusedPoint ? [focusedPoint] : [];
+    });
+    return merged.sort((a, b) => b.amount - a.amount);
   }, [
     hasLiveMode,
+    filterScopedInvoices,
     tagScopedInvoices,
     effectiveCompanies,
     granularity,
     categoryFilters,
-    tagCategoryIndex
+    tagCategoryIndex,
+    focusedTag
   ]);
 
   const companiesData = useMemo(() => {
-    if (hasLiveMode) return computeCompanyBreakdown(tagScopedInvoices, [], effectiveCompanies);
+    // Zoznam firiem sa nezužuje focusom — rovnako ako štítky v kategórii.
+    // Focus ovplyvní graf/KPI cez effectiveCompanies.
+    if (hasLiveMode) return computeCompanyBreakdown(tagScopedInvoices, [], selectedCompanies);
     const all = getCompaniesBreakdown(granularity);
-    if (effectiveCompanies.length === 0) return all;
-    return all.filter((company) => effectiveCompanies.includes(company.name));
-  }, [hasLiveMode, tagScopedInvoices, effectiveCompanies, granularity]);
+    if (selectedCompanies.length === 0) return all;
+    return all.filter((company) => selectedCompanies.includes(company.name));
+  }, [hasLiveMode, tagScopedInvoices, selectedCompanies, granularity]);
 
   const recentInvoices = useMemo(() => {
     const source = hasLiveMode ? tagScopedInvoices : getMockRecentInvoices();
