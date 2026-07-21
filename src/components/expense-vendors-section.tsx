@@ -1,7 +1,7 @@
 "use client";
 
 import type { ExpenseVendorPoint } from "@/lib/expenses-live";
-import { formatCurrency, formatDelta } from "@/lib/format";
+import { formatCurrency, formatDelta, getDeltaPct } from "@/lib/format";
 
 type Props = {
   vendors: ExpenseVendorPoint[];
@@ -33,12 +33,7 @@ export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
 
         <ul className="tag-list">
           {vendors.map((vendor) => {
-            const delta =
-              vendor.previousAmount === 0
-                ? vendor.amount === 0
-                  ? 0
-                  : 100
-                : ((vendor.amount - vendor.previousAmount) / Math.abs(vendor.previousAmount)) * 100;
+            const delta = getDeltaPct(vendor.amount, vendor.previousAmount);
             return (
               <li key={vendor.name}>
                 <div className="vendor-cell">
@@ -53,7 +48,9 @@ export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
                 </div>
                 <div className="tag-values">
                   <p>{formatCurrency(vendor.amount)}</p>
-                  <p className={delta <= 0 ? "delta up" : "delta down"}>{formatDelta(delta)}</p>
+                  {delta !== null ? (
+                    <p className={delta <= 0 ? "delta up" : "delta down"}>{formatDelta(delta)}</p>
+                  ) : null}
                 </div>
               </li>
             );

@@ -67,7 +67,7 @@ export function KpiCarousel({ items, invertDeltaColor = false }: Props) {
               <span>
                 {item.previousLabel ?? "vlani"} {formatCurrency(item.previousValue)}
               </span>
-              {item.hideDelta ? null : (
+              {item.hideDelta || item.previousValue === 0 ? null : (
                 <span
                   className={
                     (invertDeltaColor ? item.deltaPct <= 0 : item.deltaPct >= 0) ? "delta up" : "delta down"

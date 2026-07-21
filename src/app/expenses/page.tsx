@@ -3,13 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ExpensesDashboard } from "@/components/expenses-dashboard";
-import { FilterableBreakdownSection } from "@/components/filterable-breakdown-section";
+import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { ExpenseVendorsSection } from "@/components/expense-vendors-section";
 import { RecentExpensesSection } from "@/components/recent-expenses-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import type { Granularity } from "@/lib/mock-data";
 import type { KrosConnection, NormalizedExpense } from "@/lib/kros-types";
 import { readConnections } from "@/lib/kros-storage";
+import { useTagCategoryIndex } from "@/lib/use-tag-categories";
+import {
+  documentMatchesTagFilters,
+  isTagAllowedByFilters,
+  migrateFlatFiltersToCategories,
+  parseStoredTagFilters,
+  type TagCategoryFilters
+} from "@/lib/tag-categories";
 import {
   computeComparableExpenseYtdTotals,
   computeExpenseCompanyBreakdown,
@@ -118,7 +126,7 @@ export default function ExpensesPage() {
   const [granularity, setGranularity] = useState<Granularity>(
     globalThis.__krosDashboardGranularity ?? "month"
   );
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [categoryFilters, setCategoryFilters] = useState<TagCategoryFilters>({});
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
@@ -150,12 +158,7 @@ export default function ExpensesPage() {
       const rawTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
       const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
 
-      if (rawTags) {
-        const parsedTags = JSON.parse(rawTags) as string[];
-        if (Array.isArray(parsedTags)) {
-          setSelectedTags(parsedTags);
-        }
-      }
+      setCategoryFilters(parseStoredTagFilters(rawTags));
 
       if (rawCompanies) {
         const parsedCompanies = JSON.parse(rawCompanies) as string[];
@@ -172,8 +175,8 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(selectedTags));
-  }, [hasLoadedPersistedFilters, selectedTags]);
+    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(categoryFilters));
+  }, [hasLoadedPersistedFilters, categoryFilters]);
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
@@ -368,50 +371,63 @@ export default function ExpensesPage() {
   }, [connections, syncConnections, granularity, refreshNonce, hasLoadedPersistedFilters]);
 
   const hasLiveMode = connections.length > 0;
+  const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
   const mockExpenses = useMemo(() => (hasLiveMode ? [] : getMockExpenses()), [hasLiveMode]);
   const expenses = hasLiveMode ? liveExpenses : mockExpenses;
+
+  useEffect(() => {
+    setCategoryFilters((prev) => migrateFlatFiltersToCategories(prev, tagCategoryIndex));
+  }, [tagCategoryIndex]);
 
   const availableTagSet = useMemo(
     () => new Set(expenses.flatMap((expense) => expense.tags)),
     [expenses]
   );
-  /**
-   * Perzistovaný filter môže obsahovať štítky z demo dát alebo odpojenej firmy —
-   * neexistujúce štítky ignorujeme, inak by po prepnutí na živé dáta ostal prehľad prázdny.
-   */
-  const sanitizedSelectedTags = useMemo(
-    () => selectedTags.filter((tag) => availableTagSet.has(tag)),
-    [selectedTags, availableTagSet]
+
+  const sanitizedCategoryFilters = useMemo(() => {
+    const next: TagCategoryFilters = {};
+    for (const [category, tags] of Object.entries(categoryFilters)) {
+      const kept = tags.filter((tag) => availableTagSet.has(tag));
+      if (kept.length > 0) next[category] = kept;
+    }
+    return next;
+  }, [categoryFilters, availableTagSet]);
+
+  const effectiveFocusedTag =
+    focusedTag && availableTagSet.has(focusedTag) ? focusedTag : null;
+
+  const tagScopedExpenses = useMemo(
+    () =>
+      expenses.filter((expense) =>
+        documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, effectiveFocusedTag)
+      ),
+    [expenses, sanitizedCategoryFilters, effectiveFocusedTag]
   );
-  const effectiveTags = useMemo(() => {
-    if (focusedTag && availableTagSet.has(focusedTag)) return [focusedTag];
-    return sanitizedSelectedTags;
-  }, [focusedTag, sanitizedSelectedTags, availableTagSet]);
 
   const points = useMemo(
     () =>
       computeExpenseSeries({
-        expenses,
+        expenses: tagScopedExpenses,
         granularity,
-        selectedTags: effectiveTags,
+        selectedTags: [],
         selectedCompanies: effectiveCompanies
       }),
-    [expenses, granularity, effectiveTags, effectiveCompanies]
+    [tagScopedExpenses, granularity, effectiveCompanies]
   );
 
   const ytdTotals = useMemo(
     () =>
       computeComparableExpenseYtdTotals({
-        expenses,
-        selectedTags: effectiveTags,
+        expenses: tagScopedExpenses,
+        selectedTags: [],
         selectedCompanies: effectiveCompanies
       }),
-    [expenses, effectiveTags, effectiveCompanies]
+    [tagScopedExpenses, effectiveCompanies]
   );
 
   const dueWatchlist = useMemo(
-    () => computeExpenseDueWatchlist(expenses, effectiveTags, effectiveCompanies),
-    [expenses, effectiveTags, effectiveCompanies]
+    () => computeExpenseDueWatchlist(tagScopedExpenses, [], effectiveCompanies),
+    [tagScopedExpenses, effectiveCompanies]
   );
 
   const kpis = useMemo(
@@ -419,38 +435,62 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
-  // Donut filtrujeme viacnásobným výberom z Filtra štítkov, ale nie focusnutým štítkom —
+  // Donut filtrujeme výberom z Filtra štítkov, ale nie focusnutým štítkom —
   // klik na výsek má slice len zvýrazniť, nie zredukovať donut na jediný výsek.
-  const tagStructure = useMemo(
-    () => computeExpenseTagStructure(expenses, sanitizedSelectedTags, effectiveCompanies),
-    [expenses, sanitizedSelectedTags, effectiveCompanies]
-  );
+  const tagStructure = useMemo(() => {
+    const scopedForStructure = expenses.filter((expense) =>
+      documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, null)
+    );
+    const slices = computeExpenseTagStructure(scopedForStructure, [], effectiveCompanies).filter(
+      (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
+    );
+    const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
+    return slices.map((slice) => ({
+      ...slice,
+      share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
+    }));
+  }, [expenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
 
-  const tagsData = useMemo(
+  const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),
     [expenses, effectiveCompanies]
   );
 
+  const tagsData = useMemo(
+    () =>
+      computeExpenseTagBreakdown(tagScopedExpenses, effectiveCompanies).filter((point) =>
+        isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
+      ),
+    [tagScopedExpenses, effectiveCompanies, sanitizedCategoryFilters, tagCategoryIndex]
+  );
+
   const vendors = useMemo(
-    () => computeExpenseVendorBreakdown(expenses, effectiveTags, effectiveCompanies),
-    [expenses, effectiveTags, effectiveCompanies]
+    () => computeExpenseVendorBreakdown(tagScopedExpenses, [], effectiveCompanies),
+    [tagScopedExpenses, effectiveCompanies]
   );
 
   const companiesData = useMemo(
-    () => computeExpenseCompanyBreakdown(expenses, effectiveTags, effectiveCompanies),
-    [expenses, effectiveTags, effectiveCompanies]
+    () => computeExpenseCompanyBreakdown(tagScopedExpenses, [], effectiveCompanies),
+    [tagScopedExpenses, effectiveCompanies]
   );
 
   const recentExpenses = useMemo(
     () =>
-      getFilteredRecentExpenses(expenses, {
+      getFilteredRecentExpenses(tagScopedExpenses, {
         granularity,
-        selectedTags: effectiveTags,
+        selectedTags: [],
         selectedCompanies: effectiveCompanies,
         limit: 10
       }),
-    [expenses, granularity, effectiveTags, effectiveCompanies]
+    [tagScopedExpenses, granularity, effectiveCompanies]
   );
+
+  const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
+    setCategoryFilters(next);
+    if (focusedTag && !isTagAllowedByFilters(focusedTag, next, tagCategoryIndex)) {
+      setFocusedTag(null);
+    }
+  };
 
   const updateSelectionWithFocusedGuard = (
     nextSelection: string[],
@@ -475,12 +515,12 @@ export default function ExpensesPage() {
         onGranularityChange={setGranularity}
         kpis={kpis}
         points={points}
-        expenses={expenses}
+        expenses={tagScopedExpenses}
         tagStructure={tagStructure}
         dueWatchlist={dueWatchlist}
-        selectedTags={effectiveTags}
+        selectedTags={[]}
         selectedCompanies={effectiveCompanies}
-        activeTagLabel={focusedTag ?? undefined}
+        activeTagLabel={effectiveFocusedTag ?? undefined}
         activeCompanyLabel={focusedCompany ?? undefined}
         onClearTagFilter={() => setFocusedTag(null)}
         onClearCompanyFilter={() => setFocusedCompany(null)}
@@ -488,19 +528,16 @@ export default function ExpensesPage() {
         isMockData={!hasLiveMode}
         isLoading={isLoadingLiveData}
       />
-      <FilterableBreakdownSection
-        title="Výdavky podľa štítkov"
-        filterLabel="Filter štítkov"
-        dialogTitle="Filter štítkov"
-        dialogHelp="Vyber štítky, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
+      <CategorizedTagsDashboard
+        tags={tagsData}
+        availableTags={availableTagsData}
+        categoryIndex={tagCategoryIndex}
+        baseTitle="Výdavky podľa štítkov"
         ariaLabelPrefix="Filtrovať výdavky podľa štítku"
-        items={tagsData}
-        selectedItems={selectedTags}
-        focusedItem={focusedTag}
-        onSelectionChange={(tags) =>
-          updateSelectionWithFocusedGuard(tags, focusedTag, setSelectedTags, setFocusedTag)
-        }
-        onFocusedItemChange={setFocusedTag}
+        categoryFilters={sanitizedCategoryFilters}
+        focusedTag={effectiveFocusedTag}
+        onCategoryFiltersChange={handleCategoryFiltersChange}
+        onFocusedTagChange={setFocusedTag}
         isLoading={isLoadingLiveData}
         invertDeltaColor
       />
@@ -514,6 +551,7 @@ export default function ExpensesPage() {
           connections.length > 0 ? connections.map((connection) => connection.companyName) : undefined
         }
         invertDeltaColor
+        collapsedStorageKey="kros_dashboard_expenses_collapsed_companies"
         focusedCompany={focusedCompany}
         onSelectionChange={(companies) =>
           updateSelectionWithFocusedGuard(

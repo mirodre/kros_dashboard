@@ -5,7 +5,7 @@ import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import type { NormalizedExpense } from "@/lib/kros-types";
 import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
-import { formatCurrency, formatCurrencyPrecise, formatDelta } from "@/lib/format";
+import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow } from "./recent-expenses-section";
@@ -132,10 +132,7 @@ export function ExpensesDashboard({
     chartRef.current.scrollLeft = chartRef.current.scrollWidth;
   }, [granularity, points.length]);
 
-  const getDeltaPct = (point: RevenuePoint) => {
-    if (point.previous === 0) return point.current === 0 ? 0 : 100;
-    return ((point.current - point.previous) / point.previous) * 100;
-  };
+  const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
   // Pri výdavkoch je pokles dobrá správa — zelenú dostane nižší stĺpec ako vlani.
   const getYoyBarClass = (point: RevenuePoint) => {
@@ -241,6 +238,7 @@ export function ExpensesDashboard({
           {points.map((point, index) => {
             const tooltipEdgeClass =
               index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
+            const delta = getPointDeltaPct(point);
 
             return (
               <div
@@ -266,9 +264,11 @@ export function ExpensesDashboard({
                     <div className="tooltip-values">
                       <span>Tento rok: {formatCurrency(point.current)}</span>
                       <span>Vlani: {formatCurrency(point.previous)}</span>
-                      <span className={getDeltaPct(point) <= 0 ? "delta up" : "delta down"}>
-                        Rozdiel: {formatDelta(getDeltaPct(point))}
-                      </span>
+                      {delta !== null ? (
+                        <span className={delta <= 0 ? "delta up" : "delta down"}>
+                          Rozdiel: {formatDelta(delta)}
+                        </span>
+                      ) : null}
                     </div>
                     {expenses.length > 0 ? (
                       <button

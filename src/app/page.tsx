@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
-import { TagsDashboard } from "@/components/tags-dashboard";
+import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { RecentInvoicesSection } from "@/components/recent-invoices-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import {
@@ -26,6 +26,14 @@ import {
 import {
   readConnections,
 } from "@/lib/kros-storage";
+import { useTagCategoryIndex } from "@/lib/use-tag-categories";
+import {
+  documentMatchesTagFilters,
+  isTagAllowedByFilters,
+  migrateFlatFiltersToCategories,
+  parseStoredTagFilters,
+  type TagCategoryFilters
+} from "@/lib/tag-categories";
 import type { KrosConnection, NormalizedInvoice } from "@/lib/kros-types";
 import {
   getCachedInvoices,
@@ -118,7 +126,7 @@ export default function HomePage() {
   const [granularity, setGranularity] = useState<Granularity>(
     globalThis.__krosDashboardGranularity ?? "month"
   );
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [categoryFilters, setCategoryFilters] = useState<TagCategoryFilters>({});
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
@@ -130,10 +138,6 @@ export default function HomePage() {
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
 
-  const effectiveTags = useMemo(
-    () => (focusedTag ? [focusedTag] : selectedTags),
-    [focusedTag, selectedTags]
-  );
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
     [focusedCompany, selectedCompanies]
@@ -155,12 +159,7 @@ export default function HomePage() {
       const rawTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
       const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
 
-      if (rawTags) {
-        const parsedTags = JSON.parse(rawTags) as string[];
-        if (Array.isArray(parsedTags)) {
-          setSelectedTags(parsedTags);
-        }
-      }
+      setCategoryFilters(parseStoredTagFilters(rawTags));
 
       if (rawCompanies) {
         const parsedCompanies = JSON.parse(rawCompanies) as string[];
@@ -177,8 +176,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(selectedTags));
-  }, [hasLoadedPersistedFilters, selectedTags]);
+    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(categoryFilters));
+  }, [hasLoadedPersistedFilters, categoryFilters]);
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
@@ -375,52 +374,89 @@ export default function HomePage() {
   }, [connections, syncConnections, granularity, refreshNonce, hasLoadedPersistedFilters]);
 
   const hasLiveMode = connections.length > 0;
+  const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
+
+  useEffect(() => {
+    setCategoryFilters((prev) => migrateFlatFiltersToCategories(prev, tagCategoryIndex));
+  }, [tagCategoryIndex]);
+
+  const tagScopedInvoices = useMemo(
+    () =>
+      liveInvoices.filter((invoice) =>
+        documentMatchesTagFilters(invoice.tags, categoryFilters, focusedTag)
+      ),
+    [liveInvoices, categoryFilters, focusedTag]
+  );
+
   const revenueData = useMemo(() => {
     if (hasLiveMode) {
       return computeRevenueSeries({
-        invoices: liveInvoices,
+        invoices: tagScopedInvoices,
         granularity,
-        selectedTags: effectiveTags,
+        selectedTags: [],
         selectedCompanies: effectiveCompanies
       });
     }
-    return getRevenueChartPointsByTags(granularity, effectiveTags, effectiveCompanies);
-  }, [hasLiveMode, liveInvoices, granularity, effectiveTags, effectiveCompanies]);
+    return getRevenueChartPointsByTags(granularity, [], effectiveCompanies);
+  }, [hasLiveMode, tagScopedInvoices, granularity, effectiveCompanies]);
 
   const ytdTotals = useMemo(() => {
     if (!hasLiveMode) return undefined;
     return computeComparableYtdTotals({
-      invoices: liveInvoices,
-      selectedTags: effectiveTags,
+      invoices: tagScopedInvoices,
+      selectedTags: [],
       selectedCompanies: effectiveCompanies
     });
-  }, [hasLiveMode, liveInvoices, effectiveTags, effectiveCompanies]);
+  }, [hasLiveMode, tagScopedInvoices, effectiveCompanies]);
 
   const kpis = useMemo(() => computeKpis(revenueData, ytdTotals), [revenueData, ytdTotals]);
 
-  const tagsData = useMemo(() => {
+  const availableTagsData = useMemo(() => {
     const points = hasLiveMode
       ? computeTagBreakdown(liveInvoices, effectiveCompanies)
       : getTagsBreakdown(granularity);
     return [...points].sort((a, b) => b.amount - a.amount);
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
 
+  const tagsData = useMemo(() => {
+    const points = hasLiveMode
+      ? computeTagBreakdown(tagScopedInvoices, effectiveCompanies)
+      : getTagsBreakdown(granularity);
+    return [...points]
+      .filter((point) => isTagAllowedByFilters(point.name, categoryFilters, tagCategoryIndex))
+      .sort((a, b) => b.amount - a.amount);
+  }, [
+    hasLiveMode,
+    tagScopedInvoices,
+    effectiveCompanies,
+    granularity,
+    categoryFilters,
+    tagCategoryIndex
+  ]);
+
   const companiesData = useMemo(() => {
-    if (hasLiveMode) return computeCompanyBreakdown(liveInvoices, effectiveTags, effectiveCompanies);
+    if (hasLiveMode) return computeCompanyBreakdown(tagScopedInvoices, [], effectiveCompanies);
     const all = getCompaniesBreakdown(granularity);
     if (effectiveCompanies.length === 0) return all;
     return all.filter((company) => effectiveCompanies.includes(company.name));
-  }, [hasLiveMode, liveInvoices, effectiveTags, effectiveCompanies, granularity]);
+  }, [hasLiveMode, tagScopedInvoices, effectiveCompanies, granularity]);
 
   const recentInvoices = useMemo(() => {
-    const source = hasLiveMode ? liveInvoices : getMockRecentInvoices();
+    const source = hasLiveMode ? tagScopedInvoices : getMockRecentInvoices();
     return getFilteredRecentInvoices(source, {
       granularity,
-      selectedTags: effectiveTags,
+      selectedTags: [],
       selectedCompanies: effectiveCompanies,
       limit: 10
     });
-  }, [hasLiveMode, liveInvoices, granularity, effectiveTags, effectiveCompanies]);
+  }, [hasLiveMode, tagScopedInvoices, granularity, effectiveCompanies]);
+
+  const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
+    setCategoryFilters(next);
+    if (focusedTag && !isTagAllowedByFilters(focusedTag, next, tagCategoryIndex)) {
+      setFocusedTag(null);
+    }
+  };
 
   const updateSelectionWithFocusedGuard = (
     nextSelection: string[],
@@ -444,8 +480,8 @@ export default function HomePage() {
         onGranularityChange={setGranularity}
         kpis={kpis}
         points={revenueData}
-        invoices={liveInvoices}
-        selectedTags={effectiveTags}
+        invoices={tagScopedInvoices}
+        selectedTags={[]}
         selectedCompanies={effectiveCompanies}
         onClearTagFilter={() => setFocusedTag(null)}
         activeTagLabel={focusedTag ?? undefined}
@@ -453,13 +489,13 @@ export default function HomePage() {
         activeCompanyLabel={focusedCompany ?? undefined}
         isLoading={isLoadingLiveData}
       />
-      <TagsDashboard
+      <CategorizedTagsDashboard
         tags={tagsData}
-        selectedTags={selectedTags}
+        availableTags={availableTagsData}
+        categoryIndex={tagCategoryIndex}
+        categoryFilters={categoryFilters}
         focusedTag={focusedTag}
-        onSelectionChange={(tags) =>
-          updateSelectionWithFocusedGuard(tags, focusedTag, setSelectedTags, setFocusedTag)
-        }
+        onCategoryFiltersChange={handleCategoryFiltersChange}
         onFocusedTagChange={setFocusedTag}
         isLoading={isLoadingLiveData}
       />

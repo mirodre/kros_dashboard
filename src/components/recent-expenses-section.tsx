@@ -7,6 +7,7 @@ import {
   isExpenseUnpaid
 } from "@/lib/expenses-live";
 import { formatCurrencyPrecise } from "@/lib/format";
+import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 function formatDueDate(expense: NormalizedExpense) {
   if (!expense.dueDate) return null;
@@ -96,34 +97,53 @@ type Props = {
 };
 
 export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
+  const [collapsed, setCollapsed] = usePersistedCollapsed(
+    "kros_dashboard_collapsed_recent_expenses"
+  );
+
   return (
     <section className="dashboard-body">
-      <article className="panel panel-with-skeleton">
+      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
-          <h3>Posledné výdavky</h3>
+          <button
+            type="button"
+            className="panel-collapse-toggle"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Rozbaliť Posledné výdavky" : "Zbaliť Posledné výdavky"}
+          >
+            <span className={`panel-collapse-chevron${collapsed ? " collapsed" : ""}`} aria-hidden="true">
+              ▾
+            </span>
+            <h3>Posledné výdavky</h3>
+          </button>
         </header>
 
-        {isLoading ? (
-          <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div className="skeleton-list-row" key={`expense-skeleton-${index}`}>
-                <span />
-                <span />
+        {!collapsed ? (
+          <>
+            {isLoading ? (
+              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div className="skeleton-list-row" key={`expense-skeleton-${index}`}>
+                    <span />
+                    <span />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : null}
+            ) : null}
 
-        {!isLoading && expenses.length === 0 ? (
-          <p className="tag-filter-help">V tomto výbere zatiaľ nemáme žiadne výdavky.</p>
-        ) : null}
+            {!isLoading && expenses.length === 0 ? (
+              <p className="tag-filter-help">V tomto výbere zatiaľ nemáme žiadne výdavky.</p>
+            ) : null}
 
-        {!isLoading && expenses.length > 0 ? (
-          <ul className="tag-list">
-            {expenses.map((expense) => (
-              <ExpenseRow key={`${expense.companyId ?? expense.companyName}-${expense.id}`} expense={expense} />
-            ))}
-          </ul>
+            {!isLoading && expenses.length > 0 ? (
+              <ul className="tag-list">
+                {expenses.map((expense) => (
+                  <ExpenseRow key={`${expense.companyId ?? expense.companyName}-${expense.id}`} expense={expense} />
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : null}
       </article>
     </section>

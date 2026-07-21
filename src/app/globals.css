@@ -690,6 +690,41 @@ body {
   margin-bottom: 0.45rem;
 }
 
+.panel-collapsed .panel-head {
+  margin-bottom: 0;
+}
+
+.panel-collapse-toggle {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.panel-collapse-toggle h3 {
+  margin: 0;
+}
+
+.panel-collapse-chevron {
+  color: #9eb0d8;
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  margin-top: 0.12rem;
+  transition: transform 160ms ease;
+}
+
+.panel-collapse-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
 .panel-head h3 {
   color: #f0f3ff;
   font-size: 1.02rem;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatCurrency, formatDelta } from "@/lib/format";
+import { formatCurrency, formatDelta, getDeltaPct } from "@/lib/format";
 
 type BreakdownItem = {
   name: string;
@@ -24,6 +24,10 @@ type Props = {
   isLoading?: boolean;
   /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
   invertDeltaColor?: boolean;
+  /** Ak je true, sekciu ide zbaliť (schovať zoznam). */
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 export function FilterableBreakdownSection({
@@ -39,7 +43,10 @@ export function FilterableBreakdownSection({
   onSelectionChange,
   onFocusedItemChange,
   isLoading = false,
-  invertDeltaColor = false
+  invertDeltaColor = false,
+  collapsible = false,
+  collapsed = false,
+  onCollapsedChange
 }: Props) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
@@ -86,55 +93,84 @@ export function FilterableBreakdownSection({
     onFocusedItemChange(itemName);
   };
 
+  const toggleCollapsed = () => {
+    onCollapsedChange?.(!collapsed);
+  };
+
   return (
     <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
-      <article className="panel panel-with-skeleton">
+      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
-          <h3>{title}</h3>
+          {collapsible ? (
+            <button
+              type="button"
+              className="panel-collapse-toggle"
+              onClick={toggleCollapsed}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? `Rozbaliť ${title}` : `Zbaliť ${title}`}
+            >
+              <span className={`panel-collapse-chevron${collapsed ? " collapsed" : ""}`} aria-hidden="true">
+                ▾
+              </span>
+              <h3>{title}</h3>
+            </button>
+          ) : (
+            <h3>{title}</h3>
+          )}
           <button type="button" className="secondary-button" onClick={openFilter}>
             {filterLabel}
             {selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}
           </button>
         </header>
 
-        {isLoading ? (
-          <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div className="skeleton-list-row" key={index}>
-                <span />
-                <span />
+        {!collapsed ? (
+          <>
+            {isLoading ? (
+              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div className="skeleton-list-row" key={index}>
+                    <span />
+                    <span />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            ) : null}
+
+            <ul className="tag-list">
+              {filteredItems.map((item) => {
+                const delta = getDeltaPct(item.amount, item.previousAmount);
+                const isActive = focusedItem === item.name;
+
+                return (
+                  <li key={item.name} className={isActive ? "active" : ""}>
+                    <div>
+                      <p className="tag-name">{item.name}</p>
+                      <p className="tag-sub">vlani {formatCurrency(item.previousAmount)}</p>
+                    </div>
+                    <div className="tag-values">
+                      <p>{formatCurrency(item.amount)}</p>
+                      {delta !== null ? (
+                        <p
+                          className={
+                            (invertDeltaColor ? delta <= 0 : delta >= 0) ? "delta up" : "delta down"
+                          }
+                        >
+                          {formatDelta(delta)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="tag-row-hitbox"
+                      onClick={() => handleItemClick(item.name)}
+                      aria-label={`${ariaLabelPrefix} ${item.name}`}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         ) : null}
-
-        <ul className="tag-list">
-          {filteredItems.map((item) => {
-            const delta = ((item.amount - item.previousAmount) / item.previousAmount) * 100;
-            const isActive = focusedItem === item.name;
-
-            return (
-              <li key={item.name} className={isActive ? "active" : ""}>
-                <div>
-                  <p className="tag-name">{item.name}</p>
-                  <p className="tag-sub">vlani {formatCurrency(item.previousAmount)}</p>
-                </div>
-                <div className="tag-values">
-                  <p>{formatCurrency(item.amount)}</p>
-                  <p className={(invertDeltaColor ? delta <= 0 : delta >= 0) ? "delta up" : "delta down"}>
-                    {formatDelta(delta)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="tag-row-hitbox"
-                  onClick={() => handleItemClick(item.name)}
-                  aria-label={`${ariaLabelPrefix} ${item.name}`}
-                />
-              </li>
-            );
-          })}
-        </ul>
       </article>
 
       {isFilterOpen ? (
