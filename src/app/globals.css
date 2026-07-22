@@ -2109,14 +2109,18 @@ body {
    * a presvetlenie posobilo useknuto. Teziste dvihame vyssie (120px) a spodok
    * plynulo dobledneme cez masku.
    *
-   * DOLEZITE: pouzivame kruh s pevnou dlzkou (circle 560px), nie percenta.
-   * radial-gradient s percentom v rozmere (napr. 135%) WebKit/iOS Safari
-   * odmieta ako neplatny -> deklaracia background vypadne a ::before spadne
-   * na zakladne (desktopove) pravidlo s teziskom 200px, cim sa vrch znovu
-   * zatmavi. Pevna dlzka je podporovana vsade.
+   * DOLEZITE (WebKit/iOS Safari): rozmer gradientu udavame ako DVE rozne
+   * pevne dlzky (600px 560px). Safari odmieta ako neplatne:
+   *   - percento v rozmere (napr. 135%)
+   *   - jednu dlzku bez klucoveho slova (napr. "560px" bez "circle")
+   * a CSS minifikacia klucove slova ("ellipse"/"circle") aj tak odstrani.
+   * Dve rozne dlzky sa nedaju zredukovat na jednu ani na percento, cize
+   * po minifikacii ostane platny 2-hodnotovy elipsovy zapis. Ak background
+   * vypadne, ::before spadne na zakladne pravidlo (tezisko 200px) a vrch za
+   * stavovym riadkom znovu stmavne - presne to sa dialo.
    */
   .app-shell::before {
-    background: radial-gradient(circle 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
+    background: radial-gradient(600px 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
     height: 700px;
     -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
     mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
