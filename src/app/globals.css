@@ -2103,6 +2103,19 @@ body {
     padding: calc(1.35rem + env(safe-area-inset-top)) 1.25rem calc(6.9rem + env(safe-area-inset-bottom));
   }
 
+  /*
+   * Na uzkom (mobilnom) okne bola pevna elipsa z desktopu privysoka/prikompaktna:
+   * horna cast (za priesvitnym stavovym riadkom – cas, baterka) ostala tmava
+   * a presvetlenie posobilo useknuto. Sirka sa teraz skaluje s oknom (%),
+   * teziste je vyssie a spodok plynulo dobledne cez masku.
+   */
+  .app-shell::before {
+    background: radial-gradient(ellipse 135% 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
+    height: 700px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+  }
+
   .desktop-only-nav,
   .desktop-only-settings {
     display: none;
