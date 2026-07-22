@@ -2106,11 +2106,17 @@ body {
   /*
    * Na uzkom (mobilnom) okne bola pevna elipsa z desktopu privysoka/prikompaktna:
    * horna cast (za priesvitnym stavovym riadkom – cas, baterka) ostala tmava
-   * a presvetlenie posobilo useknuto. Sirka sa teraz skaluje s oknom (%),
-   * teziste je vyssie a spodok plynulo dobledne cez masku.
+   * a presvetlenie posobilo useknuto. Teziste dvihame vyssie (120px) a spodok
+   * plynulo dobledneme cez masku.
+   *
+   * DOLEZITE: pouzivame kruh s pevnou dlzkou (circle 560px), nie percenta.
+   * radial-gradient s percentom v rozmere (napr. 135%) WebKit/iOS Safari
+   * odmieta ako neplatny -> deklaracia background vypadne a ::before spadne
+   * na zakladne (desktopove) pravidlo s teziskom 200px, cim sa vrch znovu
+   * zatmavi. Pevna dlzka je podporovana vsade.
    */
   .app-shell::before {
-    background: radial-gradient(ellipse 135% 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
+    background: radial-gradient(circle 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
     height: 700px;
     -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
     mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
