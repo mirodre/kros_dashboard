@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { DemoDataBanner } from "@/components/demo-data-banner";
 import { ExpensesDashboard } from "@/components/expenses-dashboard";
 import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { ExpenseVendorsSection } from "@/components/expense-vendors-section";
@@ -544,6 +545,7 @@ export default function ExpensesPage() {
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
+      {!hasLiveMode ? <DemoDataBanner /> : null}
       <ExpensesDashboard
         granularity={granularity}
         onGranularityChange={setGranularity}

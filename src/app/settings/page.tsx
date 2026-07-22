@@ -6,7 +6,8 @@ import { KrosConnectionCard } from "@/components/kros-connection-card";
 import { clearCashflowCache } from "@/lib/cashflow-cache";
 import { clearExpenseCache } from "@/lib/expense-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
-import { clearPendingState, readConnections, readPendingState, savePendingState, writeConnections } from "@/lib/kros-storage";
+import { clearPendingState, readConnections, readPendingState, writeConnections } from "@/lib/kros-storage";
+import { startKrosConnect } from "@/lib/kros-connect";
 import type { KrosConnection } from "@/lib/kros-types";
 import type { KrosApiLogEntry } from "@/lib/kros-logs";
 
@@ -100,45 +101,13 @@ export default function SettingsPage() {
     );
   };
 
-  const createIntegrationConsentUrl = (state: string) => {
-    const consentBase =
-      process.env.NEXT_PUBLIC_KROS_CONSENT_BASE_URL ?? "https://firma.kros.sk/integration-consent";
-    const appBaseUrl = window.location.origin;
-    const params = new URLSearchParams({
-      plugin_name: "KrosDashboard",
-      integrator_name: "KrosDashboard",
-      version: "1",
-      response_mode: "post",
-      redirect_url: `${appBaseUrl}/kros/callback`,
-      state,
-      company_mode: "multiple"
-    });
-    return `${consentBase}?${params.toString()}`;
-  };
-
   const handleConnectClick = async () => {
-    const state = crypto.randomUUID().replace(/-/g, "");
-    savePendingState(state);
-    setPendingState(state);
-    setStatusMessage("Pripravujem bezpečné prepojenie s KROS...");
-
-    try {
-      const response = await fetch("/api/kros/oauth-state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state })
-      });
-      if (!response.ok) {
-        setStatusMessage("Nepodarilo sa pripraviť OAuth prepojenie. Skús to znova.");
-        return;
+    await startKrosConnect({
+      onStatus: (message) => {
+        setStatusMessage(message);
+        setPendingState(readPendingState());
       }
-    } catch {
-      setStatusMessage("Nepodarilo sa kontaktovať server. Skús to znova.");
-      return;
-    }
-
-    setStatusMessage("Presmerovávam do KROS prepojenia...");
-    window.location.assign(createIntegrationConsentUrl(state));
+    });
   };
 
   const handleDisconnectCompany = (companyId: number) => {

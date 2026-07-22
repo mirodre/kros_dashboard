@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { DemoDataBanner } from "@/components/demo-data-banner";
 import { CASHFLOW_MOCK_COMPANIES, getCashflowOverview } from "@/lib/cashflow-mock-data";
 import {
   computeCashflowOverviewFromLiveData,
@@ -320,6 +321,7 @@ export default function CashflowPage() {
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
+      {shouldShowMockData ? <DemoDataBanner /> : null}
       <CashflowDashboard
         kpis={overview.kpis}
         points={overview.points}

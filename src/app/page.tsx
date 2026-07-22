@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { DemoDataBanner } from "@/components/demo-data-banner";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
 import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { RecentInvoicesSection } from "@/components/recent-invoices-section";
@@ -508,6 +509,7 @@ export default function HomePage() {
       isSyncing={isLoadingLiveData}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
+      {!hasLiveMode ? <DemoDataBanner /> : null}
       <RevenueDashboard
         granularity={granularity}
         onGranularityChange={setGranularity}
