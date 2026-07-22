@@ -2104,16 +2104,9 @@ body {
   }
 
   /*
-   * iOS/mobil: fixna vrstva .app-shell::before nespolahlivo prekresluje hornu
-   * bezpecnostnu zonu (za priesvitnym stavovym riadkom - cas, baterka). Aj pri
-   * viewport-fit=cover ju Safari nechal nezakrytu, takze stavovy riadok sedel na
-   * plnej tmavej farbe <body> a vznikal tmavy pruh vysky safe-area-inset-top.
-   *
-   * Riesenie: presvetlenie na mobile davame na korenovy <html>. Pozadie
-   * korenoveho prvku je pozadim "canvasu" - iOS ho maluje cez cely displej
-   * vratane oblasti za stavovym riadkom, nezavisle od toho, ci sa viewport-fit
-   * =cover uplatnil. Body robime priehladny (nech presvitne html a nedvoji sa)
-   * a fixnu vrstvu ::before na mobile vypiname.
+   * Presvetlenie obsahu na mobile: tezisko dvihame vyssie (120px), aby horna
+   * cast dashboardu plynulo nadvazovala na presvetleny stavovy riadok (jeho
+   * farbu riesi meta theme-color v layout.tsx - viz nizsie).
    *
    * Rozmer gradientu drzime ako DVE rozne pevne dlzky (600px 560px): CSS
    * minifikacia odstranuje klucove slova (ellipse/circle) a Safari odmieta
@@ -2121,18 +2114,10 @@ body {
    * platnym 2-hodnotovym elipsovym zapisom.
    */
   .app-shell::before {
-    display: none;
-  }
-
-  html {
-    background:
-      radial-gradient(600px 560px at 50% 120px, rgba(55, 78, 148, 0.85) 0%, rgba(44, 62, 122, 0.48) 34%, rgba(17, 20, 32, 0) 82%),
-      var(--bg);
-    background-repeat: no-repeat;
-  }
-
-  body {
-    background: transparent;
+    background: radial-gradient(600px 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
+    height: 700px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
   }
 
   .desktop-only-nav,
