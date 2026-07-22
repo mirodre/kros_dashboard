@@ -60,6 +60,12 @@ export function FilterableBreakdownSection({
     return items.filter((item) => selectedItems.includes(item.name));
   }, [selectedItems, items]);
 
+  // Celkový objem sekcie pre mini-graf podielu (koľko % z celku daný riadok tvorí).
+  const shareTotal = useMemo(
+    () => items.reduce((sum, item) => sum + Math.max(item.amount, 0), 0),
+    [items]
+  );
+
   const openFilter = () => {
     setPendingSelection(selectedItems);
     setIsFilterOpen(true);
@@ -140,12 +146,21 @@ export function FilterableBreakdownSection({
               {filteredItems.map((item) => {
                 const delta = getDeltaPct(item.amount, item.previousAmount);
                 const isActive = focusedItem === item.name;
+                const share = shareTotal > 0 ? Math.max(item.amount, 0) / shareTotal : 0;
 
                 return (
                   <li key={item.name} className={isActive ? "active" : ""}>
                     <div className="tag-cell">
                       <p className="tag-name" title={item.name}>{item.name}</p>
-                      <p className="tag-sub">vlani {formatCurrency(item.previousAmount)}</p>
+                      <p className="tag-sub">
+                        {(share * 100).toFixed(1)} % z celku • vlani {formatCurrency(item.previousAmount)}
+                      </p>
+                      <div className="tag-share-track" aria-hidden="true">
+                        <div
+                          className="tag-share-fill"
+                          style={{ width: `${Math.min(share * 100, 100)}%` }}
+                        />
+                      </div>
                     </div>
                     <div className="tag-values">
                       <p>{formatCurrency(item.amount)}</p>

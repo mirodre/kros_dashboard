@@ -1645,6 +1645,22 @@ body {
   white-space: nowrap;
 }
 
+.tag-share-track {
+  background: rgba(92, 131, 255, 0.16);
+  border-radius: 99px;
+  height: 5px;
+  margin-top: 0.45rem;
+  max-width: 240px;
+  overflow: hidden;
+}
+
+.tag-share-fill {
+  background: linear-gradient(90deg, #5c83ff 0%, #7aa0ff 100%);
+  border-radius: inherit;
+  height: 100%;
+  transition: width 420ms ease;
+}
+
 .with-today-indicator {
   align-items: center;
   display: inline-flex;
