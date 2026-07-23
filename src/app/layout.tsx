@@ -21,11 +21,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  // Farba stavoveho riadku v Safari (cas, baterka). iOS tuto zonu maluje
-  // podla theme-color, nie podla CSS pozadia - preto ju ladime na farbu
-  // presvetleneho vrchu dashboardu, aby zahlavie plynulo nadvazovalo a
-  // nevznikal tmavy pruh. Bola tu tmava zakladna #111420.
-  themeColor: "#283767"
+  // Zakladna farba pozadia. Rovnaka je aj vrch presvetlovacieho gradientu,
+  // takze stavovy riadok (ktory iOS maluje podla theme-color) plynulo splyva
+  // s vrchom dashboardu - presvetlenie sa rozjasnuje az nizsie.
+  themeColor: "#111420"
 };
 
 export default function RootLayout({

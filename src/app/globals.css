@@ -2104,20 +2104,25 @@ body {
   }
 
   /*
-   * Presvetlenie obsahu na mobile: tezisko dvihame vyssie (120px), aby horna
-   * cast dashboardu plynulo nadvazovala na presvetleny stavovy riadok (jeho
-   * farbu riesi meta theme-color v layout.tsx - viz nizsie).
+   * Mobil: presvetlenie ZACINA hore zakladnou farbou pozadia a rozjasnuje sa
+   * az nizsie. Vrchny okraj (za stavovym riadkom - cas, baterka) je tak vzdy
+   * identicky so zvyskom vrchu, cize je jedno, ci Safari zobrazi pasik stavoveho
+   * riadku - nikde nevznikne prechod na inu farbu.
    *
-   * Rozmer gradientu drzime ako DVE rozne pevne dlzky (600px 560px): CSS
+   * Docielime to maskou, ktora je hore priehladna (vidno holu zakladnu farbu),
+   * postupne sa otvara do plneho gradientu a dole zase plynulo zhasina. Tezisko
+   * ziary je nizsie (260px), aby jej vrchol nepadol do zamaskovaneho vrchu.
+   *
+   * Rozmer gradientu drzime ako DVE rozne pevne dlzky (700px 620px): CSS
    * minifikacia odstranuje klucove slova (ellipse/circle) a Safari odmieta
    * percento aj jednu dlzku bez klucoveho slova - dve rozne dlzky ostanu vzdy
    * platnym 2-hodnotovym elipsovym zapisom.
    */
   .app-shell::before {
-    background: radial-gradient(600px 560px at 50% 120px, rgba(55, 78, 148, 0.8) 0%, rgba(44, 62, 122, 0.44) 34%, rgba(17, 20, 32, 0) 82%);
-    height: 700px;
-    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
-    mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+    background: radial-gradient(700px 620px at 50% 260px, rgba(55, 78, 148, 0.82) 0%, rgba(44, 62, 122, 0.46) 36%, rgba(17, 20, 32, 0) 82%);
+    height: 760px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 8%, #000 32%, #000 60%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, transparent 8%, #000 32%, #000 60%, transparent 100%);
   }
 
   .desktop-only-nav,
