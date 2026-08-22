@@ -6,6 +6,7 @@ import type {
   NormalizedExpense
 } from "./kros-types";
 import { getDateRange } from "./dashboard-live";
+import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
 
 /** Podiel štítku na výdavkoch v aktuálnom období — podklad pre donut Štruktúra výdavkov. */
 export type ExpenseTagSlice = {
@@ -62,8 +63,8 @@ export function isExpenseUnpaid(expense: NormalizedExpense) {
 
 export function isExpenseOverdue(expense: NormalizedExpense, referenceDate: Date = new Date()) {
   if (!isExpenseUnpaid(expense) || !expense.dueDate) return false;
-  const due = new Date(expense.dueDate);
-  if (Number.isNaN(due.getTime())) return false;
+  const due = parseDocumentDate(expense.dueDate);
+  if (!due) return false;
   const startOfToday = new Date(referenceDate);
   startOfToday.setHours(0, 0, 0, 0);
   return due.getTime() < startOfToday.getTime();
@@ -157,7 +158,7 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
       const row = expense as Record<string, unknown>;
       const id = pickString(row, ["id", "documentId"]);
       const issueDate = typeof row.issueDate === "string" ? row.issueDate : null;
-      if (!id || !issueDate || Number.isNaN(new Date(issueDate).getTime())) return null;
+      if (!id || !issueDate || !isValidDocumentDate(issueDate)) return null;
 
       const companyName = typeof row.__company === "string" ? row.__company : "Neznáma firma";
       const companyId = typeof row.__companyId === "number" ? row.__companyId : undefined;
@@ -170,10 +171,7 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
       const vatTotalPrice = sign < 0 ? -Math.abs(prices.vat) : prices.vat;
 
       const deliveryDateRaw = pickString(row, ["deliveryDate"]);
-      const deliveryDate =
-        deliveryDateRaw && !Number.isNaN(new Date(deliveryDateRaw).getTime())
-          ? deliveryDateRaw
-          : undefined;
+      const deliveryDate = deliveryDateRaw && isValidDocumentDate(deliveryDateRaw) ? deliveryDateRaw : undefined;
 
       const paymentStatusCode = getNumber(row.paymentStatus);
       const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
@@ -335,13 +333,15 @@ export function computeExpenseSeries({
 
   const filtered = expenses.filter((expense) => {
     if (!countsTowardsSpend(expense)) return false;
-    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+    const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!expenseDate) return false;
     const inWindow = expenseDate >= range.previousFrom && expenseDate <= range.currentTo;
     return inWindow && filterPass(expense);
   });
 
   for (const expense of filtered) {
-    const date = new Date(getExpenseAnalyticsDate(expense));
+    const date = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!date) continue;
 
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
@@ -399,12 +399,14 @@ export function getExpenseBucketDocs({
   const filterExpenses = ({ from, to }: { from: Date; to: Date }) =>
     expenses
       .filter((expense) => {
-        const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+        const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+        if (!expenseDate) return false;
         return expenseDate >= from && expenseDate <= to && filterPass(expense);
       })
       .sort(
         (a, b) =>
-          new Date(getExpenseAnalyticsDate(b)).getTime() - new Date(getExpenseAnalyticsDate(a)).getTime()
+          (getDocumentDateTime(getExpenseAnalyticsDate(b)) ?? 0) -
+          (getDocumentDateTime(getExpenseAnalyticsDate(a)) ?? 0)
       );
 
   return {
@@ -428,7 +430,8 @@ export function computeComparableExpenseYtdTotals({
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+    const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!expenseDate) continue;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       current += expense.totalPriceInclVat;
     } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
@@ -507,7 +510,8 @@ export function computeExpenseTagStructure(
     if (!countsTowardsSpend(expense)) continue;
     if (companySet.size > 0 && !companySet.has(expense.companyName)) continue;
 
-    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+    const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!expenseDate) continue;
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";
@@ -562,7 +566,8 @@ export function computeExpenseCompanyBreakdown(
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+    const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!expenseDate) continue;
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";
@@ -597,7 +602,8 @@ export function computeExpenseVendorBreakdown(
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
-    const expenseDate = new Date(getExpenseAnalyticsDate(expense));
+    const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+    if (!expenseDate) continue;
     let yearBucket: "current" | "previous" | null = null;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
       yearBucket = "current";
@@ -642,12 +648,16 @@ export function computeExpenseDueWatchlist(
 
   const overdue = unpaid
     .filter((expense) => isExpenseOverdue(expense, referenceDate))
-    .sort((a, b) => new Date(a.dueDate ?? a.issueDate).getTime() - new Date(b.dueDate ?? b.issueDate).getTime());
+    .sort(
+      (a, b) =>
+        (getDocumentDateTime(a.dueDate ?? a.issueDate) ?? 0) -
+        (getDocumentDateTime(b.dueDate ?? b.issueDate) ?? 0)
+    );
   const upcoming = unpaid
     .filter((expense) => !isExpenseOverdue(expense, referenceDate))
     .sort((a, b) => {
-      const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-      const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const dueA = getDocumentDateTime(a.dueDate) ?? Number.MAX_SAFE_INTEGER;
+      const dueB = getDocumentDateTime(b.dueDate) ?? Number.MAX_SAFE_INTEGER;
       return dueA - dueB;
     });
 
@@ -675,15 +685,15 @@ export function getFilteredRecentExpenses(
 
   return expenses
     .filter((expense) => {
-      const expenseDate = new Date(expense.issueDate);
-      if (Number.isNaN(expenseDate.getTime())) return false;
+      const expenseDate = parseDocumentDate(expense.issueDate);
+      if (!expenseDate) return false;
       const inWindow = expenseDate >= range.previousFrom && expenseDate <= range.currentTo;
       return inWindow && filterPass(expense);
     })
     .slice()
     .sort((a, b) => {
-      const da = new Date(a.issueDate).getTime();
-      const db = new Date(b.issueDate).getTime();
+      const da = getDocumentDateTime(a.issueDate) ?? 0;
+      const db = getDocumentDateTime(b.issueDate) ?? 0;
       if (db !== da) return db - da;
       const ma = a.lastModifiedTimestamp ? new Date(a.lastModifiedTimestamp).getTime() : 0;
       const mb = b.lastModifiedTimestamp ? new Date(b.lastModifiedTimestamp).getTime() : 0;

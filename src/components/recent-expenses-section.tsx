@@ -7,23 +7,20 @@ import {
   isExpenseUnpaid
 } from "@/lib/expenses-live";
 import { formatCurrencyPrecise } from "@/lib/format";
+import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
 import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 function formatDueDate(expense: NormalizedExpense) {
   if (!expense.dueDate) return null;
-  const due = new Date(expense.dueDate);
-  if (Number.isNaN(due.getTime())) return null;
+  const due = parseDocumentDate(expense.dueDate);
+  if (!due) return null;
   return due.toLocaleDateString("sk-SK");
 }
 
 /** Riadok výdavkového dokladu — zdieľaný sekciou Posledné výdavky a sheetom splatností. */
 export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
-  const issueDate = new Date(expense.issueDate);
-  const now = new Date();
-  const isToday =
-    issueDate.getFullYear() === now.getFullYear() &&
-    issueDate.getMonth() === now.getMonth() &&
-    issueDate.getDate() === now.getDate();
+  const issueDate = parseDocumentDate(expense.issueDate);
+  const isToday = isSameCalendarDay(expense.issueDate, new Date());
   const overdue = isExpenseOverdue(expense);
   const unpaid = !overdue && isExpenseUnpaid(expense);
   const dueLabel = formatDueDate(expense);
@@ -67,7 +64,7 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
       <div className="movement-row-body">
         <div className="movement-row-meta">
           <p className="tag-sub">
-            {issueDate.toLocaleDateString("sk-SK")} • {getExpenseDocumentTypeLabel(expense.documentType)}
+            {issueDate?.toLocaleDateString("sk-SK") ?? "—"} • {getExpenseDocumentTypeLabel(expense.documentType)}
             {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
           </p>
           {(overdue || unpaid) && dueLabel ? (

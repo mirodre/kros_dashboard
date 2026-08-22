@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { toDateOnlyString } from "@/lib/document-date";
 
 type CompanyConnection = {
   companyId: number;
@@ -16,16 +17,14 @@ type ExpenseRequestBody = {
 
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
 
+// KROS API očakáva čistý dátum. Berieme dátumovú zložku reťazca, aby časová
+// zóna servera nevedela posunúť okno sťahovania o deň.
 function toKrosDate(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
+  const dateOnly = toDateOnlyString(value);
+  if (!dateOnly) {
     throw new Error(`Neplatná hodnota dátumu: ${value}`);
   }
-
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return dateOnly;
 }
 
 async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3) {

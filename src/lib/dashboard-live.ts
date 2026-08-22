@@ -1,5 +1,6 @@
 import type { Granularity, KpiCard } from "./mock-data";
 import type { AggregatedBreakdownPoint, AggregatedRevenuePoint, NormalizedInvoice } from "./kros-types";
+import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
 
 function startOfDayIso(date: Date) {
   const local = new Date(date);
@@ -186,10 +187,7 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
       const id = readString(row, ["id", "invoiceId", "documentId", "number"]);
       const issueDate = typeof row.issueDate === "string" ? row.issueDate : null;
       const deliveryDateRaw = readString(row, ["deliveryDate"]);
-      const deliveryDate =
-        deliveryDateRaw && !Number.isNaN(new Date(deliveryDateRaw).getTime())
-          ? deliveryDateRaw
-          : undefined;
+      const deliveryDate = deliveryDateRaw && isValidDocumentDate(deliveryDateRaw) ? deliveryDateRaw : undefined;
       const companyName = typeof row.__company === "string" ? row.__company : "Neznáma firma";
       const companyId = typeof row.__companyId === "number" ? row.__companyId : undefined;
       const invoiceNumber = readString(row, ["invoiceNumber", "number", "documentNumber", "variableSymbol"]);
@@ -204,7 +202,7 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
       const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
       const tags = tagsRaw.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
 
-      if (!id || !issueDate || Number.isNaN(new Date(issueDate).getTime())) return null;
+      if (!id || !issueDate || !isValidDocumentDate(issueDate)) return null;
 
       return {
         id,
@@ -246,7 +244,8 @@ export function computeRevenueSeries({
   );
 
   const filtered = invoices.filter((invoice) => {
-    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
+    const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+    if (!invoiceDate) return false;
     const inWindow = invoiceDate >= range.previousFrom && invoiceDate <= range.currentTo;
     const companyPass =
       selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
@@ -256,7 +255,8 @@ export function computeRevenueSeries({
   });
 
   for (const invoice of filtered) {
-    const date = new Date(getInvoiceAnalyticsDate(invoice));
+    const date = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+    if (!date) continue;
 
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
@@ -319,7 +319,8 @@ export function getRevenueBucketInvoices({
   const filterInvoices = ({ from, to }: { from: Date; to: Date }) =>
     invoices
       .filter((invoice) => {
-        const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
+        const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+        if (!invoiceDate) return false;
         const companyPass =
           selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
         const tagPass =
@@ -328,7 +329,8 @@ export function getRevenueBucketInvoices({
       })
       .sort(
         (a, b) =>
-          new Date(getInvoiceAnalyticsDate(b)).getTime() - new Date(getInvoiceAnalyticsDate(a)).getTime()
+          (getDocumentDateTime(getInvoiceAnalyticsDate(b)) ?? 0) -
+          (getDocumentDateTime(getInvoiceAnalyticsDate(a)) ?? 0)
       );
 
   return {
@@ -396,10 +398,10 @@ export function computeComparableYtdTotals({
   let previous = 0;
 
   for (const invoice of invoices) {
-    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
+    const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
     const companyPass = selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
     const tagPass = selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
-    if (!companyPass || !tagPass) continue;
+    if (!invoiceDate || !companyPass || !tagPass) continue;
 
     if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
       current += invoice.totalPrice;
@@ -425,7 +427,8 @@ export function computeTagBreakdown(
   for (const invoice of invoices) {
     if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
 
-    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
+    const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+    if (!invoiceDate) continue;
     let yearBucket: "current" | "previous" | null = null;
 
     if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
@@ -466,7 +469,8 @@ export function computeCompanyBreakdown(
     const tagPass = tagSet.size === 0 || invoice.tags.some((tag) => tagSet.has(tag));
     if (!tagPass) continue;
 
-    const invoiceDate = new Date(getInvoiceAnalyticsDate(invoice));
+    const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+    if (!invoiceDate) continue;
     let yearBucket: "current" | "previous" | null = null;
 
     if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
@@ -505,8 +509,8 @@ export function getFilteredRecentInvoices(
   const limit = options.limit ?? 10;
 
   const filtered = invoices.filter((invoice) => {
-    const invoiceDate = new Date(invoice.issueDate);
-    if (Number.isNaN(invoiceDate.getTime())) return false;
+    const invoiceDate = parseDocumentDate(invoice.issueDate);
+    if (!invoiceDate) return false;
     const inWindow = invoiceDate >= range.previousFrom && invoiceDate <= range.currentTo;
     const companyPass =
       selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
@@ -518,8 +522,8 @@ export function getFilteredRecentInvoices(
   return filtered
     .slice()
     .sort((a, b) => {
-      const da = new Date(a.issueDate).getTime();
-      const db = new Date(b.issueDate).getTime();
+      const da = getDocumentDateTime(a.issueDate) ?? 0;
+      const db = getDocumentDateTime(b.issueDate) ?? 0;
       if (db !== da) return db - da;
       const ma = a.lastModifiedTimestamp ? new Date(a.lastModifiedTimestamp).getTime() : 0;
       const mb = b.lastModifiedTimestamp ? new Date(b.lastModifiedTimestamp).getTime() : 0;

@@ -2,16 +2,13 @@
 
 import type { NormalizedInvoice } from "@/lib/kros-types";
 import { formatCurrencyPrecise } from "@/lib/format";
+import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
 import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 type Props = {
   invoices: NormalizedInvoice[];
   isLoading?: boolean;
 };
-
-function parseIssueDate(issueDate: string): Date {
-  return new Date(issueDate.includes("T") ? issueDate : `${issueDate}T12:00:00`);
-}
 
 export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
@@ -58,12 +55,8 @@ export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
             {!isLoading && invoices.length > 0 ? (
               <ul className="invoice-list recent-invoices-list">
                 {invoices.map((invoice) => {
-                  const issueDate = parseIssueDate(invoice.issueDate);
-                  const now = new Date();
-                  const isToday =
-                    issueDate.getFullYear() === now.getFullYear() &&
-                    issueDate.getMonth() === now.getMonth() &&
-                    issueDate.getDate() === now.getDate();
+                  const issueDate = parseDocumentDate(invoice.issueDate);
+                  const isToday = isSameCalendarDay(invoice.issueDate, new Date());
 
                   return (
                     <li key={invoice.id}>
@@ -82,7 +75,7 @@ export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
                             {invoice.partnerName ?? "Neznámy odberateľ"}
                           </p>
                           <p className="tag-sub">
-                            {issueDate.toLocaleDateString("sk-SK")}
+                            {issueDate?.toLocaleDateString("sk-SK") ?? "—"}
                             {invoice.invoiceNumber ? ` • ${invoice.invoiceNumber}` : ""}
                           </p>
                         </div>
