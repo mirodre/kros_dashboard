@@ -8,6 +8,23 @@ import type {
   CashflowPoint,
   CashflowRecentTransaction
 } from "./cashflow-mock-data";
+import { getDocumentDateTime } from "./document-date";
+
+/**
+ * Deň zaúčtovania platby — rovnako ako pri dokladoch berieme len dátumovú
+ * zložku, aby čas (napr. `...T23:00:00Z`) nepresunul pohyb do iného dňa,
+ * a tým do iného obdobia grafu či zostatku.
+ */
+function bookedDayTime(transaction: NormalizedPaymentTransaction) {
+  return getDocumentDateTime(transaction.bookedAt);
+}
+
+/** Najnovšie dni hore; v rámci jedného dňa rozhoduje pôvodná časová pečiatka. */
+function compareByBookedDayDesc(a: NormalizedPaymentTransaction, b: NormalizedPaymentTransaction) {
+  const dayDiff = (bookedDayTime(b) ?? 0) - (bookedDayTime(a) ?? 0);
+  if (dayDiff !== 0) return dayDiff;
+  return (new Date(b.bookedAt).getTime() || 0) - (new Date(a.bookedAt).getTime() || 0);
+}
 
 type CashflowOverview = {
   points: CashflowPoint[];
@@ -322,7 +339,7 @@ export function computeCashflowOverviewFromLiveData({
 
   const recentTransactions: CashflowRecentTransaction[] = transactionScope
     .slice()
-    .sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
+    .sort(compareByBookedDayDesc)
     .map((transaction) => ({
       id: transaction.id,
       accountId: transaction.accountId,
@@ -338,7 +355,7 @@ export function computeCashflowOverviewFromLiveData({
   const unsettledTransactions: CashflowRecentTransaction[] = transactionScope
     .filter((transaction) => !transaction.hasMatchedDocuments && !transaction.isWithoutDocument)
     .slice()
-    .sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
+    .sort(compareByBookedDayDesc)
     .map((transaction) => ({
       id: transaction.id,
       accountId: transaction.accountId,
@@ -400,7 +417,10 @@ function computeOpeningBalance(
 ) {
   const accountStarting = scopeAccounts.reduce((sum, account) => sum + account.startingBalance, 0);
   const transactionsBeforePeriod = scopeTransactions
-    .filter((transaction) => new Date(transaction.bookedAt).getTime() < periodStart.getTime())
+    .filter((transaction) => {
+      const day = bookedDayTime(transaction);
+      return day !== null && day < periodStart.getTime();
+    })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   return accountStarting + transactionsBeforePeriod;
 }
@@ -411,11 +431,10 @@ function computeAccountClosingBalance(
   periodEnd: Date
 ) {
   const flow = scopeTransactions
-    .filter(
-      (transaction) =>
-        transaction.accountId === account.id &&
-        new Date(transaction.bookedAt).getTime() <= periodEnd.getTime()
-    )
+    .filter((transaction) => {
+      const day = bookedDayTime(transaction);
+      return transaction.accountId === account.id && day !== null && day <= periodEnd.getTime();
+    })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   return account.startingBalance + flow;
 }
@@ -425,11 +444,10 @@ function computeAccountPaymentCount(
   scopeTransactions: NormalizedPaymentTransaction[],
   periodEnd: Date
 ) {
-  return scopeTransactions.filter(
-    (transaction) =>
-      transaction.accountId === accountId &&
-      new Date(transaction.bookedAt).getTime() <= periodEnd.getTime()
-  ).length;
+  return scopeTransactions.filter((transaction) => {
+    const day = bookedDayTime(transaction);
+    return transaction.accountId === accountId && day !== null && day <= periodEnd.getTime();
+  }).length;
 }
 
 type PeriodWindow = { start: Date; end: Date };
@@ -509,8 +527,8 @@ function computeBucketMetrics(buckets: Bucket[], transactions: NormalizedPayment
     let inflow = 0;
     let outflow = 0;
     for (const transaction of transactions) {
-      const time = new Date(transaction.bookedAt).getTime();
-      if (time < bucket.start.getTime() || time > bucket.end.getTime()) continue;
+      const day = bookedDayTime(transaction);
+      if (day === null || day < bucket.start.getTime() || day > bucket.end.getTime()) continue;
       if (transaction.amount >= 0) inflow += transaction.amount;
       else outflow += Math.abs(transaction.amount);
     }

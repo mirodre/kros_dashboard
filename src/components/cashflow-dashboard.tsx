@@ -8,6 +8,7 @@ import type {
   CashflowRecentTransaction
 } from "@/lib/cashflow-mock-data";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
+import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
 
 type Props = {
   kpis: KpiCard[];
@@ -425,12 +426,8 @@ export function CashflowDashboard({
           </header>
           <ul className="tag-list">
             {filteredRecentTransactions.map((transaction) => {
-              const movementDate = new Date(transaction.bookedAt);
-              const now = new Date();
-              const isToday =
-                movementDate.getFullYear() === now.getFullYear() &&
-                movementDate.getMonth() === now.getMonth() &&
-                movementDate.getDate() === now.getDate();
+              const movementDate = parseDocumentDate(transaction.bookedAt);
+              const isToday = isSameCalendarDay(transaction.bookedAt, new Date());
               const isUnmatched = !transaction.hasMatchedDocuments && !transaction.isWithoutDocument;
               const rowClass = isUnmatched ? "movement-row attention" : "movement-row";
 
@@ -464,7 +461,7 @@ export function CashflowDashboard({
                   <div className="movement-row-body">
                     <div className="movement-row-meta">
                       <p className="tag-sub">
-                        {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
+                        {movementDate?.toLocaleDateString("sk-SK") ?? "—"} • {transaction.accountName}
                       </p>
                       {transaction.remittanceInformation ? (
                         <p className="tag-sub">{transaction.remittanceInformation}</p>
@@ -502,12 +499,8 @@ export function CashflowDashboard({
             </header>
             <ul className="tag-list unsettled-sheet-list">
               {filteredUnsettledTransactions.map((transaction) => {
-                const movementDate = new Date(transaction.bookedAt);
-                const now = new Date();
-                const isToday =
-                  movementDate.getFullYear() === now.getFullYear() &&
-                  movementDate.getMonth() === now.getMonth() &&
-                  movementDate.getDate() === now.getDate();
+                const movementDate = parseDocumentDate(transaction.bookedAt);
+                const isToday = isSameCalendarDay(transaction.bookedAt, new Date());
                 return (
                   <li key={`unsettled-${transaction.id}`} className="movement-row attention">
                     <div className="movement-row-head">
@@ -536,7 +529,7 @@ export function CashflowDashboard({
                     <div className="movement-row-body">
                       <div className="movement-row-meta">
                         <p className="tag-sub">
-                          {movementDate.toLocaleDateString("sk-SK")} • {transaction.accountName}
+                          {movementDate?.toLocaleDateString("sk-SK") ?? "—"} • {transaction.accountName}
                         </p>
                         {transaction.remittanceInformation ? (
                           <p className="tag-sub">{transaction.remittanceInformation}</p>

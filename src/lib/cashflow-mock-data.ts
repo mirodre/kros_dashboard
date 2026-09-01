@@ -1,4 +1,10 @@
 import type { CompanyPoint, Granularity, KpiCard } from "./mock-data";
+import { getDocumentDateTime } from "./document-date";
+
+/** Deň zaúčtovania platby — rovnaké pravidlo ako v ostrých dátach (čas ignorujeme). */
+function bookedDayTime(bookedAt: string) {
+  return getDocumentDateTime(bookedAt);
+}
 
 type CashflowAccountType = "bank" | "cash" | "gateway" | "other";
 
@@ -183,7 +189,11 @@ export function getCashflowOverview(granularity: Granularity, selectedCompanies:
   const accountNameById = new Map(accountScope.map((account) => [account.id, account.name]));
   const recentTransactions: CashflowRecentTransaction[] = transactionScope
     .slice()
-    .sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
+    .sort((a, b) => {
+      const dayDiff = (bookedDayTime(b.bookedAt) ?? 0) - (bookedDayTime(a.bookedAt) ?? 0);
+      if (dayDiff !== 0) return dayDiff;
+      return new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime();
+    })
     .map((transaction) => ({
       id: transaction.id,
       accountId: transaction.accountId,
@@ -323,7 +333,10 @@ function computeOpeningBalance(
 ) {
   const accountStarting = scopeAccounts.reduce((sum, account) => sum + account.startingBalance, 0);
   const transactionsBeforePeriod = scopeTransactions
-    .filter((transaction) => new Date(transaction.bookedAt).getTime() < periodStart.getTime())
+    .filter((transaction) => {
+      const day = bookedDayTime(transaction.bookedAt);
+      return day !== null && day < periodStart.getTime();
+    })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   return accountStarting + transactionsBeforePeriod;
 }
@@ -334,11 +347,10 @@ function computeAccountClosingBalance(
   periodEnd: Date
 ) {
   const transactionsInRange = scopeTransactions
-    .filter(
-      (transaction) =>
-        transaction.accountId === account.id &&
-        new Date(transaction.bookedAt).getTime() <= periodEnd.getTime()
-    )
+    .filter((transaction) => {
+      const day = bookedDayTime(transaction.bookedAt);
+      return transaction.accountId === account.id && day !== null && day <= periodEnd.getTime();
+    })
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   return account.startingBalance + transactionsInRange;
 }
@@ -348,11 +360,10 @@ function computeAccountPaymentCount(
   scopeTransactions: CashflowTransaction[],
   periodEnd: Date
 ) {
-  return scopeTransactions.filter(
-    (transaction) =>
-      transaction.accountId === accountId &&
-      new Date(transaction.bookedAt).getTime() <= periodEnd.getTime()
-  ).length;
+  return scopeTransactions.filter((transaction) => {
+    const day = bookedDayTime(transaction.bookedAt);
+    return transaction.accountId === accountId && day !== null && day <= periodEnd.getTime();
+  }).length;
 }
 
 type PeriodWindow = {
@@ -438,8 +449,8 @@ function computeBucketMetrics(buckets: Bucket[], scopeTransactions: CashflowTran
     let inflow = 0;
     let outflow = 0;
     for (const transaction of scopeTransactions) {
-      const bookedAt = new Date(transaction.bookedAt).getTime();
-      if (bookedAt < bucket.start.getTime() || bookedAt > bucket.end.getTime()) continue;
+      const day = bookedDayTime(transaction.bookedAt);
+      if (day === null || day < bucket.start.getTime() || day > bucket.end.getTime()) continue;
       if (transaction.amount >= 0) inflow += transaction.amount;
       else outflow += Math.abs(transaction.amount);
     }
