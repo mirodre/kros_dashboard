@@ -6,6 +6,19 @@ import { claimsFromMe, type SsoToken } from "@/lib/sso-claims";
 import { advanceToken } from "@/lib/token-lifecycle";
 
 /**
+ * Delegovane na fetchMe, nie hola URL: prve prihlasenie musi ist tou istou overenou cestou
+ * ako kazde nasledne obnovenie tokenov. fetchMe validuje tvar odpovede (typeof sub/email ===
+ * "string") a rozlisuje "sluzba je dole" od "konto nema pristup" — Auth.js vlastny userinfo
+ * fetch by obe tieto zaruky obisiel.
+ */
+const userinfo: NonNullable<OAuth2Config<MeResponse>["userinfo"]> = {
+  url: `${serviceUrl()}/api/me`,
+  async request({ tokens }: { tokens: { access_token?: string } }) {
+    return fetchMe(tokens.access_token ?? "");
+  }
+};
+
+/**
  * Provider sa menuje `krosdoplnky`, NIE `kros`: appka už má `/api/kros/*` vo význame
  * „KROS ekonomické API" a rovnaké meno by pri čítaní kódu mýlilo.
  *
@@ -24,7 +37,7 @@ function provider(): OAuth2Config<MeResponse> {
     checks: ["pkce", "state"],
     authorization: `${serviceUrl()}/oauth/authorize`,
     token: `${serviceUrl()}/oauth/token`,
-    userinfo: `${serviceUrl()}/api/me`,
+    userinfo,
     profile(profile) {
       return { id: profile.sub, email: profile.email, name: profile.name ?? null };
     }
@@ -54,11 +67,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
     async jwt({ token, account, profile }) {
       // Prvé prihlásenie: `account` nesie tokeny, `profile` odpoveď z /api/me.
       if (account && profile) {
-        // `AuthConfig["callbacks"]["jwt"]` typuje `profile` ako generický `Profile`
-        // (nie je parametrizovaný `TProfile` providera), no za behu je to presne surová
-        // JSON odpoveď z userinfo endpointu — teda `MeResponse`. Overené v zdroji
-        // @auth/core (lib/actions/callback/oauth/callback.ts: `profile = await
-        // userinfoResponse.json()`, poslané ďalej bez transformácie cez provider.profile()).
+        // Cast je stale potrebny aj po delegovani `userinfo` na fetchMe vyssie: typ `profile`
+        // v `AuthConfig["callbacks"]["jwt"]` je pevne generický `Profile` (@auth/core), nie je
+        // parametrizovaný `TProfile` providera — nezávisí od toho, čo vracia náš `userinfo
+        // .request()`. Za behu je to presne to, čo vrátil fetchMe (teda MeResponse), pretože
+        // userinfo endpoint už nemá vlastný Auth.js fetch, ktorý by ho nahradil niečím iným.
         const fresh: SsoToken = {
           claims: claimsFromMe(profile as unknown as MeResponse),
           accessToken: account.access_token ?? "",

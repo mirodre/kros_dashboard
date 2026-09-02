@@ -10,17 +10,28 @@ describe("isPublicPath", () => {
     "/_next/static/chunks/main.js",
     "/favicon.ico",
     "/manifest.webmanifest",
-    "/icon-192.png"
+    "/icon-192.png",
+    // KROS integration-consent posiela sem cross-site form POST; sameSite=lax cookie sa
+    // pri nom neposle, takze session tu nie je k dispozicii. Autorizuje jednorazovy `state`,
+    // ktory handler overuje sam (consumeOAuthState) — `/kros` samotne ostava chranene.
+    "/kros/callback"
   ])("verejna: %s", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
 
-  it.each(["/", "/cashflow", "/expenses", "/settings", "/kros", "/kros/callback", "/api/kros/logs", "/api/kros/payments"])(
+  it.each(["/", "/cashflow", "/expenses", "/settings", "/kros", "/api/kros/logs", "/api/kros/payments"])(
     "chranena: %s",
     (path) => {
       expect(isPublicPath(path)).toBe(false);
     }
   );
+
+  it("vynimka pre /kros/callback je presna zhoda, nie predpona", () => {
+    // `/kros` bez callbacku ostava chranene a nic pod `/kros/callback/` nesmie preberat
+    // vynimku — inak by sa predponou dala obist ochrana celeho `/kros/*` stromu.
+    expect(isPublicPath("/kros")).toBe(false);
+    expect(isPublicPath("/kros/callback/extra")).toBe(false);
+  });
 
   it("nova, nikdy nevymenovana route je chranena", () => {
     // Toto je dôvod, prečo je zoznam obrátený. Kým sa vymenúvali CHRÁNENÉ cesty, stačilo
