@@ -13,18 +13,22 @@ const PUBLIC_PREFIXES = [
   "/_next/" // build assety Next.js
 ] as const;
 
-const PUBLIC_EXACT = new Set(["/favicon.ico", "/manifest.webmanifest"]);
-
-/** Statické súbory z `public/` — majú príponu a Next ich servíruje z koreňa. */
+/**
+ * Statické súbory z `public/` — majú príponu a Next ich servíruje z koreňa.
+ * Pod `/api/` sa nachádzajú route handlery, nie súbory; ak má handler príponu,
+ * (napr. `/api/kros/export.xml`), klasifikovať ho podľa prípony by znova ohrozilo
+ * `/api/kros/logs` — statický súbor, ktorý nikdy nebol.
+ */
 const PUBLIC_FILE = /\.(?:png|jpg|jpeg|svg|webp|ico|txt|xml|webmanifest|woff2?)$/i;
 
 export function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_EXACT.has(pathname)) {
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return true;
   }
 
-  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return true;
+  // Route handlery pod /api/ su dynamicke, nie staticke subory.
+  if (pathname.startsWith("/api/")) {
+    return false;
   }
 
   return PUBLIC_FILE.test(pathname);

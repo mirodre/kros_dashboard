@@ -34,4 +34,15 @@ describe("isPublicPath", () => {
     // `/api/authorization-hack` nesmie prejsť len preto, že začína na `/api/auth`.
     expect(isPublicPath("/api/authorization-hack")).toBe(false);
   });
+
+  it("api route s priponou nie je verejny subor", () => {
+    // Route handler pod /api/ s priponou (napr. /api/kros/export.xml) je dynamicky,
+    // nie staticky subor. Klasifikovanie podla pripony by znova ohrozilo /api/kros/logs.
+    expect(isPublicPath("/api/kros/export.xml")).toBe(false);
+  });
+
+  it("vlozen staticke subory su verejne", () => {
+    // Subory z public/ (ako /fonts/inter.woff2) su staticky, nie route handlery.
+    expect(isPublicPath("/fonts/inter.woff2")).toBe(true);
+  });
 });
