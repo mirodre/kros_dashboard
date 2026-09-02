@@ -55,7 +55,15 @@ describe("auth-service", () => {
   it.each([500, 502, 503, 429])("stav %i je vypadok, nie zamietnutie", async (status) => {
     vi.stubGlobal("fetch", vi.fn(async () => respond(status, "nginx")));
 
-    await expect(fetchMe("AT")).rejects.toBeInstanceOf(SsoUnavailable);
+    // Bez kontroly spravy prejde test aj keby JSON parsing neuspel.
+    // Regex skontroluje, ze chyba pochadzala z assertNotAnOutage, nie z fallback.
+    try {
+      await fetchMe("AT");
+      throw new Error("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SsoUnavailable);
+      expect((error as Error).message).toMatch(new RegExp(String(status)));
+    }
   });
 
   it("sietova chyba je vypadok", async () => {
