@@ -7,6 +7,7 @@ import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { parseDocumentDate } from "@/lib/document-date";
+import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow } from "./recent-expenses-section";
@@ -128,10 +129,7 @@ export function ExpensesDashboard({
     };
   }, []);
 
-  useEffect(() => {
-    if (granularity !== "week" || !chartRef.current) return;
-    chartRef.current.scrollLeft = chartRef.current.scrollWidth;
-  }, [granularity, points.length]);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 

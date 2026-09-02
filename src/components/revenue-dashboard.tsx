@@ -6,6 +6,7 @@ import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from 
 import { parseDocumentDate } from "@/lib/document-date";
 import { getInvoiceAnalyticsDate, getRevenueBucketInvoices } from "@/lib/dashboard-live";
 import type { NormalizedInvoice } from "@/lib/kros-types";
+import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 
@@ -64,11 +65,7 @@ export function RevenueDashboard({
     };
   }, []);
 
-  useEffect(() => {
-    if (granularity !== "week" || !chartRef.current) return;
-
-    chartRef.current.scrollLeft = chartRef.current.scrollWidth;
-  }, [granularity, points.length]);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
