@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
 
+import { signOutAction } from "@/app/actions/sign-out";
+
 type Props = {
   children: React.ReactNode;
   isSyncing?: boolean;
@@ -109,6 +111,11 @@ export function DashboardShell({
             </svg>
           </button>
         ) : null}
+        <form action={signOutAction}>
+          <button type="submit" className="header-refresh-btn" aria-label="Odhlásiť sa">
+            Odhlásiť sa
+          </button>
+        </form>
       </header>
 
       {children}
