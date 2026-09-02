@@ -77,6 +77,20 @@ describe("advanceToken", () => {
     await expect(advanceToken(token(), d)).resolves.toBeNull();
   });
 
+  it("neznama chyba sa preposle dalej", async () => {
+    // Chyba, ktorá nie je ani SsoAuthFailed, ani SsoUnavailable, nie je výrok o prístupe
+    // ani o dostupnosti. Prehltnúť by ju znamenalo buď zbytočne odhlásiť, alebo držať
+    // nažive session pri bugu, čo s prístupom ani dostupnosťou nemá nič spoločné.
+    const d = deps({
+      nowMs: NOW + 16 * 60_000,
+      refreshTokens: vi.fn(async () => {
+        throw new Error("boom");
+      })
+    });
+
+    await expect(advanceToken(token(), d)).rejects.toThrow("boom");
+  });
+
   it("vypadok sluzby nechava session zit", async () => {
     const d = deps({
       nowMs: NOW + 16 * 60_000,
