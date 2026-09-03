@@ -644,6 +644,7 @@ export default function ExpensesPage() {
         points={points}
         expenses={tagScopedExpenses}
         tagStructure={tagStructure}
+        tagCategoryIndex={tagCategoryIndex}
         dueWatchlist={dueWatchlist}
         selectedTags={[]}
         selectedCompanies={effectiveCompanies}

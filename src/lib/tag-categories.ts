@@ -197,6 +197,15 @@ export type TagCategoryGroup = {
 
 const collator = new Intl.Collator("sk-SK", { sensitivity: "base" });
 
+/** Kategórie abecedne, „Nedefinované“ vždy posledné — rovnaké poradie ako sekcie štítkov. */
+export function sortTagCategories(categories: string[]): string[] {
+  return [...categories].sort((a, b) => {
+    if (a === UNCATEGORIZED_CATEGORY) return 1;
+    if (b === UNCATEGORIZED_CATEGORY) return -1;
+    return collator.compare(a, b);
+  });
+}
+
 /**
  * Zoskupí breakdown body podľa kategórie štítku. Kategórie sú zoradené abecedne,
  * „Nedefinované“ je vždy posledné. Poradie bodov v rámci kategórie ostáva zachované.
