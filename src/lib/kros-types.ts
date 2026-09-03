@@ -34,6 +34,17 @@ export type AggregatedBreakdownPoint = {
 
 export type ExpensePaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
 
+/**
+ * Jedna položka rozúčtovania výdavku na štítky. Vzniká z riadkov journalItems
+ * (endpoint /api/expenses/{id}); riadok bez vlastných štítkov zdedí štítky
+ * z hlavičky dokladu. Doklad bez riadkov má jedinú položku z hlavičky.
+ */
+export type ExpenseTagAllocation = {
+  tags: string[];
+  /** Legislatívna suma bez DPH so znamienkom. */
+  amount: number;
+};
+
 export type NormalizedExpense = {
   id: string;
   companyId?: number;
@@ -49,16 +60,18 @@ export type NormalizedExpense = {
   receivedDate?: string;
   lastModifiedTimestamp?: string;
   /**
-   * Suma s DPH so znamienkom (dobropisy sú záporné). KROS pri výdavkoch plní iba
-   * documentPrices.totalPriceInclVat — sumu bez DPH ani rozpis DPH neposkytuje
-   * (totalPrice aj vatTotalPrice sú vždy 0), preto z nej počítajú aj analytiky.
+   * Legislatívna suma bez DPH so znamienkom (dobropisy sú záporné). Berie sa
+   * zo súčtu rozúčtovania (journalItems), s fallbackom na hlavičku dokladu —
+   * pozri readExpenseAmounts v expenses-live.ts.
    */
-  totalPriceInclVat: number;
-  vatTotalPrice: number;
+  totalPrice: number;
   paymentStatus: ExpensePaymentStatus;
   paymentType?: string;
   hasAttachments: boolean;
+  /** Zjednotenie štítkov zo všetkých rozúčtovaní — na filtrovanie dokladov. */
   tags: string[];
+  /** Rozúčtovanie sumy na štítky; súčet `amount` dáva `totalPrice`. */
+  allocations: ExpenseTagAllocation[];
 };
 
 export type NormalizedPaymentAccount = {

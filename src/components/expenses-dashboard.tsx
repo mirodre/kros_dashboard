@@ -167,8 +167,8 @@ export function ExpensesDashboard({
   };
 
   const detailDocs = bucketDocs?.[detailSide] ?? [];
-  // S DPH — súčet zoznamu sedí so stĺpcom grafu aj s hodnotami v ostatných prehľadoch.
-  const detailTotal = detailDocs.reduce((sum, expense) => sum + expense.totalPriceInclVat, 0);
+  // Legislatívna suma bez DPH — súčet zoznamu sedí so stĺpcom grafu aj s ostatnými prehľadmi.
+  const detailTotal = detailDocs.reduce((sum, expense) => sum + expense.totalPrice, 0);
 
   const overdueCount = dueWatchlist.overdue.length;
   const dueSheetDocs = dueSheetTab === "overdue" ? dueWatchlist.overdue : dueWatchlist.upcoming;
@@ -464,7 +464,7 @@ export function ExpensesDashboard({
                           {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
                         </p>
                       </div>
-                      <strong>{formatCurrencyPrecise(expense.totalPriceInclVat)}</strong>
+                      <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
                     </div>
                     <div className="invoice-tags" aria-label={expense.tags.length ? "Štítky dokladu" : undefined}>
                       {expense.tags.map((tag) => (

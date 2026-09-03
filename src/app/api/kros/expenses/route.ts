@@ -50,6 +50,92 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
   return fetch(url, options);
 }
 
+/**
+ * Rozúčtovanie na štítky a sumy riadkov sú len v detaile dokladu — hlavičkový
+ * zoznam journalItems nenesie. Ku každej hlavičke preto doťahujeme detail;
+ * súbežne ich beží len pár naraz, nech nenarazíme na limity API.
+ */
+const DETAIL_CONCURRENCY = 4;
+
+async function fetchExpenseDetail(company: CompanyConnection, expenseId: string) {
+  const response = await fetchWithRetry(
+    `${KROS_API_BASE}/api/expenses/${encodeURIComponent(expenseId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${company.token}`,
+        Accept: "application/json"
+      },
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) return null;
+
+  try {
+    const payload = (await response.json()) as { data?: unknown };
+    return payload?.data && typeof payload.data === "object"
+      ? (payload.data as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Doplní hlavičky o journalItems z detailu; doklad bez detailu ostáva ako je. */
+async function attachJournalItems(
+  company: CompanyConnection,
+  expenses: Record<string, unknown>[]
+) {
+  let failed = 0;
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < expenses.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const expense = expenses[index];
+      const id = typeof expense.id === "string" ? expense.id : null;
+      if (!id) continue;
+
+      try {
+        const detail = await fetchExpenseDetail(company, id);
+        if (detail) {
+          expenses[index] = { ...expense, journalItems: detail.journalItems ?? [] };
+        } else {
+          failed += 1;
+        }
+      } catch {
+        failed += 1;
+      }
+    }
+  };
+
+  await appendKrosLog({
+    direction: "request",
+    endpoint: "/api/expenses/{id}",
+    method: "GET",
+    companyName: company.companyName,
+    message: `Doťahujem detaily (rozúčtovanie) pre ${expenses.length} dokladov`
+  });
+
+  await Promise.all(
+    Array.from({ length: Math.min(DETAIL_CONCURRENCY, expenses.length) }, worker)
+  );
+
+  await appendKrosLog({
+    direction: failed > 0 ? "error" : "response",
+    endpoint: "/api/expenses/{id}",
+    method: "GET",
+    companyName: company.companyName,
+    message:
+      failed > 0
+        ? `Detaily načítané s chybami: ${expenses.length - failed}/${expenses.length} OK, ${failed} zlyhalo (použije sa rozúčtovanie z hlavičky)`
+        : `Detaily načítané: ${expenses.length}/${expenses.length}`
+  });
+
+  return expenses;
+}
+
 async function fetchCompanyExpenses(
   company: CompanyConnection,
   deliveryDateFrom?: string,
@@ -140,8 +226,13 @@ async function fetchCompanyExpenses(
     skip += top;
   }
 
-  return aggregated.map((expense) => ({
-    ...((expense as object) ?? {}),
+  const withDetails = await attachJournalItems(
+    company,
+    aggregated.map((expense) => ({ ...((expense as Record<string, unknown>) ?? {}) }))
+  );
+
+  return withDetails.map((expense) => ({
+    ...expense,
     __company: company.companyName,
     __companyId: company.companyId
   }));

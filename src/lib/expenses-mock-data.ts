@@ -10,7 +10,7 @@ type VendorTemplate = {
   vendor: string;
   tag: string;
   companyName: string;
-  /** Približná mesačná útrata v EUR. */
+  /** Približná mesačná útrata v EUR bez DPH. */
   monthlyAmount: number;
   documentType: number;
   paymentType?: string;
@@ -75,12 +75,12 @@ export function getMockExpenses(referenceDate: Date = new Date()): NormalizedExp
           partnerName: template.vendor,
           issueDate: isoDate(year, month, day),
           dueDate: isoDate(due.getFullYear(), due.getMonth(), due.getDate()),
-          totalPriceInclVat: amount,
-          vatTotalPrice: Math.round((amount / 1.23) * 0.23 * 100) / 100,
+          totalPrice: amount,
           paymentStatus: staysUnpaid ? (index % 2 === 0 ? "notPaid" : "partiallyPaid") : "fullyPaid",
           paymentType: template.paymentType,
           hasAttachments: index % 4 === 0,
-          tags: [template.tag]
+          tags: [template.tag],
+          allocations: [{ tags: [template.tag], amount }]
         });
       });
     }
@@ -96,12 +96,34 @@ export function getMockExpenses(referenceDate: Date = new Date()): NormalizedExp
     partnerName: "VeľkoSklad SK",
     issueDate: isoDate(currentYear, creditMonth, 20),
     dueDate: isoDate(currentYear, creditMonth, 27),
-    totalPriceInclVat: -320,
-    vatTotalPrice: -59.84,
+    totalPrice: -320,
     paymentStatus: "fullyPaid",
     paymentType: "Prevod",
     hasAttachments: false,
-    tags: ["Materiál"]
+    tags: ["Materiál"],
+    allocations: [{ tags: ["Materiál"], amount: -320 }]
+  });
+
+  // Doklad rozúčtovaný na viac štítkov — v live dátach vzniká z journalItems.
+  const splitMonth = creditMonth;
+  expenses.push({
+    id: `mock-expense-split-${currentYear}`,
+    companyName: "Kros Services",
+    documentNumber: `DF ${currentYear}/900`,
+    documentType: 10,
+    partnerName: "Kancelária Komplet",
+    issueDate: isoDate(currentYear, splitMonth, 8),
+    dueDate: isoDate(currentYear, splitMonth, 22),
+    totalPrice: 1450,
+    paymentStatus: "notPaid",
+    paymentType: "Prevod",
+    hasAttachments: true,
+    tags: ["Nájom", "Energie", "Služby"],
+    allocations: [
+      { tags: ["Nájom"], amount: 900 },
+      { tags: ["Energie"], amount: 350 },
+      { tags: ["Služby"], amount: 200 }
+    ]
   });
 
   return expenses;

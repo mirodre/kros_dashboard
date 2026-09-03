@@ -13,6 +13,7 @@ import type { KrosConnection, NormalizedExpense } from "@/lib/kros-types";
 import { readConnections } from "@/lib/kros-storage";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import {
+  allSelectedTags,
   categoryForTag,
   documentMatchesTagFilters,
   isTagAllowedByFilters,
@@ -30,7 +31,8 @@ import {
   computeExpenseTagStructure,
   computeExpenseVendorBreakdown,
   getFilteredRecentExpenses,
-  normalizeExpenses
+  normalizeExpenses,
+  scopeExpenseAmountsToTags
 } from "@/lib/expenses-live";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
@@ -407,13 +409,18 @@ export default function ExpensesPage() {
   );
 
   // Fokus štítku prispôsobí graf/KPI/doklady, ale zoznamy kategórií ostávajú podľa Filtra štítkov.
-  const tagScopedExpenses = useMemo(
-    () =>
-      expenses.filter((expense) =>
-        documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, effectiveFocusedTag)
-      ),
-    [expenses, sanitizedCategoryFilters, effectiveFocusedTag]
-  );
+  // Pri aktívnych štítkoch sa sumy zúžia na ich rozúčtovanie — na doklade rozúčtovanom
+  // na viac štítkov sa počíta len časť patriaca zvoleným štítkom.
+  const tagScopedExpenses = useMemo(() => {
+    const activeTags = [
+      ...allSelectedTags(sanitizedCategoryFilters),
+      ...(effectiveFocusedTag ? [effectiveFocusedTag] : [])
+    ];
+    const matching = expenses.filter((expense) =>
+      documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, effectiveFocusedTag)
+    );
+    return scopeExpenseAmountsToTags(matching, activeTags);
+  }, [expenses, sanitizedCategoryFilters, effectiveFocusedTag]);
 
   const points = useMemo(
     () =>
