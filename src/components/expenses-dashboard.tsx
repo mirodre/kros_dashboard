@@ -28,7 +28,6 @@ type Props = {
   onClearCompanyFilter?: () => void;
   onFocusTag?: (tag: string | null) => void;
   isMockData?: boolean;
-  isLoading?: boolean;
 };
 
 export function ExpensesDashboard({
@@ -46,8 +45,7 @@ export function ExpensesDashboard({
   onClearTagFilter,
   onClearCompanyFilter,
   onFocusTag,
-  isMockData = false,
-  isLoading = false
+  isMockData = false
 }: Props) {
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
   const [detailPoint, setDetailPoint] = useState<RevenuePoint | null>(null);
@@ -129,7 +127,7 @@ export function ExpensesDashboard({
     };
   }, []);
 
-  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
@@ -214,22 +212,6 @@ export function ExpensesDashboard({
         </button>
       ) : null}
 
-      {isLoading ? (
-        <div className="dashboard-skeleton-overlay revenue-skeleton" aria-live="polite">
-          <div className="skeleton-pill" />
-          <div className="skeleton-number" />
-          <div className="skeleton-row">
-            <span />
-            <span />
-          </div>
-          <div className="skeleton-chart">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} style={{ height: `${34 + ((index * 13) % 52)}%` }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       <KpiCarousel items={kpis} invertDeltaColor />
 
       <article className="panel">
@@ -298,17 +280,8 @@ export function ExpensesDashboard({
         <header className="panel-head">
           <h3>Štruktúra výdavkov podľa štítkov</h3>
         </header>
-        <div className={isLoading ? "cashflow-donut-wrap loading" : "cashflow-donut-wrap"}>
+        <div className="cashflow-donut-wrap">
           <div className="cashflow-donut-card">
-            {isLoading ? (
-              <div className="cashflow-donut-skeleton" aria-hidden="true">
-                <div className="cashflow-donut-skeleton-ring" />
-                <div className="cashflow-donut-skeleton-center">
-                  <span />
-                  <span />
-                </div>
-              </div>
-            ) : (
               <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Výdavky podľa štítkov">
                 {donutData.map((slice, sliceIndex) => {
                   const isActive = activeTagLabel === slice.name;
@@ -357,7 +330,6 @@ export function ExpensesDashboard({
                   className={isPieAnimated ? "cashflow-donut-hole is-animated" : "cashflow-donut-hole"}
                 />
               </svg>
-            )}
             <div className="cashflow-donut-center">
               <p className="cashflow-donut-title">{activeSlice ? activeSlice.name : "Výdavky tento rok"}</p>
               <strong>{formatCurrency(activeSlice ? activeSlice.amount : donutTotal)}</strong>
@@ -369,15 +341,6 @@ export function ExpensesDashboard({
             </div>
           </div>
 
-          {isLoading ? (
-            <ul className="cashflow-donut-legend skeleton" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <li key={`legend-skeleton-${index}`}>
-                  <div className="cashflow-legend-item skeleton" />
-                </li>
-              ))}
-            </ul>
-          ) : (
             <ul className="cashflow-donut-legend">
               {donutData.map((slice) => {
                 const deltaValue = slice.amount - slice.previousAmount;
@@ -400,7 +363,6 @@ export function ExpensesDashboard({
                 );
               })}
             </ul>
-          )}
         </div>
       </article>
 

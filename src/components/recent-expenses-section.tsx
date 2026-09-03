@@ -90,17 +90,16 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
 
 type Props = {
   expenses: NormalizedExpense[];
-  isLoading?: boolean;
 };
 
-export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
+export function RecentExpensesSection({ expenses }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
     "ui.collapsed.recentExpenses"
   );
 
   return (
     <section className="dashboard-body">
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           <button
             type="button"
@@ -118,22 +117,11 @@ export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={`expense-skeleton-${index}`}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && expenses.length === 0 ? (
+            {expenses.length === 0 ? (
               <p className="tag-filter-help">V tomto výbere zatiaľ nemáme žiadne výdavky.</p>
             ) : null}
 
-            {!isLoading && expenses.length > 0 ? (
+            {expenses.length > 0 ? (
               <ul className="tag-list">
                 {expenses.map((expense) => (
                   <ExpenseRow key={`${expense.companyId ?? expense.companyName}-${expense.id}`} expense={expense} />

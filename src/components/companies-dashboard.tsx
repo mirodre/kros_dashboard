@@ -11,7 +11,6 @@ type Props = {
   focusedCompany: string | null;
   onSelectionChange: (companies: string[]) => void;
   onFocusedCompanyChange: (company: string | null) => void;
-  isLoading?: boolean;
   title?: string;
   invertDeltaColor?: boolean;
   collapsedKey?: CollapsedPreferenceKey;
@@ -24,7 +23,6 @@ export function CompaniesDashboard({
   focusedCompany,
   onSelectionChange,
   onFocusedCompanyChange,
-  isLoading = false,
   title = "Tržby podľa firiem",
   invertDeltaColor = false,
   collapsedKey = "ui.collapsed.companies"
@@ -44,7 +42,6 @@ export function CompaniesDashboard({
       focusedItem={focusedCompany}
       onSelectionChange={onSelectionChange}
       onFocusedItemChange={onFocusedCompanyChange}
-      isLoading={isLoading}
       invertDeltaColor={invertDeltaColor}
       collapsible
       collapsed={collapsed}

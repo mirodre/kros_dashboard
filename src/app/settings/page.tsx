@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { signOutAction } from "@/app/actions/sign-out";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
 import { TenantDefaultsCard } from "@/components/tenant-defaults-card";
@@ -11,22 +12,13 @@ import { clearInvoiceCache } from "@/lib/invoice-cache";
 import { startKrosConnect } from "@/lib/kros-connect";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import type { KrosConnection } from "@/lib/kros-types";
-import type { KrosApiLogEntry } from "@/lib/kros-logs";
-
-
 
 export default function SettingsPage() {
   const { connections, isLoading: isLoadingConnections, error: connectionsError, refresh, disconnect } =
     useKrosConnections();
   const [statusMessage, setStatusMessage] = useState("Pre napojenie klikni na Prepojiť s KROS.");
-  const [logs, setLogs] = useState<KrosApiLogEntry[]>([]);
-  const [selectedLog, setSelectedLog] = useState<KrosApiLogEntry | null>(null);
   const [companyToDisconnect, setCompanyToDisconnect] = useState<KrosConnection | null>(null);
   const [isCacheClearOpen, setIsCacheClearOpen] = useState(false);
-
-  useEffect(() => {
-    void refreshLogs();
-  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -45,17 +37,6 @@ export default function SettingsPage() {
     params.delete("kros_post_result");
     window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
   }, [refresh]);
-
-  const refreshLogs = async () => {
-    const response = await fetch("/api/kros/logs");
-    const payload = await response.json();
-    const raw = Array.isArray(payload?.data) ? payload.data : [];
-    setLogs(
-      [...raw].sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-    );
-  };
 
   const handleConnectClick = async () => {
     await startKrosConnect({ onStatus: setStatusMessage });
@@ -82,11 +63,6 @@ export default function SettingsPage() {
         ? `Firma ${company.companyName} bola odpojená pre všetkých vo firme.`
         : "Odpojenie sa nepodarilo. Skús to znova."
     );
-  };
-
-  const handleClearLogs = async () => {
-    await fetch("/api/kros/logs", { method: "DELETE" });
-    await refreshLogs();
   };
 
   const handleClearInvoiceCache = async () => {
@@ -128,81 +104,22 @@ export default function SettingsPage() {
         </article>
       </section>
 
-      <section className="dashboard-body">
+      <section className="dashboard-body mobile-only-settings">
         <article className="panel">
           <header className="panel-head">
-            <h3>Záznamy API</h3>
-            <div className="filters-inline">
-              <button type="button" className="secondary-button" onClick={handleClearLogs}>
-                Vymazať záznamy
+            <h3>Účet</h3>
+            <form action={signOutAction}>
+              <button type="submit" className="danger-button">
+                Odhlásiť sa
               </button>
-            </div>
+            </form>
           </header>
-
-          {logs.length === 0 ? (
-            <p className="tag-sub">Zatiaľ nie sú dostupné žiadne záznamy API komunikácie.</p>
-          ) : (
-            <ul className="tag-list">
-              {logs.map((log) => (
-                <li key={log.id}>
-                  <div>
-                    <p className="tag-name">
-                      [{log.direction.toUpperCase()}] {log.method} {log.endpoint}
-                    </p>
-                    <p className="tag-sub">
-                      {new Date(log.timestamp).toLocaleString("sk-SK")}
-                      {log.companyName ? ` • Firma: ${log.companyName}` : ""}
-                      {typeof log.status === "number" ? ` • HTTP ${log.status}` : ""}
-                    </p>
-                  </div>
-                  <div className="tag-values">
-                    <p className="log-message">{log.message ?? "-"}</p>
-                    <button type="button" className="secondary-button" onClick={() => setSelectedLog(log)}>
-                      Detail
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <p className="tag-sub">
+            Odhlási ťa z prehľadov aj z prihlasovacej služby KROS na tomto zariadení. Lokálne uložené dáta v prehliadači
+            zostanú, prihlásiť sa môžeš kedykoľvek znova.
+          </p>
         </article>
       </section>
-
-      {selectedLog ? (
-        <div className="tag-filter-overlay" onClick={() => setSelectedLog(null)} role="presentation">
-          <div
-            className="tag-filter-sheet"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Detail záznamu"
-          >
-            <header className="tag-filter-head">
-              <h4>Detail záznamu</h4>
-              <button type="button" className="filter-close" onClick={() => setSelectedLog(null)}>
-                Zavrieť
-              </button>
-            </header>
-            <p className="tag-sub">
-              {new Date(selectedLog.timestamp).toLocaleString("sk-SK")} • {selectedLog.method}{" "}
-              {selectedLog.endpoint}
-            </p>
-            <pre className="log-detail-pre">
-              {JSON.stringify(
-                {
-                  direction: selectedLog.direction,
-                  status: selectedLog.status,
-                  companyName: selectedLog.companyName,
-                  message: selectedLog.message,
-                  payload: selectedLog.payload ?? null
-                },
-                null,
-                2
-              )}
-            </pre>
-          </div>
-        </div>
-      ) : null}
 
       {companyToDisconnect ? (
         <div className="tag-filter-overlay" onClick={() => setCompanyToDisconnect(null)} role="presentation">

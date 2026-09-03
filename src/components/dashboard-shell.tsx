@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
-import { formatSyncEta, type SyncProgress } from "@/lib/use-sync-progress";
+import { formatSyncEta, getSyncFraction, type SyncProgress } from "@/lib/use-sync-progress";
+import { SyncOverlay } from "@/components/sync-overlay";
 
 import { signOutAction } from "@/app/actions/sign-out";
 import { useTenantName } from "./preferences-boot";
@@ -13,6 +14,8 @@ type Props = {
   isSyncing?: boolean;
   onRefresh?: () => void;
   syncProgress?: SyncProgress | null;
+  /** Vysvetlenie dlhého prvého načítania pre obrazovku sťahovania. */
+  syncNote?: string;
   title?: string;
 };
 
@@ -21,6 +24,7 @@ export function DashboardShell({
   isSyncing = false,
   onRefresh,
   syncProgress = null,
+  syncNote,
   title = "Príjmy"
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
@@ -30,11 +34,11 @@ export function DashboardShell({
   const pathname = usePathname();
   // Filtre sú firemné, takže človek musí vidieť, ktorej firmy ich práve mení.
   const tenantName = useTenantName();
-  const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
-  const progressPct = progress
-    ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
-    : 0;
-  const progressEta = formatSyncEta(progress?.etaSeconds);
+  const progress = syncProgress && syncProgress.steps.length > 0 ? syncProgress : null;
+  const inlineProgress = progress && !progress.immersive ? progress : null;
+  const inlinePct = inlineProgress ? Math.round(getSyncFraction(inlineProgress) * 100) : 0;
+  const inlineStep = inlineProgress?.steps[inlineProgress.activeIndex];
+  const inlineEta = formatSyncEta(inlineProgress?.etaSeconds);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     if (!onRefresh || isSyncing || window.scrollY > 0) return;
@@ -107,35 +111,45 @@ export function DashboardShell({
             </Link>
           </nav>
         </div>
-        {onRefresh ? (
-          <button
-            type="button"
-            className="header-refresh-btn"
-            onClick={() => onRefresh()}
-            disabled={isSyncing}
-            data-syncing={isSyncing}
-            aria-label="Obnoviť dáta"
-            title="Obnoviť dáta"
-          >
-            <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M20 11a8 8 0 1 0-.9 4.5" />
-              <path d="M20 4v6h-6" />
-            </svg>
-          </button>
-        ) : null}
-        <form action={signOutAction}>
-          <button type="submit" className="header-refresh-btn" aria-label="Odhlásiť sa">
-            Odhlásiť sa
-          </button>
-        </form>
+        <div className="header-actions">
+          {onRefresh ? (
+            <button
+              type="button"
+              className="header-icon-btn"
+              onClick={() => onRefresh()}
+              disabled={isSyncing}
+              data-syncing={isSyncing}
+              aria-label="Obnoviť dáta"
+              title="Obnoviť dáta"
+            >
+              <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 11a8 8 0 1 0-.9 4.5" />
+                <path d="M20 4v6h-6" />
+              </svg>
+            </button>
+          ) : null}
+          <form action={signOutAction}>
+            <button type="submit" className="header-icon-btn" aria-label="Odhlásiť sa" title="Odhlásiť sa">
+              <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2" />
+                <path d="M10 12h10" />
+                <path d="M17 9l3 3-3 3" />
+              </svg>
+            </button>
+          </form>
+        </div>
       </header>
 
-      {progress ? (
+      {inlineProgress ? (
         <div className="sync-progress">
           <div className="sync-progress-meta">
-            <span className="sync-progress-step">{progress.label ?? "Načítavam dáta..."}</span>
+            <span className="sync-progress-step">
+              {[inlineStep?.group, inlineStep?.label, inlineProgress.detail]
+                .filter(Boolean)
+                .join(" · ") || "Načítavam dáta..."}
+            </span>
             <span className="sync-progress-count">
-              {progressPct} %{progressEta ? ` · ${progressEta}` : ""}
+              {inlinePct} %{inlineEta ? ` · ${inlineEta}` : ""}
             </span>
           </div>
           <div
@@ -144,20 +158,19 @@ export function DashboardShell({
             aria-label="Priebeh načítania dát"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={progressPct}
-            aria-valuetext={`${progressPct} %`}
+            aria-valuenow={inlinePct}
+            aria-valuetext={`${inlinePct} %`}
           >
-            <div className="sync-progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="sync-progress-detail">
-            {[`Krok ${Math.min(progress.done + 1, progress.total)}/${progress.total}`, progress.detail]
-              .filter(Boolean)
-              .join(" · ")}
+            <div className="sync-progress-fill" style={{ width: `${inlinePct}%` }} />
           </div>
         </div>
       ) : null}
 
       {children}
+
+      {progress?.immersive ? (
+        <SyncOverlay progress={progress} title={title} note={syncNote} />
+      ) : null}
 
       <nav className="mobile-liquid-nav" aria-label="Hlavná navigácia">
         <Link href="/" className={pathname === "/" ? "mobile-liquid-link active" : "mobile-liquid-link"}>

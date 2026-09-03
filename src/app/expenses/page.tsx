@@ -38,7 +38,7 @@ import {
 } from "@/lib/expenses-live";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
-import { formatMonthKeyLabel, useSyncProgress } from "@/lib/use-sync-progress";
+import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 import { readNdjsonStream } from "@/lib/ndjson-stream";
 import {
   expenseCompanyMetaKey,
@@ -63,6 +63,26 @@ type MonthSyncRange = { monthKey: string; from: string; to: string };
 type ExpenseSyncStep =
   | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
   | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
+
+/** Od koľkých krokov je sťahovanie „na dlho“ a patrí naň celá obrazovka. */
+const IMMERSIVE_STEP_THRESHOLD = 3;
+
+/** Krok sťahovania tak, ako ho vidí používateľ na obrazovke sťahovania. */
+function toSyncStep(step: ExpenseSyncStep): SyncStep {
+  if (step.kind === "month") {
+    return {
+      key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
+      group: step.connection.companyName,
+      label: formatMonthKeyLabel(step.monthRange.monthKey)
+    };
+  }
+
+  return {
+    key: `${step.connection.companyId}:changes`,
+    group: step.connection.companyName,
+    label: "zmenené doklady"
+  };
+}
 
 /** Riadky priebehu z `/api/kros/expenses` (NDJSON stream). */
 type ExpenseStreamEvent =
@@ -331,20 +351,21 @@ export default function ExpensesPage() {
         }
 
         if (abortController.signal.aborted) return;
-        beginSync(steps.length);
+        // Bez dát na obrazovke (alebo pri práci na dlho) sťahujeme naplno,
+        // krátke dosynchronizovanie nad existujúcimi dátami stačí v hlavičke.
+        beginSync(
+          steps.map(toSyncStep),
+          cachedExpenses.length === 0 || steps.length >= IMMERSIVE_STEP_THRESHOLD
+        );
         if (steps.length > 0) {
           setIsLoadingLiveData(true);
         }
 
-        for (const step of steps) {
+        for (const [index, step] of steps.entries()) {
           if (abortController.signal.aborted) return;
 
           const { connection } = step;
-          startStep(
-            step.kind === "month"
-              ? `${connection.companyName} · ${formatMonthKeyLabel(step.monthRange.monthKey)}`
-              : `${connection.companyName} · zmenené doklady`
-          );
+          startStep(index);
 
           await clearSyncLogsOnce();
           const rawExpenses = await fetchExpenses(
@@ -611,6 +632,7 @@ export default function ExpensesPage() {
       title="Výdavky"
       isSyncing={isLoadingLiveData}
       syncProgress={syncProgress}
+      syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
@@ -631,7 +653,6 @@ export default function ExpensesPage() {
         onClearCompanyFilter={() => setFocusedCompany(null)}
         onFocusTag={setFocusedTag}
         isMockData={!hasLiveMode}
-        isLoading={isLoadingLiveData}
       />
       <CategorizedTagsDashboard
         tags={tagsData}
@@ -643,11 +664,10 @@ export default function ExpensesPage() {
         focusedTag={effectiveFocusedTag}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         onFocusedTagChange={setFocusedTag}
-        isLoading={isLoadingLiveData}
         invertDeltaColor
       />
-      <ExpenseVendorsSection vendors={vendors} isLoading={isLoadingLiveData} />
-      <RecentExpensesSection expenses={recentExpenses} isLoading={isLoadingLiveData} />
+      <ExpenseVendorsSection vendors={vendors} />
+      <RecentExpensesSection expenses={recentExpenses} />
       <CompaniesDashboard
         title="Výdavky podľa firiem"
         companies={companiesData}
@@ -667,7 +687,6 @@ export default function ExpensesPage() {
           )
         }
         onFocusedCompanyChange={setFocusedCompany}
-        isLoading={isLoadingLiveData}
       />
     </DashboardShell>
   );

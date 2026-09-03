@@ -186,6 +186,11 @@ body {
   display: none;
 }
 
+/* Na desktope odhlásenie ponúka ikona v hlavičke, v nastaveniach by bolo navyše. */
+.mobile-only-settings {
+  display: none;
+}
+
 .header-icon-link {
   align-items: center;
   border: 1px solid #2b3558;
@@ -204,32 +209,41 @@ body {
   color: #f2f5ff;
 }
 
-.header-refresh-btn {
+.header-actions {
   align-items: center;
   align-self: flex-start;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.header-icon-btn {
+  align-items: center;
   background: transparent;
   border: 1px solid #2b3558;
   border-radius: 999px;
   color: #d5defe;
   cursor: pointer;
   display: inline-flex;
+  flex: 0 0 auto;
   height: 36px;
   justify-content: center;
+  padding: 0;
   transition: border-color 0.15s ease, color 0.15s ease;
   width: 36px;
 }
 
-.header-refresh-btn:hover:not(:disabled) {
+.header-icon-btn:hover:not(:disabled) {
   border-color: #4f67b5;
   color: #f2f5ff;
 }
 
-.header-refresh-btn:disabled {
+.header-icon-btn:disabled {
   cursor: default;
   opacity: 0.7;
 }
 
-.header-refresh-icon {
+.header-refresh-icon,
+.header-action-icon {
   height: 18px;
   stroke: currentColor;
   stroke-linecap: round;
@@ -238,7 +252,7 @@ body {
   width: 18px;
 }
 
-.header-refresh-btn[data-syncing="true"] .header-refresh-icon {
+.header-icon-btn[data-syncing="true"] .header-refresh-icon {
   animation: header-refresh-spin 0.8s linear infinite;
   transform-origin: center;
 }
@@ -415,125 +429,13 @@ body {
   margin-top: 1.35rem;
 }
 
-.dashboard-section,
-.panel-with-skeleton {
+.dashboard-section {
   position: relative;
 }
 
 .dashboard-section.overlay-open,
 .dashboard-body.overlay-open {
   z-index: 140;
-}
-
-.dashboard-skeleton-overlay {
-  backdrop-filter: blur(10px);
-  background: rgba(10, 13, 24, 0.72);
-  border: 1px solid rgba(82, 102, 170, 0.28);
-  border-radius: 22px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-  overflow: hidden;
-  pointer-events: none;
-  position: absolute;
-  z-index: 12;
-}
-
-.dashboard-skeleton-overlay::after {
-  animation: skeleton-shimmer 1.25s ease-in-out infinite;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 50%, transparent 100%);
-  content: "";
-  inset: 0;
-  position: absolute;
-  transform: translateX(-100%);
-}
-
-.revenue-skeleton {
-  display: flex;
-  flex-direction: column;
-  inset: 3.15rem 0 0;
-  min-height: 520px;
-  padding: 2.4rem 1.2rem 1.2rem;
-}
-
-.list-skeleton {
-  display: grid;
-  gap: 0.85rem;
-  inset: 3.4rem 0 0;
-  min-height: 280px;
-  padding: 0.9rem 0.4rem;
-}
-
-.skeleton-pill,
-.skeleton-number,
-.skeleton-row span,
-.skeleton-chart span,
-.skeleton-list-row span {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-radius: 999px;
-}
-
-.skeleton-pill {
-  height: 18px;
-  margin: 0 auto 1.4rem;
-  width: 150px;
-}
-
-.skeleton-number {
-  height: clamp(62px, 14vw, 86px);
-  margin: 0 auto;
-  width: min(76%, 360px);
-}
-
-.skeleton-row {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin: 1.2rem 0 2.2rem;
-}
-
-.skeleton-row span {
-  height: 18px;
-  width: 116px;
-}
-
-.skeleton-chart {
-  align-items: end;
-  display: flex;
-  flex: 1;
-  gap: 0.85rem;
-  min-height: 150px;
-}
-
-.skeleton-chart span {
-  border-radius: 12px 12px 4px 4px;
-  flex: 1;
-  min-height: 42px;
-}
-
-.skeleton-list-row {
-  align-items: center;
-  background: rgba(25, 34, 62, 0.7);
-  border: 1px solid rgba(77, 96, 158, 0.28);
-  border-radius: 14px;
-  display: flex;
-  justify-content: space-between;
-  min-height: 70px;
-  padding: 0.9rem 1rem;
-}
-
-.skeleton-list-row span:first-child {
-  height: 16px;
-  width: 48%;
-}
-
-.skeleton-list-row span:last-child {
-  height: 18px;
-  width: 26%;
-}
-
-@keyframes skeleton-shimmer {
-  to {
-    transform: translateX(100%);
-  }
 }
 
 .row-head {
@@ -1223,48 +1125,6 @@ body {
   width: 100%;
 }
 
-.cashflow-donut-skeleton {
-  align-items: center;
-  aspect-ratio: 1;
-  display: grid;
-  max-width: 360px;
-  place-items: center;
-  position: relative;
-  width: 100%;
-}
-
-.cashflow-donut-skeleton-ring {
-  border: 20px solid rgba(74, 93, 151, 0.48);
-  border-radius: 999px;
-  height: 78%;
-  width: 78%;
-}
-
-.cashflow-donut-skeleton-center {
-  align-items: center;
-  display: grid;
-  gap: 0.45rem;
-  inset: 0;
-  justify-content: center;
-  justify-items: center;
-  position: absolute;
-}
-
-.cashflow-donut-skeleton-center span {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-radius: 999px;
-  display: block;
-  height: 12px;
-}
-
-.cashflow-donut-skeleton-center span:first-child {
-  width: 110px;
-}
-
-.cashflow-donut-skeleton-center span:last-child {
-  width: 72px;
-}
-
 .cashflow-donut-svg {
   display: block;
   max-width: 360px;
@@ -1413,11 +1273,6 @@ body {
   position: absolute;
   top: 0.62rem;
   width: 4px;
-}
-
-.cashflow-legend-item.skeleton {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-color: rgba(77, 96, 158, 0.28);
 }
 
 .cashflow-legend-item.active {
@@ -2004,27 +1859,6 @@ body {
   color: #ffffff;
 }
 
-.log-message {
-  max-width: min(48vw, 360px);
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.log-detail-pre {
-  background: #0f1526;
-  border: 1px solid #2b3864;
-  border-radius: 10px;
-  color: #d8e0ff;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  margin: 0.75rem 0 0;
-  max-height: 52vh;
-  overflow: auto;
-  padding: 0.8rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .secondary-button {
   background: linear-gradient(180deg, #212d4f 0%, #1a2340 100%);
   border-color: #3b4d85;
@@ -2184,8 +2018,13 @@ body {
     display: none;
   }
 
-  .header-refresh-btn {
+  .header-actions {
     display: none;
+  }
+
+  /* Hlavička na mobile nemá tlačidlo odhlásenia, ponúkame ho v Nastaveniach. */
+  .mobile-only-settings {
+    display: block;
   }
 
   .mobile-liquid-nav {
@@ -2427,6 +2266,9 @@ body {
   }
 }
 
+/* --- Sťahovanie dát ------------------------------------------------------ */
+
+/* Tenký pás v hlavičke — dosynchronizovanie nad už zobrazenými dátami. */
 .sync-progress {
   display: grid;
   gap: 0.4rem;
@@ -2455,17 +2297,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.sync-progress-detail {
-  color: #8792b4;
-  display: flex;
-  font-size: 0.7rem;
-  font-weight: 600;
-  gap: 0.45rem;
-  min-height: 0.95rem;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
 .sync-progress-track {
   background: rgba(43, 57, 100, 0.6);
   border-radius: 999px;
@@ -2478,37 +2309,174 @@ body {
   border-radius: 999px;
   height: 100%;
   min-width: 6px;
-  overflow: hidden;
-  position: relative;
   transition: width 260ms ease;
 }
 
-/* Beh vlnky drží najavo, že krok stále pracuje, aj keď % stoja. */
-.sync-progress-fill::after {
-  animation: sync-progress-sheen 1.3s ease-in-out infinite;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  content: "";
+/* Sťahovanie na celú obrazovku — prvé načítanie modulu. */
+/* Kruh s popisom kroku drží stred, vysvetlenie sedí na spodku obrazovky. */
+.sync-overlay {
+  animation: sync-overlay-in 240ms ease both;
+  backdrop-filter: blur(20px) saturate(150%);
+  background:
+    radial-gradient(ellipse 820px 560px at 50% 16%, rgba(66, 94, 186, 0.5) 0%, rgba(17, 20, 32, 0) 68%),
+    rgba(10, 13, 23, 0.93);
+  display: grid;
+  grid-template-rows: 1fr auto;
   inset: 0;
+  justify-items: center;
+  overflow-y: auto;
+  padding: calc(2.2rem + env(safe-area-inset-top)) 1.35rem calc(2.2rem + env(safe-area-inset-bottom));
+  position: fixed;
+  row-gap: 1.6rem;
+  z-index: 150;
+}
+
+.sync-overlay-card {
+  align-self: center;
+  display: grid;
+  gap: 1.15rem;
+  justify-items: center;
+  max-width: 540px;
+  text-align: center;
+  width: 100%;
+}
+
+.sync-overlay-eyebrow {
+  color: #93a2cd;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.sync-overlay-ring {
+  height: clamp(172px, 27vh, 220px);
+  position: relative;
+  width: clamp(172px, 27vh, 220px);
+}
+
+.sync-overlay-ring svg {
+  height: 100%;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.sync-overlay-ring-track {
+  fill: none;
+  stroke: rgba(52, 68, 118, 0.55);
+}
+
+.sync-overlay-ring-value {
+  fill: none;
+  stroke: url(#sync-ring-gradient);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Jemné dýchanie ringu drží najavo, že sa pracuje, aj keď percento chvíľu stojí. */
+.sync-overlay-ring::after {
+  animation: sync-overlay-breathe 2.4s ease-in-out infinite;
+  background: radial-gradient(circle at 50% 50%, rgba(112, 145, 255, 0.3) 0%, rgba(112, 145, 255, 0) 68%);
+  border-radius: 50%;
+  content: "";
+  inset: -14%;
+  pointer-events: none;
   position: absolute;
 }
 
-@keyframes sync-progress-sheen {
+.sync-overlay-ring-center {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.sync-overlay-ring-center strong {
+  color: #f2f5ff;
+  font-size: clamp(2.3rem, 6vw, 3rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.sync-overlay-ring-center span {
+  color: #93a2cd;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.sync-overlay-current {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 100%;
+}
+
+.sync-overlay-current strong {
+  color: #eff2ff;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.sync-overlay-current span {
+  color: #a7b3d6;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  min-height: 1.2rem;
+}
+
+.sync-overlay-current em {
+  color: #7e89ab;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+}
+
+.sync-overlay-note {
+  color: #6b7594;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 420px;
+  text-align: center;
+}
+
+@keyframes sync-overlay-in {
   from {
-    transform: translateX(-100%);
+    opacity: 0;
   }
   to {
-    transform: translateX(100%);
+    opacity: 1;
+  }
+}
+
+@keyframes sync-overlay-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sync-progress-fill::after {
+  .sync-overlay,
+  .sync-overlay-ring::after {
     animation: none;
-    opacity: 0;
+  }
+
+  .sync-overlay-ring-value {
+    transition: none;
   }
 }

@@ -3,32 +3,47 @@
 import { useCallback, useRef, useState } from "react";
 
 /**
- * Priebeh sťahovania dát z KROS API. Sync beží po krokoch (firma × mesiac,
- * prípadne firma × druh dát), ktoré poznáme ešte pred prvým fetchom — progress
- * bar preto ukazuje reálny podiel hotového, nie nekonečný loader.
+ * Jeden krok sťahovania tak, ako ho vidí používateľ — `group` je firma,
+ * `label` obdobie alebo druh dát. Plán krokov poznáme pred prvým fetchom, takže
+ * ho vieme aj vykresliť: načítavanie potom nie je nekonečný loader, ale mapa
+ * práce, na ktorej sa vidí posun.
  */
+export type SyncStep = {
+  key: string;
+  group: string;
+  label: string;
+};
+
 export type SyncProgress = {
-  /** Počet dokončených krokov. */
-  done: number;
-  /** Celkový počet naplánovaných krokov. */
-  total: number;
-  /** Čo sa práve sťahuje, napr. „Firma s.r.o. · august 2026“. */
-  label?: string;
+  steps: SyncStep[];
+  /** Index práve sťahovaného kroku; -1 pred prvým krokom. */
+  activeIndex: number;
+  doneCount: number;
   /** Podiel rozrobeného kroku (0–1) — priebeh vnútri mesiaca. */
-  stepFraction?: number;
-  /** Bližší popis rozrobeného kroku, napr. „rozúčtovanie 38/214“. */
+  stepFraction: number;
+  /** Bližší popis rozrobeného kroku, napr. „doklady 96/214“. */
   detail?: string;
   /** Odhad zvyšného času; chýba, kým sa nedá rozumne spočítať. */
   etaSeconds?: number;
+  /**
+   * Sťahovanie na celú obrazovku. Zapíname, keď na obrazovke ešte nie sú dáta
+   * alebo keď je práce na dlho — pri krátkom dosynchronizovaní nad existujúcimi
+   * dátami stačí tenký pás v hlavičke.
+   */
+  immersive: boolean;
 };
 
 const MONTH_LABEL_FORMAT = new Intl.DateTimeFormat("sk-SK", { month: "long", year: "numeric" });
 
-/** `2026-08` → `august 2026` — popis práve sťahovaného mesiaca. */
-export function formatMonthKeyLabel(monthKey: string) {
+function parseMonthKey(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number);
-  if (!year || !month) return monthKey;
-  return MONTH_LABEL_FORMAT.format(new Date(year, month - 1, 1));
+  return year && month ? new Date(year, month - 1, 1) : null;
+}
+
+/** `2026-08` → `august 2026`. */
+export function formatMonthKeyLabel(monthKey: string) {
+  const date = parseMonthKey(monthKey);
+  return date ? MONTH_LABEL_FORMAT.format(date) : monthKey;
 }
 
 /** Zvyšný čas do konca sťahovania; `null`, kým sa nedá odhadnúť. */
@@ -38,23 +53,35 @@ export function formatSyncEta(etaSeconds: number | undefined) {
   return `~ ${Math.ceil(etaSeconds / 60)} min`;
 }
 
+/** Podiel hotovej práce (0–1) vrátane rozrobeného kroku. */
+export function getSyncFraction(progress: SyncProgress) {
+  if (progress.steps.length === 0) return 0;
+  return Math.min(1, (progress.doneCount + progress.stepFraction) / progress.steps.length);
+}
+
 export function useSyncProgress() {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const startedAtRef = useRef(0);
 
-  /** Otvorí progress bar na známy počet krokov; `total` 0 ho skryje. */
-  const beginSync = useCallback((total: number) => {
+  /** Otvorí sťahovanie na známy plán krokov; prázdny plán ho zavrie. */
+  const beginSync = useCallback((steps: SyncStep[], immersive: boolean) => {
     startedAtRef.current = Date.now();
-    setProgress(total > 0 ? { done: 0, total } : null);
+    setProgress(
+      steps.length > 0
+        ? { steps, activeIndex: -1, doneCount: 0, stepFraction: 0, immersive }
+        : null
+    );
   }, []);
 
-  const startStep = useCallback((label: string) => {
-    setProgress((prev) => (prev ? { ...prev, label, stepFraction: 0, detail: undefined } : prev));
+  const startStep = useCallback((index: number) => {
+    setProgress((prev) =>
+      prev ? { ...prev, activeIndex: index, stepFraction: 0, detail: undefined } : prev
+    );
   }, []);
 
   /**
    * Priebeh vnútri rozrobeného kroku — sťahovanie výdavkov ho hlási streamom,
-   * takže bar sa hýbe aj počas dlhého mesiaca.
+   * takže sa progress hýbe aj počas dlhého mesiaca.
    */
   const advanceStep = useCallback((fraction: number, detail?: string) => {
     setProgress((prev) => {
@@ -64,7 +91,7 @@ export function useSyncProgress() {
         ...prev,
         stepFraction,
         detail,
-        etaSeconds: estimateEta(prev.done + stepFraction, prev.total, startedAtRef.current)
+        etaSeconds: estimateEta(prev.doneCount + stepFraction, prev.steps.length, startedAtRef.current)
       };
     });
   }, []);
@@ -72,13 +99,13 @@ export function useSyncProgress() {
   const completeStep = useCallback(() => {
     setProgress((prev) => {
       if (!prev) return prev;
-      const done = Math.min(prev.done + 1, prev.total);
+      const doneCount = Math.min(prev.doneCount + 1, prev.steps.length);
       return {
         ...prev,
-        done,
+        doneCount,
         stepFraction: 0,
         detail: undefined,
-        etaSeconds: estimateEta(done, prev.total, startedAtRef.current)
+        etaSeconds: estimateEta(doneCount, prev.steps.length, startedAtRef.current)
       };
     });
   }, []);

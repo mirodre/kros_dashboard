@@ -23,7 +23,6 @@ type Props = {
   focusedTag: string | null;
   onCategoryFiltersChange: (filters: TagCategoryFilters) => void;
   onFocusedTagChange: (tag: string | null) => void;
-  isLoading?: boolean;
   baseTitle?: string;
   ariaLabelPrefix?: string;
   invertDeltaColor?: boolean;
@@ -37,7 +36,6 @@ export function CategorizedTagsDashboard({
   focusedTag,
   onCategoryFiltersChange,
   onFocusedTagChange,
-  isLoading = false,
   baseTitle = "Tržby podľa štítkov",
   ariaLabelPrefix = "Filtrovať prehľad podľa štítku",
   invertDeltaColor = false
@@ -94,7 +92,6 @@ export function CategorizedTagsDashboard({
           onCategoryFiltersChange(setCategoryTagFilter({}, FLAT_TAG_FILTER_KEY, next))
         }
         onFocusedItemChange={onFocusedTagChange}
-        isLoading={isLoading}
         invertDeltaColor={invertDeltaColor}
       />
     );
@@ -131,7 +128,6 @@ export function CategorizedTagsDashboard({
               )
             }
             onFocusedItemChange={onFocusedTagChange}
-            isLoading={isLoading}
             invertDeltaColor={invertDeltaColor}
             collapsible
             collapsed={collapsedSet.has(availableGroup.category)}

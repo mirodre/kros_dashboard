@@ -21,7 +21,6 @@ type Props = {
   focusedItem: string | null;
   onSelectionChange: (items: string[]) => void;
   onFocusedItemChange: (item: string | null) => void;
-  isLoading?: boolean;
   /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
   invertDeltaColor?: boolean;
   /** Ak je true, sekciu ide zbaliť (schovať zoznam). */
@@ -42,7 +41,6 @@ export function FilterableBreakdownSection({
   focusedItem,
   onSelectionChange,
   onFocusedItemChange,
-  isLoading = false,
   invertDeltaColor = false,
   collapsible = false,
   collapsed = false,
@@ -105,7 +103,7 @@ export function FilterableBreakdownSection({
 
   return (
     <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           {collapsible ? (
             <button
@@ -131,17 +129,6 @@ export function FilterableBreakdownSection({
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={index}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
             <ul className="tag-list">
               {filteredItems.map((item) => {
                 const delta = getDeltaPct(item.amount, item.previousAmount);

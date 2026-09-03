@@ -22,7 +22,6 @@ type Props = {
   activeCompanyLabel?: string;
   onClearTagFilter?: () => void;
   onClearCompanyFilter?: () => void;
-  isLoading?: boolean;
 };
 
 export function RevenueDashboard({
@@ -36,8 +35,7 @@ export function RevenueDashboard({
   activeTagLabel,
   activeCompanyLabel,
   onClearTagFilter,
-  onClearCompanyFilter,
-  isLoading = false
+  onClearCompanyFilter
 }: Props) {
   const maxValue = Math.max(...points.map((point) => Math.max(point.current, point.previous)));
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
@@ -65,7 +63,7 @@ export function RevenueDashboard({
     };
   }, []);
 
-  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
@@ -118,22 +116,6 @@ export function RevenueDashboard({
           ) : null}
         </div>
       </div>
-
-      {isLoading ? (
-        <div className="dashboard-skeleton-overlay revenue-skeleton" aria-live="polite">
-          <div className="skeleton-pill" />
-          <div className="skeleton-number" />
-          <div className="skeleton-row">
-            <span />
-            <span />
-          </div>
-          <div className="skeleton-chart">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} style={{ height: `${34 + ((index * 13) % 52)}%` }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <KpiCarousel items={kpis} />
 
