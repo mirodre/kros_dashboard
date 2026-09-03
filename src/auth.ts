@@ -1,48 +1,8 @@
 import NextAuth from "next-auth";
-import type { OAuth2Config } from "next-auth/providers";
 
 import { jwtCallback, sessionCallback } from "@/auth-callbacks";
-import { fetchMe, type MeResponse, serviceUrl } from "@/lib/auth-service";
+import { provider } from "@/auth-provider";
 import { SIGN_IN_PATH } from "@/lib/public-paths";
-
-/**
- * Delegovane na fetchMe, nie hola URL: prve prihlasenie musi ist tou istou overenou cestou
- * ako kazde nasledne obnovenie tokenov. fetchMe validuje tvar odpovede (typeof sub/email ===
- * "string") a rozlisuje "sluzba je dole" od "konto nema pristup" — Auth.js vlastny userinfo
- * fetch by obe tieto zaruky obisiel.
- */
-const userinfo: NonNullable<OAuth2Config<MeResponse>["userinfo"]> = {
-  url: `${serviceUrl()}/api/me`,
-  async request({ tokens }: { tokens: { access_token?: string } }) {
-    return fetchMe(tokens.access_token ?? "");
-  }
-};
-
-/**
- * Provider sa menuje `krosdoplnky`, NIE `kros`: appka už má `/api/kros/*` vo význame
- * „KROS ekonomické API" a rovnaké meno by pri čítaní kódu mýlilo.
- *
- * Vlastný provider, nie discovery — služba OIDC vrstvu nemá, takže `type: "oauth"`.
- * `scope` sa neposiela zámerne: služba scopy nepoužíva.
- */
-function provider(): OAuth2Config<MeResponse> {
-  return {
-    id: "krosdoplnky",
-    name: "KROS doplnky",
-    type: "oauth",
-    clientId: process.env.AUTH_SERVICE_CLIENT_ID,
-    clientSecret: process.env.AUTH_SERVICE_CLIENT_SECRET,
-    // PKCE aj `state` sú povinné. PKCE aj pri dôvernom klientovi so secretom — chráni pred
-    // zneužitím kódu, ktorý unikol v logu proxy alebo v `Referer`.
-    checks: ["pkce", "state"],
-    authorization: `${serviceUrl()}/oauth/authorize`,
-    token: `${serviceUrl()}/oauth/token`,
-    userinfo,
-    profile(profile) {
-      return { id: profile.sub, email: profile.email, name: profile.name ?? null };
-    }
-  };
-}
 
 /**
  * Konfigurácia je FUNKCIA, nie objekt — `NextAuth` to podporuje
