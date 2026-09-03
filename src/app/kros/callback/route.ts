@@ -50,6 +50,22 @@ function parseCompanies(formData: FormData) {
     );
 }
 
+/**
+ * Presmerovanie s RELATÍVNOU adresou, zámerne bez hostiteľa.
+ *
+ * `NextResponse.redirect(new URL(cesta, request.url))` tu nefunguje: za reverznou proxy je
+ * `request.url` vnútorná adresa kontajnera (`http://localhost:3000/...`), takže prehliadač
+ * dostane `Location: http://localhost:3000/settings` a skončí na „nepodarilo sa pripojiť na
+ * server". Presne to sa stalo pri prvom ostrom prepojení s KROS.
+ *
+ * Relatívnu `Location` povoľuje RFC 7231 a prehliadač si ju doplní podľa adresy, na ktorú
+ * sám poslal request — teda podľa verejnej domény. Žiadna premenná s verejným originom na to
+ * netreba.
+ */
+function redirectTo(path: string, status: 303 | 302 = 303): NextResponse {
+  return new NextResponse(null, { status, headers: { Location: path, "Cache-Control": "no-store" } });
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -64,7 +80,7 @@ export async function POST(request: Request) {
         method: "POST",
         message: "Callback odmietnutý: appka nemá databázu, prepojenie sa nemá kam uložiť"
       });
-      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
+      return redirectTo("/settings?kros_post_result=error&reason=db");
     }
 
     // `state` je jediné, čo o odosielateľovi vieme: cross-site POST z KROS neposiela
@@ -78,7 +94,7 @@ export async function POST(request: Request) {
         method: "POST",
         message: "Callback odmietnutý: neplatný alebo expirovaný state parameter"
       });
-      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
+      return redirectTo("/settings?kros_post_result=error&reason=state");
     }
 
     if (companies.length === 0) {
@@ -90,7 +106,7 @@ export async function POST(request: Request) {
         method: "POST",
         message: "Callback bez firiem: nie je čo prepojiť"
       });
-      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
+      return redirectTo("/settings?kros_post_result=error&reason=empty");
     }
 
     await postgresConnectionRepository(pool).save(
@@ -103,7 +119,7 @@ export async function POST(request: Request) {
       endpoint: "/kros/callback",
       method: "POST",
       status: 200,
-      message: `POST callback prijatý: firmy=${companies.length}, prepojenie uložené pre firmu`,
+      message: `POST callback prijatý: firmy=${companies.length}, uložené pre tenanta ${binding.tenantId}`,
       payload: {
         // Token v logu nemá čo robiť — telá odpovedí sa tu pri chybách zapisujú na disk.
         companies: companies.map((company) => ({
@@ -116,7 +132,7 @@ export async function POST(request: Request) {
     // 303, aby prehliadač pokračoval GET-om: výsledok už je v databáze, prehliadač
     // nepotrebuje niesť nič. Do fázy 2 sa tu vracala HTML stránka, ktorá zoznam firiem aj
     // s tokenmi preniesla cez `sessionStorage` do `/settings`.
-    return NextResponse.redirect(new URL("/settings?kros_post_result=1", request.url), 303);
+    return redirectTo("/settings?kros_post_result=1");
 
   } catch (error) {
     await appendKrosLog({
@@ -126,10 +142,12 @@ export async function POST(request: Request) {
       message: `Spracovanie callbacku zlyhalo: ${error instanceof Error ? error.message : "Neznáma chyba"}`
     });
 
-    return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url));
+    // Sem spadne aj chýbajúci `KROS_TOKEN_KEY`: šifrovanie tokenu hodí výnimku. Bez dôvodu
+    // v URL by to vyzeralo rovnako ako vypršaný `state` a hľadalo by sa to v logu servera.
+    return redirectTo("/settings?kros_post_result=error&reason=save");
   }
 }
 
-export async function GET(request: Request) {
-  return NextResponse.redirect(new URL("/settings", request.url));
+export async function GET() {
+  return redirectTo("/settings", 302);
 }

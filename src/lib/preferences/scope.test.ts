@@ -22,17 +22,25 @@ describe("preferenceScope", () => {
     expect(scope.isPersonalFallback).toBe(true);
   });
 
-  it("aktivna firma mimo zoznamu clenstiev NEDA tenant scope", () => {
-    // Sluzba tento stav naozaj vracia (pozri sso-claims.test.ts). Doverovat mu by znamenalo
-    // zapisat firemne nastavenie do firmy, ku ktorej clenstvo nevieme dolozit.
-    const scope = preferenceScope({
+  it("rozhoduje aktivna firma, aj ked zoznam clenstiev v claimoch chyba", () => {
+    // Presne stav kazdej session vydanej PRED nasadenim tejto fazy: `organizations` v nej
+    // este nie su. Keby sa tenant overoval proti zoznamu, cely 15-minutovy interval do
+    // obnovy claimov by ludia zapisovali pod osobny scope — a po obnove by im to zmizlo.
+    const scope = preferenceScope({ sub, organizationId: "01jbq3aaaaaaaaaaaaaaaaaaaa", organizations: [] });
+
+    expect(scope.tenantId).toBe("01jbq3aaaaaaaaaaaaaaaaaaaa");
+    expect(scope.isPersonalFallback).toBe(false);
+  });
+
+  it("scope sa nemeni tym, ci uz doslo obnovenie claimov", () => {
+    const stareClaimy = preferenceScope({ sub, organizationId: "tenant-a", organizations: [] });
+    const svezieClaimy = preferenceScope({
       sub,
-      organizationId: "chybajuca",
-      organizations: [{ id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "Ina", role: "owner" }]
+      organizationId: "tenant-a",
+      organizations: [{ id: "tenant-a", name: "Firma A", role: "member" }]
     });
 
-    expect(scope.tenantId).toBe(`user:${sub}`);
-    expect(scope.isPersonalFallback).toBe(true);
+    expect(stareClaimy).toEqual(svezieClaimy);
   });
 
   it("osobny scope dvoch ludi sa nikdy nestretne", () => {
