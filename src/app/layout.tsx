@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppNav } from "@/components/app-nav";
 
 export const metadata: Metadata = {
   title: "KROS tržbový prehľad",
@@ -34,6 +35,11 @@ export default function RootLayout({
     <html lang="sk">
       <body>
         {children}
+        {/*
+          Menu je v layoute, nie v stránke modulu: pri prechode medzi modulmi sa
+          neodmontuje, takže ostáva klikateľné aj počas načítavania nového modulu.
+        */}
+        <AppNav />
         <div className="orientation-lock" aria-hidden="true">
           <div>
             <strong>Otoč telefón naspäť na výšku</strong>
