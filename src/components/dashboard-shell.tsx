@@ -26,7 +26,9 @@ export function DashboardShell({
   const pullThreshold = 86;
   const pathname = usePathname();
   const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
-  const progressPct = progress ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
+  const progressPct = progress
+    ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
+    : 0;
   const progressEta = formatSyncEta(progress?.etaSeconds);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
@@ -122,8 +124,7 @@ export function DashboardShell({
           <div className="sync-progress-meta">
             <span className="sync-progress-step">{progress.label ?? "Načítavam dáta..."}</span>
             <span className="sync-progress-count">
-              {progressPct} % · {progress.done}/{progress.total}
-              {progressEta ? ` · ${progressEta}` : ""}
+              {progressPct} %{progressEta ? ` · ${progressEta}` : ""}
             </span>
           </div>
           <div
@@ -131,11 +132,16 @@ export function DashboardShell({
             role="progressbar"
             aria-label="Priebeh načítania dát"
             aria-valuemin={0}
-            aria-valuemax={progress.total}
-            aria-valuenow={progress.done}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
             aria-valuetext={`${progressPct} %`}
           >
             <div className="sync-progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div className="sync-progress-detail">
+            {[`Krok ${Math.min(progress.done + 1, progress.total)}/${progress.total}`, progress.detail]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
         </div>
       ) : null}

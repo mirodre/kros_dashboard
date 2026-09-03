@@ -37,6 +37,7 @@ import {
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
 import { formatMonthKeyLabel, useSyncProgress } from "@/lib/use-sync-progress";
+import { readNdjsonStream } from "@/lib/ndjson-stream";
 import {
   expenseCompanyMetaKey,
   expenseMonthMetaKey,
@@ -62,6 +63,36 @@ type MonthSyncRange = { monthKey: string; from: string; to: string };
 type ExpenseSyncStep =
   | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
   | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
+
+/** Riadky priebehu z `/api/kros/expenses` (NDJSON stream). */
+type ExpenseStreamEvent =
+  | { type: "progress"; phase: "list"; loaded?: number }
+  | { type: "progress"; phase: "details"; done?: number; total?: number }
+  | ExpenseResultEvent;
+
+type ExpenseResultEvent = { type: "result"; data?: unknown[]; errors?: { message?: string }[] };
+
+// Stránkovanie hlavičiek je proti doťahovaniu rozúčtovania krátke, ale nie
+// zanedbateľné — kus baru mu preto necháme.
+const LIST_PHASE_SHARE = 0.12;
+
+/** Podiel hotového v rámci jedného kroku + jeho popis pre progress bar. */
+function readStepProgress(event: ExpenseStreamEvent) {
+  if (event.type !== "progress") return null;
+
+  if (event.phase === "list") {
+    const loaded = event.loaded ?? 0;
+    return { fraction: LIST_PHASE_SHARE / 2, detail: `hľadám doklady (${loaded})` };
+  }
+
+  const total = event.total ?? 0;
+  const done = event.done ?? 0;
+  if (total === 0) return { fraction: 1, detail: "žiadne doklady" };
+  return {
+    fraction: LIST_PHASE_SHARE + (1 - LIST_PHASE_SHARE) * (done / total),
+    detail: `doklady ${done}/${total}`
+  };
+}
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
@@ -153,7 +184,14 @@ export default function ExpensesPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
-  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
+  const {
+    progress: syncProgress,
+    beginSync,
+    startStep,
+    advanceStep,
+    completeStep,
+    endSync
+  } = useSyncProgress();
 
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
@@ -242,18 +280,38 @@ export default function ExpensesPage() {
         signal: abortController.signal
       });
 
-      const payload = await response.json();
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null);
         throw new Error(
           payload?.details
             ? `${payload?.error ?? "Nepodarilo sa načítať výdavky."} ${payload.details}`
             : payload?.error ?? "Nepodarilo sa načítať výdavky."
         );
       }
-      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+
+      // Dáta prídu posledným riadkom streamu, dovtedy chodí priebeh sťahovania.
+      const collected: { result: ExpenseResultEvent | null } = { result: null };
+      await readNdjsonStream(response.body, (raw) => {
+        const event = raw as ExpenseStreamEvent;
+        if (event?.type === "result") {
+          collected.result = event;
+          return;
+        }
+
+        const stepProgress = readStepProgress(event);
+        if (stepProgress) {
+          advanceStep(stepProgress.fraction, stepProgress.detail);
+        }
+      });
+
+      const payload = collected.result;
+      if (!payload) {
+        throw new Error("Nepodarilo sa načítať výdavky — sťahovanie sa nedokončilo.");
+      }
+      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
         throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
       }
-      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
+      return Array.isArray(payload.data) ? payload.data : [];
     };
 
     const loadExpenses = async () => {
@@ -404,6 +462,7 @@ export default function ExpensesPage() {
     hasLoadedPersistedFilters,
     beginSync,
     startStep,
+    advanceStep,
     completeStep,
     endSync
   ]);

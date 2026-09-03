@@ -2446,6 +2446,17 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.sync-progress-detail {
+  color: #8792b4;
+  display: flex;
+  font-size: 0.7rem;
+  font-weight: 600;
+  gap: 0.45rem;
+  min-height: 0.95rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .sync-progress-track {
   background: rgba(43, 57, 100, 0.6);
   border-radius: 999px;

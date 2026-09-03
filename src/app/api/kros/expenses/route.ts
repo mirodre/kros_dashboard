@@ -15,6 +15,17 @@ type ExpenseRequestBody = {
   lastModifiedTimestamp?: string;
 };
 
+/**
+ * Priebeh sťahovania jednej firmy. `list` = stránkovanie hlavičiek (počet ešte
+ * nepoznáme), `details` = doťahovanie rozúčtovania, kde už celok poznáme.
+ * Klient z toho skladá progress bar aj v rámci jedného mesiaca.
+ */
+type ExpenseProgressEvent =
+  | { type: "progress"; phase: "list"; companyName: string; loaded: number }
+  | { type: "progress"; phase: "details"; companyName: string; done: number; total: number };
+
+type ProgressReporter = (event: ExpenseProgressEvent) => void;
+
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
 
 // KROS API očakáva čistý dátum. Berieme dátumovú zložku reťazca, aby časová
@@ -57,6 +68,10 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
  */
 const DETAIL_CONCURRENCY = 4;
 
+// Priebeh hlásime po dávkach — na doklad by to bol zbytočný tlak na stream aj
+// na prekresľovanie progress baru.
+const DETAIL_PROGRESS_BATCH = 5;
+
 async function fetchExpenseDetail(company: CompanyConnection, expenseId: string) {
   const response = await fetchWithRetry(
     `${KROS_API_BASE}/api/expenses/${encodeURIComponent(expenseId)}`,
@@ -84,28 +99,53 @@ async function fetchExpenseDetail(company: CompanyConnection, expenseId: string)
 /** Doplní hlavičky o journalItems z detailu; doklad bez detailu ostáva ako je. */
 async function attachJournalItems(
   company: CompanyConnection,
-  expenses: Record<string, unknown>[]
+  expenses: Record<string, unknown>[],
+  onProgress: ProgressReporter,
+  signal: AbortSignal
 ) {
   let failed = 0;
   let nextIndex = 0;
+  let processed = 0;
+
+  onProgress({
+    type: "progress",
+    phase: "details",
+    companyName: company.companyName,
+    done: 0,
+    total: expenses.length
+  });
 
   const worker = async () => {
     while (nextIndex < expenses.length) {
+      if (signal.aborted) return;
+
       const index = nextIndex;
       nextIndex += 1;
       const expense = expenses[index];
       const id = typeof expense.id === "string" ? expense.id : null;
-      if (!id) continue;
 
-      try {
-        const detail = await fetchExpenseDetail(company, id);
-        if (detail) {
-          expenses[index] = { ...expense, journalItems: detail.journalItems ?? [] };
-        } else {
+      if (id) {
+        try {
+          const detail = await fetchExpenseDetail(company, id);
+          if (detail) {
+            expenses[index] = { ...expense, journalItems: detail.journalItems ?? [] };
+          } else {
+            failed += 1;
+          }
+        } catch {
           failed += 1;
         }
-      } catch {
-        failed += 1;
+      }
+
+      processed += 1;
+      if (processed % DETAIL_PROGRESS_BATCH === 0 || processed === expenses.length) {
+        onProgress({
+          type: "progress",
+          phase: "details",
+          companyName: company.companyName,
+          done: processed,
+          total: expenses.length
+        });
       }
     }
   };
@@ -138,6 +178,8 @@ async function attachJournalItems(
 
 async function fetchCompanyExpenses(
   company: CompanyConnection,
+  onProgress: ProgressReporter,
+  signal: AbortSignal,
   deliveryDateFrom?: string,
   deliveryDateTo?: string,
   lastModifiedTimestamp?: string
@@ -151,6 +193,8 @@ async function fetchCompanyExpenses(
   const aggregated: unknown[] = [];
 
   while (true) {
+    if (signal.aborted) return [];
+
     const query = new URLSearchParams({
       Top: String(top),
       Skip: String(skip)
@@ -209,6 +253,12 @@ async function fetchCompanyExpenses(
       ? (payload as { data: unknown[] }).data
       : [];
     aggregated.push(...items);
+    onProgress({
+      type: "progress",
+      phase: "list",
+      companyName: company.companyName,
+      loaded: aggregated.length
+    });
 
     await appendKrosLog({
       direction: "response",
@@ -228,7 +278,9 @@ async function fetchCompanyExpenses(
 
   const withDetails = await attachJournalItems(
     company,
-    aggregated.map((expense) => ({ ...((expense as Record<string, unknown>) ?? {}) }))
+    aggregated.map((expense) => ({ ...((expense as Record<string, unknown>) ?? {}) })),
+    onProgress,
+    signal
   );
 
   return withDetails.map((expense) => ({
@@ -238,73 +290,126 @@ async function fetchCompanyExpenses(
   }));
 }
 
+/**
+ * Odpoveď je NDJSON stream: riadky `progress` idú klientovi počas sťahovania a
+ * dáta prídu posledným riadkom `result`. Doťahovanie rozúčtovania trvá dlho a
+ * takto o ňom progress bar vie priebežne, nielen po dokončení mesiaca.
+ */
 export async function POST(request: Request) {
+  let body: ExpenseRequestBody;
   try {
-    const body = (await request.json()) as ExpenseRequestBody;
-    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo))) {
-      return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
-    }
-
-    await appendKrosLog({
-      direction: "request",
-      endpoint: "/api/kros/expenses",
-      method: "POST",
-      message: `firmy=${body.companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
-      payload: {
-        companies: body.companies.map((company) => ({
-          companyId: company.companyId,
-          companyName: company.companyName
-        })),
-        deliveryDateFrom: body.deliveryDateFrom,
-        deliveryDateTo: body.deliveryDateTo,
-        lastModifiedTimestamp: body.lastModifiedTimestamp
-      }
-    });
-
-    const allExpenses = [];
-    const errors: { companyName: string; message: string }[] = [];
-
-    for (const company of body.companies) {
-      try {
-        const companyExpenses = await fetchCompanyExpenses(
-          company,
-          body.deliveryDateFrom,
-          body.deliveryDateTo,
-          body.lastModifiedTimestamp
-        );
-        allExpenses.push(...companyExpenses);
-      } catch (error) {
-        errors.push({
-          companyName: company.companyName,
-          message: error instanceof Error ? error.message : "Neznáma chyba pri načítaní firmy"
-        });
-      }
-    }
-
-    await appendKrosLog({
-      direction: "response",
-      endpoint: "/api/kros/expenses",
-      method: "POST",
-      status: 200,
-      message: `Načítané výdavky=${allExpenses.length}, chyby=${errors.length}, firmy=${body.companies.length}`,
-      payload: errors.length > 0 ? { errors } : undefined
-    });
-    return NextResponse.json({ data: allExpenses, errors });
-  } catch (error) {
-    await appendKrosLog({
-      direction: "error",
-      endpoint: "/api/kros/expenses",
-      method: "POST",
-      message: `Neočakávaná chyba načítania výdavkov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
-    });
-    return NextResponse.json({
-      data: [],
-      errors: [
-        {
-          companyName: "global",
-          message: `Neočakávaná chyba načítania výdavkov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
-        }
-      ]
-    });
+    body = (await request.json()) as ExpenseRequestBody;
+  } catch {
+    return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
   }
+
+  if (
+    !Array.isArray(body.companies) ||
+    (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo))
+  ) {
+    return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let isClosed = false;
+      const send = (event: unknown) => {
+        if (isClosed) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          // Klient odišiel — ďalšie riadky už nemá kto prečítať.
+          isClosed = true;
+        }
+      };
+
+      try {
+        await runExpenseSync(body, request.signal, send);
+      } catch (error) {
+        await appendKrosLog({
+          direction: "error",
+          endpoint: "/api/kros/expenses",
+          method: "POST",
+          message: `Neočakávaná chyba načítania výdavkov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
+        });
+        send({
+          type: "result",
+          data: [],
+          errors: [
+            {
+              companyName: "global",
+              message: `Neočakávaná chyba načítania výdavkov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
+            }
+          ]
+        });
+      } finally {
+        isClosed = true;
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no"
+    }
+  });
+}
+
+async function runExpenseSync(
+  body: ExpenseRequestBody,
+  signal: AbortSignal,
+  send: (event: unknown) => void
+) {
+  await appendKrosLog({
+    direction: "request",
+    endpoint: "/api/kros/expenses",
+    method: "POST",
+    message: `firmy=${body.companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
+    payload: {
+      companies: body.companies.map((company) => ({
+        companyId: company.companyId,
+        companyName: company.companyName
+      })),
+      deliveryDateFrom: body.deliveryDateFrom,
+      deliveryDateTo: body.deliveryDateTo,
+      lastModifiedTimestamp: body.lastModifiedTimestamp
+    }
+  });
+
+  const allExpenses = [];
+  const errors: { companyName: string; message: string }[] = [];
+
+  for (const company of body.companies) {
+    try {
+      const companyExpenses = await fetchCompanyExpenses(
+        company,
+        send,
+        signal,
+        body.deliveryDateFrom,
+        body.deliveryDateTo,
+        body.lastModifiedTimestamp
+      );
+      allExpenses.push(...companyExpenses);
+    } catch (error) {
+      errors.push({
+        companyName: company.companyName,
+        message: error instanceof Error ? error.message : "Neznáma chyba pri načítaní firmy"
+      });
+    }
+  }
+
+  await appendKrosLog({
+    direction: "response",
+    endpoint: "/api/kros/expenses",
+    method: "POST",
+    status: 200,
+    message: `Načítané výdavky=${allExpenses.length}, chyby=${errors.length}, firmy=${body.companies.length}`,
+    payload: errors.length > 0 ? { errors } : undefined
+  });
+
+  send({ type: "result", data: allExpenses, errors });
 }

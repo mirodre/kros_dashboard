@@ -14,7 +14,11 @@ export type SyncProgress = {
   total: number;
   /** Čo sa práve sťahuje, napr. „Firma s.r.o. · august 2026“. */
   label?: string;
-  /** Odhad zvyšného času; chýba, kým nie je hotový prvý krok. */
+  /** Podiel rozrobeného kroku (0–1) — priebeh vnútri mesiaca. */
+  stepFraction?: number;
+  /** Bližší popis rozrobeného kroku, napr. „rozúčtovanie 38/214“. */
+  detail?: string;
+  /** Odhad zvyšného času; chýba, kým sa nedá rozumne spočítať. */
   etaSeconds?: number;
 };
 
@@ -45,25 +49,52 @@ export function useSyncProgress() {
   }, []);
 
   const startStep = useCallback((label: string) => {
-    setProgress((prev) => (prev ? { ...prev, label } : prev));
+    setProgress((prev) => (prev ? { ...prev, label, stepFraction: 0, detail: undefined } : prev));
   }, []);
 
-  /** Priemerný čas hotových krokov je zároveň odhadom zvyšku. */
+  /**
+   * Priebeh vnútri rozrobeného kroku — sťahovanie výdavkov ho hlási streamom,
+   * takže bar sa hýbe aj počas dlhého mesiaca.
+   */
+  const advanceStep = useCallback((fraction: number, detail?: string) => {
+    setProgress((prev) => {
+      if (!prev) return prev;
+      const stepFraction = Math.min(Math.max(fraction, 0), 1);
+      return {
+        ...prev,
+        stepFraction,
+        detail,
+        etaSeconds: estimateEta(prev.done + stepFraction, prev.total, startedAtRef.current)
+      };
+    });
+  }, []);
+
   const completeStep = useCallback(() => {
     setProgress((prev) => {
       if (!prev) return prev;
       const done = Math.min(prev.done + 1, prev.total);
-      const remaining = prev.total - done;
-      const elapsed = Date.now() - startedAtRef.current;
       return {
         ...prev,
         done,
-        etaSeconds: remaining > 0 ? ((elapsed / done) * remaining) / 1000 : undefined
+        stepFraction: 0,
+        detail: undefined,
+        etaSeconds: estimateEta(done, prev.total, startedAtRef.current)
       };
     });
   }, []);
 
   const endSync = useCallback(() => setProgress(null), []);
 
-  return { progress, beginSync, startStep, completeStep, endSync };
+  return { progress, beginSync, startStep, advanceStep, completeStep, endSync };
+}
+
+/**
+ * Odhad zvyšku z priemeru doteraz hotovej práce. Na úplnom začiatku odhad
+ * nedávame — z pár sekúnd a zlomku kroku by vyšlo číslo, ktoré by len skákalo.
+ */
+function estimateEta(units: number, total: number, startedAt: number) {
+  const remaining = total - units;
+  const elapsed = Date.now() - startedAt;
+  if (remaining <= 0 || units < 0.2 || elapsed < 3000) return undefined;
+  return ((elapsed / units) * remaining) / 1000;
 }
