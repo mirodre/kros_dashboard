@@ -197,10 +197,17 @@ describe("advanceToken", () => {
     expect(d.fetchMe).toHaveBeenCalledTimes(2);
   });
 
-  it("bez refresh tokenu odhlasi", async () => {
+  it.each([
+    ["prazdny", ""],
+    ["chybajuci", undefined]
+  ])("%s refresh token odhlasi bez volania sluzby", async (_popis, value) => {
+    // `undefined` je realny tvar z cookie, ked odpoved sluzby refresh token neobsahovala.
+    // Bez guardu by sa zavolalo refreshTokens(undefined), sluzba by to zamietla ako
+    // SsoAuthFailed a clovek by dostal odhlasenie namiesto cisteho "nie je cim obnovit".
     const d = deps({ nowMs: NOW + 16 * 60_000 });
+    const stale = token({ refreshToken: value as unknown as string });
 
-    await expect(advanceToken(token({ refreshToken: "" }), d)).resolves.toBeNull();
+    await expect(advanceToken(stale, d)).resolves.toBeNull();
     expect(d.refreshTokens).not.toHaveBeenCalled();
   });
 });

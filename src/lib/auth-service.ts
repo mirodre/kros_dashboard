@@ -24,7 +24,21 @@ export type MeResponse = {
 };
 
 export function serviceUrl(): string {
-  return (process.env.AUTH_SERVICE_URL ?? "").replace(/\/+$/, "");
+  const raw = (process.env.AUTH_SERVICE_URL ?? "").trim().replace(/\/+$/, "");
+
+  // Rovnaká trieda chyby ako neplatný `AUTH_SERVICE_TIMEOUT_MS`, len tu žiadny rozumný
+  // default neexistuje. Kým sa vracal prázdny reťazec, vznikali relatívne adresy typu
+  // `/api/me` a `/oauth/token`; prejavilo sa to až generickou Configuration stránkou
+  // Auth.js, z ktorej sa nedá zistiť, čo chýba. Chybná konfigurácia nie je ani výpadok,
+  // ani výrok o prístupe, takže sa hodí von: `advanceToken` neznámu chybu vedome
+  // preposiela ďalej a nikoho neodhlási.
+  if (!/^https?:\/\/[^/\s]+(\/\S*)?$/.test(raw)) {
+    throw new Error(
+      "AUTH_SERVICE_URL nie je nastavená na absolútnu adresu prihlasovacej služby (napr. https://login.krosdoplnky.sk)."
+    );
+  }
+
+  return raw;
 }
 
 function timeoutMs(): number {

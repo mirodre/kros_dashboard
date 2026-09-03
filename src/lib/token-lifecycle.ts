@@ -22,7 +22,11 @@ export async function advanceToken(token: SsoToken, deps: LifecycleDeps): Promis
     return token;
   }
 
-  if (token.refreshToken === "") {
+  // Falsy, nie len `=== ""`: token sa dekóduje z cookie, takže jeho runtime tvar typ
+  // negarantuje. Chýbajúci `refresh_token` v odpovedi služby pri prvom prihlásení uloží
+  // `undefined`, a `refreshTokens(undefined)` by služba zamietla ako `SsoAuthFailed` —
+  // človeka by to odhlásilo namiesto čistého „nie je čím obnoviť".
+  if (!token.refreshToken) {
     return null; // Nie je čím obnoviť.
   }
 

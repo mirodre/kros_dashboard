@@ -31,9 +31,25 @@ describe("auth-service", () => {
     delete process.env.AUTH_SERVICE_TIMEOUT_MS;
   });
 
+  it("chybajuca AUTH_SERVICE_URL padne s menom premennej, nie relativnou adresou", async () => {
+    // Bez tejto kontroly vznikne adresa `/api/me` a jediny signal je genericka
+    // Configuration stranka Auth.js. Chybna konfiguracia nie je ani vypadok, ani vyrok
+    // o pristupe, takze sa MUSI hodit von — advanceToken ju preposle dalej.
+    vi.stubGlobal("fetch", vi.fn(async () => respond(200, ME)));
+
+    delete process.env.AUTH_SERVICE_URL;
+    await expect(fetchMe("AT")).rejects.toThrow(/AUTH_SERVICE_URL/);
+
+    // Adresa bez schemy je ta ista chyba: `new URL` by ju neprijal a fetch by dostal nezmysel.
+    process.env.AUTH_SERVICE_URL = "login.krosdoplnky.sk";
+    await expect(refreshTokens("RT")).rejects.toThrow(/AUTH_SERVICE_URL/);
+  });
+
   it("nezmyselny AUTH_SERVICE_TIMEOUT_MS neabortuje volanie okamzite", async () => {
-    // `Math.max(1000, NaN)` je `NaN` a `AbortSignal.timeout(NaN)` sa pretypuje na 0, takze
-    // preklep v premennej by abortoval kazde volanie a nikto by sa neprihlasil.
+    // `Math.max(1000, NaN)` je `NaN` a `AbortSignal.timeout(NaN)` v Node 20 hodi RangeError,
+    // ktory `send()` prekryje na SsoUnavailable — preklep v premennej by teda vyzeral ako
+    // trvaly vypadok sluzby a nikto by sa neprihlasil. Test drzi obe strany: fetch sa MUSI
+    // zavolat (RangeError by ho vobec nepustil) a signal nesmie byt zruseny.
     process.env.AUTH_SERVICE_TIMEOUT_MS = "abc";
     const signals: Array<AbortSignal | null | undefined> = [];
     vi.stubGlobal(
