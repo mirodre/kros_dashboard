@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { isPublicPath } from "@/lib/public-paths";
+import { isPublicPath, SIGN_IN_PATH } from "@/lib/public-paths";
 
 /**
  * Deny-by-default: chránené je všetko, čo `isPublicPath()` neoznačí za verejné.
@@ -22,7 +22,9 @@ export default auth((request) => {
     return NextResponse.json({ error: "Neprihlásený" }, { status: 401 });
   }
 
-  const signIn = new URL("/api/auth/signin", request.nextUrl.origin);
+  // `SIGN_IN_PATH`, nie `/api/auth/signin`: default stránka Auth.js by pri jedinom
+  // provideri vypýtala druhé kliknutie a bola by po anglicky. Naša route skočí do služby.
+  const signIn = new URL(SIGN_IN_PATH, request.nextUrl.origin);
   signIn.searchParams.set("callbackUrl", request.nextUrl.pathname + request.nextUrl.search);
 
   return NextResponse.redirect(signIn);

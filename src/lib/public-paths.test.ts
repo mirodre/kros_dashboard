@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPublicPath } from "@/lib/public-paths";
+import { isPublicPath, SIGN_IN_PATH } from "@/lib/public-paths";
 
 describe("isPublicPath", () => {
   it.each([
@@ -14,7 +14,10 @@ describe("isPublicPath", () => {
     // KROS integration-consent posiela sem cross-site form POST; sameSite=lax cookie sa
     // pri nom neposle, takze session tu nie je k dispozicii. Autorizuje jednorazovy `state`,
     // ktory handler overuje sam (consumeOAuthState) — `/kros` samotne ostava chranene.
-    "/kros/callback"
+    "/kros/callback",
+    // Prihlasovacia route musi byt verejna, inak by ju middleware chranil a poslal
+    // neprihlaseneho zase na nu — redirect loop.
+    "/prihlasenie"
   ])("verejna: %s", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
@@ -31,6 +34,20 @@ describe("isPublicPath", () => {
     // vynimku — inak by sa predponou dala obist ochrana celeho `/kros/*` stromu.
     expect(isPublicPath("/kros")).toBe(false);
     expect(isPublicPath("/kros/callback/extra")).toBe(false);
+  });
+
+  it("cesta, na ktoru middleware posiela neprihlaseneho, je verejna", () => {
+    // Toto je ta vazba, ktora drzi middleware a tento zoznam v sulade: keby sa
+    // SIGN_IN_PATH premenovala a v allowliste ostal stary literal, vznikol by
+    // redirect loop — middleware by posielal na cestu, ktoru sam chrani.
+    expect(isPublicPath(SIGN_IN_PATH)).toBe(true);
+  });
+
+  it("vynimka pre prihlasenie je presna zhoda, nie predpona", () => {
+    // Pod `/prihlasenie` nic nie je; predpona by zverejnila lubovolnu buducu route,
+    // ktora by tam pribudla.
+    expect(isPublicPath("/prihlasenie/nieco")).toBe(false);
+    expect(isPublicPath("/prihlasenie-inak")).toBe(false);
   });
 
   it("nova, nikdy nevymenovana route je chranena", () => {

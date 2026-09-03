@@ -17,7 +17,7 @@ const PUBLIC_PREFIXES = [
  * Presné cesty, nie predpony — na rozdiel od `PUBLIC_PREFIXES` sa musia zhodovať celé,
  * inak by sa verejným stal aj čokoľvek pod nimi.
  *
- * `/kros/callback` je jediný záznam a je tu zámerne: KROS integration-consent služba
+ * `/kros/callback` je tu zámerne: KROS integration-consent služba
  * (`firma.kros.sk`) sem posiela cross-site form POST (`src/lib/kros-connect.ts`,
  * `redirect_url`). Session cookie Auth.js má `sameSite: "lax"`, a Lax cookie sa pri
  * cross-site POSTe neposiela — aj prihlásený používateľ by teda prišiel bez session,
@@ -27,7 +27,15 @@ const PUBLIC_PREFIXES = [
  * ten istý token, čo appka sama vydala cez `POST /api/kros/oauth-state`, ktoré je samo
  * za prihlásením.
  */
-const PUBLIC_EXACT = new Set(["/kros/callback"]);
+/**
+ * Cesta, na ktorú middleware posiela neprihláseného. Konštanta je TU, a nie pri middleware,
+ * práve preto, že tá istá cesta musí byť aj verejná — keby si obe miesta držali vlastný
+ * literál a jedno sa premenovalo, vznikol by redirect loop (middleware by presmerovával
+ * na cestu, ktorú sám chráni).
+ */
+export const SIGN_IN_PATH = "/prihlasenie";
+
+const PUBLIC_EXACT = new Set(["/kros/callback", SIGN_IN_PATH]);
 
 /**
  * Statické súbory z `public/` — majú príponu a Next ich servíruje z koreňa.

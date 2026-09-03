@@ -3,6 +3,7 @@ import type { OAuth2Config } from "next-auth/providers";
 
 import { jwtCallback, sessionCallback } from "@/auth-callbacks";
 import { fetchMe, type MeResponse, serviceUrl } from "@/lib/auth-service";
+import { SIGN_IN_PATH } from "@/lib/public-paths";
 
 /**
  * Delegovane na fetchMe, nie hola URL: prve prihlasenie musi ist tou istou overenou cestou
@@ -56,6 +57,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   providers: [provider()],
   // Bez databázy: claimy aj tokeny žijú v šifrovanej httpOnly cookie (JWE).
   session: { strategy: "jwt" },
+  // Vlastná prihlasovacia route namiesto default stránky `@auth/core` — tá pri jedinom
+  // provideri neautoredirectuje a vypýtala by druhé kliknutie. Platí to aj pre `GET
+  // /api/auth/signin`, ktoré sem Auth.js teraz presmeruje samo.
+  pages: { signIn: SIGN_IN_PATH },
   // Callbacky sú v `src/auth-callbacks.ts`, aby sa dali testovať — tento modul sa mimo
   // Next runtime importovať nedá. Tu sa len zapájajú.
   callbacks: {
