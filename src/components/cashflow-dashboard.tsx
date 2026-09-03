@@ -18,7 +18,6 @@ type Props = {
   recentTransactions: CashflowRecentTransaction[];
   unsettledTransactions: CashflowRecentTransaction[];
   isMockData?: boolean;
-  isLoading?: boolean;
   activeCompanyLabel?: string;
   onClearCompanyFilter?: () => void;
   onResetCompanyFilter?: () => void;
@@ -32,7 +31,6 @@ export function CashflowDashboard({
   recentTransactions,
   unsettledTransactions,
   isMockData = false,
-  isLoading = false,
   activeCompanyLabel,
   onClearCompanyFilter,
   onResetCompanyFilter
@@ -188,7 +186,6 @@ export function CashflowDashboard({
   return (
     <section className={isUnsettledSheetOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
       {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
-      {isLoading ? <span className="active-tag-badge">Načítavam dáta...</span> : null}
       {activeCompanyLabel ? (
         <button type="button" className="active-tag-badge" onClick={onClearCompanyFilter}>
           <span>{activeCompanyLabel}</span>
@@ -210,7 +207,7 @@ export function CashflowDashboard({
         </button>
       ) : null}
 
-      {accounts.length === 0 && !isLoading ? (
+      {accounts.length === 0 ? (
         <article className="panel">
           <div className="cashflow-empty-state">
             <p>Pre vybraný filter firiem nemáme demo dáta.</p>
@@ -222,17 +219,8 @@ export function CashflowDashboard({
       ) : null}
 
       <article className="panel">
-        <div className={isLoading ? "cashflow-donut-wrap loading" : "cashflow-donut-wrap"}>
+        <div className="cashflow-donut-wrap">
           <div className="cashflow-donut-card">
-            {isLoading ? (
-              <div className="cashflow-donut-skeleton" aria-hidden="true">
-                <div className="cashflow-donut-skeleton-ring" />
-                <div className="cashflow-donut-skeleton-center">
-                  <span />
-                  <span />
-                </div>
-              </div>
-            ) : (
             <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Zostatok podľa účtov">
               {chartData.map((slice, sliceIndex) => {
                 const isActive = activeSliceId === slice.id;
@@ -281,7 +269,6 @@ export function CashflowDashboard({
                 className={isPieAnimated ? "cashflow-donut-hole is-animated" : "cashflow-donut-hole"}
               />
             </svg>
-            )}
             <div className="cashflow-donut-center">
               <p className="cashflow-donut-title">
                 {activeSlice ? activeSlice.name : "Všetky účty"}
@@ -297,15 +284,6 @@ export function CashflowDashboard({
             </div>
           </div>
 
-          {isLoading ? (
-            <ul className="cashflow-donut-legend skeleton" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <li key={`legend-skeleton-${index}`}>
-                  <div className="cashflow-legend-item skeleton" />
-                </li>
-              ))}
-            </ul>
-          ) : (
             <ul
               ref={legendRef}
               className={isLegendDragging ? "cashflow-donut-legend is-dragging" : "cashflow-donut-legend"}
@@ -339,7 +317,6 @@ export function CashflowDashboard({
                 </li>
               ))}
             </ul>
-          )}
         </div>
       </article>
 

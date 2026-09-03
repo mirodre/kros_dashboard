@@ -7,17 +7,16 @@ import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 type Props = {
   invoices: NormalizedInvoice[];
-  isLoading?: boolean;
 };
 
-export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
+export function RecentInvoicesSection({ invoices }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
     "kros_dashboard_collapsed_recent_invoices"
   );
 
   return (
     <section className="dashboard-body">
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           <button
             type="button"
@@ -35,24 +34,13 @@ export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={`invoice-skeleton-${index}`}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && invoices.length === 0 ? (
+            {invoices.length === 0 ? (
               <p className="tag-filter-help recent-invoices-empty">
                 V tomto výbere zatiaľ nemáme žiadne faktúry.
               </p>
             ) : null}
 
-            {!isLoading && invoices.length > 0 ? (
+            {invoices.length > 0 ? (
               <ul className="invoice-list recent-invoices-list">
                 {invoices.map((invoice) => {
                   const issueDate = parseDocumentDate(invoice.issueDate);

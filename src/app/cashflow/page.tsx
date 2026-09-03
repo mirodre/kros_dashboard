@@ -11,7 +11,7 @@ import {
   normalizePaymentAccounts,
   normalizePaymentTransactions
 } from "@/lib/cashflow-live";
-import { useSyncProgress } from "@/lib/use-sync-progress";
+import { useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 import {
   cashflowCompanyMetaKey,
   getCachedPaymentAccounts,
@@ -30,6 +30,12 @@ import type {
 import type { Granularity } from "@/lib/mock-data";
 
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
+
+/** Kroky sťahovania na firmu — účty sú malé, pohyby idú jedným volaním. */
+const CASHFLOW_STEP_LABELS = [
+  { long: "bankové účty", short: "účty" },
+  { long: "pohyby na účtoch", short: "pohyby" }
+] as const;
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
@@ -212,10 +218,12 @@ export default function CashflowPage() {
         setLiveAccounts(cachedAccounts);
         setLiveTransactions(cachedTransactions);
       }
+      return { cachedAccounts, cachedTransactions };
     };
 
     const loadCashflowData = async () => {
-      await refreshFromCache();
+      const cached = await refreshFromCache();
+      const hasCachedData = cached.cachedAccounts.length > 0 || cached.cachedTransactions.length > 0;
       setLiveError(null);
 
       try {
@@ -238,16 +246,29 @@ export default function CashflowPage() {
         }
 
         if (abortController.signal.aborted) return;
-        beginSync(pendingConnections.length * 2);
+        const syncSteps: SyncStep[] = pendingConnections.flatMap(({ connection }) =>
+          CASHFLOW_STEP_LABELS.map((label) => ({
+            key: `${connection.companyId}:${label.short}`,
+            group: connection.companyName,
+            label: label.long,
+            short: label.short
+          }))
+        );
+        // Bez dát na obrazovke sťahujeme naplno, krátke dosynchronizovanie nad
+        // existujúcimi dátami stačí v hlavičke.
+        beginSync(syncSteps, !hasCachedData);
         if (pendingConnections.length > 0) {
           setIsLoadingLiveData(true);
         }
 
-        for (const { connection, needsFullSync, lastModifiedTimestamp } of pendingConnections) {
+        for (const [
+          index,
+          { connection, needsFullSync, lastModifiedTimestamp }
+        ] of pendingConnections.entries()) {
           if (abortController.signal.aborted) return;
 
           const metaKey = cashflowCompanyMetaKey(connection.companyId);
-          startStep(`${connection.companyName} · bankové účty`);
+          startStep(index * CASHFLOW_STEP_LABELS.length);
 
           // Account list and balances are small and change over time — always fetch in full.
           const rawAccounts = await fetchAccounts([connection]);
@@ -260,7 +281,7 @@ export default function CashflowPage() {
           completeStep();
 
           if (abortController.signal.aborted) return;
-          startStep(`${connection.companyName} · pohyby na účtoch`);
+          startStep(index * CASHFLOW_STEP_LABELS.length + 1);
 
           const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
           const previousLastModified = lastModifiedTimestamp;
@@ -359,6 +380,7 @@ export default function CashflowPage() {
       title="Financie"
       isSyncing={isLoadingLiveData}
       syncProgress={syncProgress}
+      syncNote="Pohyby na účtoch ťaháme pre každú firmu naraz, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {shouldShowMockData ? <DemoDataBanner /> : null}
@@ -370,7 +392,6 @@ export default function CashflowPage() {
         recentTransactions={overview.recentTransactions}
         unsettledTransactions={overview.unsettledTransactions}
         isMockData={shouldShowMockData}
-        isLoading={isLoadingLiveData}
         activeCompanyLabel={focusedCompany ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
         onResetCompanyFilter={() => {

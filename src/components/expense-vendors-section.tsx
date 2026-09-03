@@ -6,17 +6,16 @@ import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 type Props = {
   vendors: ExpenseVendorPoint[];
-  isLoading?: boolean;
 };
 
-export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
+export function ExpenseVendorsSection({ vendors }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
     "kros_dashboard_collapsed_expense_vendors"
   );
 
   return (
     <section className="dashboard-body">
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           <button
             type="button"
@@ -34,18 +33,7 @@ export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={index}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && vendors.length === 0 ? (
+            {vendors.length === 0 ? (
               <p className="tag-filter-help">V tomto výbere zatiaľ nemáme žiadnych dodávateľov.</p>
             ) : null}
 

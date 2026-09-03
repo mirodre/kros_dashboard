@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
-import { formatSyncEta, type SyncProgress } from "@/lib/use-sync-progress";
+import { formatSyncEta, getSyncFraction, type SyncProgress } from "@/lib/use-sync-progress";
+import { SyncOverlay } from "@/components/sync-overlay";
 
 import { signOutAction } from "@/app/actions/sign-out";
 
@@ -12,6 +13,8 @@ type Props = {
   isSyncing?: boolean;
   onRefresh?: () => void;
   syncProgress?: SyncProgress | null;
+  /** Vysvetlenie dlhého prvého načítania pre obrazovku sťahovania. */
+  syncNote?: string;
   title?: string;
 };
 
@@ -20,6 +23,7 @@ export function DashboardShell({
   isSyncing = false,
   onRefresh,
   syncProgress = null,
+  syncNote,
   title = "Príjmy"
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
@@ -27,11 +31,11 @@ export function DashboardShell({
   const isPullingRef = useRef(false);
   const pullThreshold = 86;
   const pathname = usePathname();
-  const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
-  const progressPct = progress
-    ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
-    : 0;
-  const progressEta = formatSyncEta(progress?.etaSeconds);
+  const progress = syncProgress && syncProgress.steps.length > 0 ? syncProgress : null;
+  const inlineProgress = progress && !progress.immersive ? progress : null;
+  const inlinePct = inlineProgress ? Math.round(getSyncFraction(inlineProgress) * 100) : 0;
+  const inlineStep = inlineProgress?.steps[inlineProgress.activeIndex];
+  const inlineEta = formatSyncEta(inlineProgress?.etaSeconds);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     if (!onRefresh || isSyncing || window.scrollY > 0) return;
@@ -132,12 +136,16 @@ export function DashboardShell({
         </div>
       </header>
 
-      {progress ? (
+      {inlineProgress ? (
         <div className="sync-progress">
           <div className="sync-progress-meta">
-            <span className="sync-progress-step">{progress.label ?? "Načítavam dáta..."}</span>
+            <span className="sync-progress-step">
+              {[inlineStep?.group, inlineStep?.label, inlineProgress.detail]
+                .filter(Boolean)
+                .join(" · ") || "Načítavam dáta..."}
+            </span>
             <span className="sync-progress-count">
-              {progressPct} %{progressEta ? ` · ${progressEta}` : ""}
+              {inlinePct} %{inlineEta ? ` · ${inlineEta}` : ""}
             </span>
           </div>
           <div
@@ -146,20 +154,19 @@ export function DashboardShell({
             aria-label="Priebeh načítania dát"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={progressPct}
-            aria-valuetext={`${progressPct} %`}
+            aria-valuenow={inlinePct}
+            aria-valuetext={`${inlinePct} %`}
           >
-            <div className="sync-progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="sync-progress-detail">
-            {[`Krok ${Math.min(progress.done + 1, progress.total)}/${progress.total}`, progress.detail]
-              .filter(Boolean)
-              .join(" · ")}
+            <div className="sync-progress-fill" style={{ width: `${inlinePct}%` }} />
           </div>
         </div>
       ) : null}
 
       {children}
+
+      {progress?.immersive ? (
+        <SyncOverlay progress={progress} title={title} note={syncNote} />
+      ) : null}
 
       <nav className="mobile-liquid-nav" aria-label="Hlavná navigácia">
         <Link href="/" className={pathname === "/" ? "mobile-liquid-link active" : "mobile-liquid-link"}>

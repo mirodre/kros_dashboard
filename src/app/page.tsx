@@ -46,7 +46,12 @@ import {
   upsertCachedInvoices,
   writeSyncMeta
 } from "@/lib/invoice-cache";
-import { formatMonthKeyLabel, useSyncProgress } from "@/lib/use-sync-progress";
+import {
+  formatMonthKeyLabel,
+  formatMonthKeyShort,
+  useSyncProgress,
+  type SyncStep
+} from "@/lib/use-sync-progress";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_revenue_selected_companies";
@@ -64,6 +69,28 @@ type MonthSyncRange = { monthKey: string; from: string; to: string };
 type InvoiceSyncStep =
   | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
   | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
+
+/** Od koľkých krokov je sťahovanie „na dlho“ a patrí naň celá obrazovka. */
+const IMMERSIVE_STEP_THRESHOLD = 3;
+
+/** Krok sťahovania tak, ako ho vidí používateľ na obrazovke sťahovania. */
+function toSyncStep(step: InvoiceSyncStep): SyncStep {
+  if (step.kind === "month") {
+    return {
+      key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
+      group: step.connection.companyName,
+      label: formatMonthKeyLabel(step.monthRange.monthKey),
+      short: formatMonthKeyShort(step.monthRange.monthKey)
+    };
+  }
+
+  return {
+    key: `${step.connection.companyId}:changes`,
+    group: step.connection.companyName,
+    label: "zmenené faktúry",
+    short: "zmeny"
+  };
+}
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
@@ -305,20 +332,21 @@ export default function HomePage() {
         }
 
         if (abortController.signal.aborted) return;
-        beginSync(steps.length);
+        // Bez dát na obrazovke (alebo pri práci na dlho) sťahujeme naplno,
+        // krátke dosynchronizovanie nad existujúcimi dátami stačí v hlavičke.
+        beginSync(
+          steps.map(toSyncStep),
+          cachedInvoices.length === 0 || steps.length >= IMMERSIVE_STEP_THRESHOLD
+        );
         if (steps.length > 0) {
           setIsLoadingLiveData(true);
         }
 
-        for (const step of steps) {
+        for (const [index, step] of steps.entries()) {
           if (abortController.signal.aborted) return;
 
           const { connection } = step;
-          startStep(
-            step.kind === "month"
-              ? `${connection.companyName} · ${formatMonthKeyLabel(step.monthRange.monthKey)}`
-              : `${connection.companyName} · zmenené faktúry`
-          );
+          startStep(index);
 
           await clearSyncLogsOnce();
           const rawInvoices = await fetchInvoices(
@@ -537,6 +565,7 @@ export default function HomePage() {
     <DashboardShell
       isSyncing={isLoadingLiveData}
       syncProgress={syncProgress}
+      syncNote="Faktúry ťaháme po mesiacoch, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {!hasLiveMode ? <DemoDataBanner /> : null}
@@ -552,7 +581,6 @@ export default function HomePage() {
         activeTagLabel={focusedTag ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
         activeCompanyLabel={focusedCompany ?? undefined}
-        isLoading={isLoadingLiveData}
       />
       <CategorizedTagsDashboard
         tags={tagsData}
@@ -562,9 +590,8 @@ export default function HomePage() {
         focusedTag={focusedTag}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         onFocusedTagChange={setFocusedTag}
-        isLoading={isLoadingLiveData}
       />
-      <RecentInvoicesSection invoices={recentInvoices} isLoading={isLoadingLiveData} />
+      <RecentInvoicesSection invoices={recentInvoices} />
       <CompaniesDashboard
         companies={companiesData}
         selectedCompanies={selectedCompanies}
@@ -579,7 +606,6 @@ export default function HomePage() {
           )
         }
         onFocusedCompanyChange={setFocusedCompany}
-        isLoading={isLoadingLiveData}
       />
     </DashboardShell>
   );
