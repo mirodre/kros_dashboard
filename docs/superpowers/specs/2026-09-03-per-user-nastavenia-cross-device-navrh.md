@@ -1,25 +1,38 @@
-# Nastavenia zapamätané na používateľa naprieč zariadeniami — návrh možností
+# Nastavenia a dáta viazané na používateľa naprieč zariadeniami — návrh
 
 **Cieľ:** čo si človek v appke nastaví (filtre firiem, filtre štítkov, zbalené sekcie,
-granularita) ho má nasledovať na iné zariadenie — telefón, tablet, notebook — len na
-základe toho, že je prihlásený tým istým kontom v `authentication_service`.
+granularita) ho má nasledovať na iné zariadenie len na základe toho, že je prihlásený tým
+istým kontom. Rozhodnutím z 3.9.2026 k tomu pribudlo aj **prepojenie s KROS** a **doklady
+načítané z KROS API**, ktoré sú dnes tiež per zariadenie a sú hlavným dôvodom, prečo je
+prvé načítanie pomalé.
 
 **Nadväzuje na:** fázu SSO
-(`docs/superpowers/specs/2026-09-02-kros-dashboard-sso-klient-design.md`), ktorá túto
-úlohu výslovne odložila: *„databáza, ktorá príde s filtrami, je na business dáta, nie na
-identitu. Kľúčuje sa `sub`-om zo `/api/me`."* Tento dokument je pokračovanie tej vety.
+(`docs/superpowers/specs/2026-09-02-kros-dashboard-sso-klient-design.md`), ktorá túto úlohu
+výslovne odložila: *„databáza, ktorá príde s filtrami, je na business dáta, nie na identitu.
+Kľúčuje sa `sub`-om zo `/api/me`."*
 
-**Stav dokumentu:** návrh možností na rozhodnutie. Implementačný plán vznikne až po výbere
-varianty (bod „Otvorené otázky" na konci).
+**Stav dokumentu:** návrh po prvom kole rozhodnutí. Implementačný plán vznikne samostatne,
+po odsúhlasení tohto.
+
+---
+
+## Rozhodnutia z 3.9.2026
+
+| otázka | rozhodnutie |
+|---|---|
+| úložisko | **Postgres ako služba** — nie súbor ani SQLite (zdôvodnenie nižšie, po informácii o dokladoch je to jediná rozumná možnosť) |
+| KROS pripojenia | **áno, presúvajú sa na server** — človek sa na novom zariadení prihlási a rovno vidí dáta |
+| doklady z KROS API | **áno, na server** — dnešná pomalosť je následok toho, že si ich sťahuje každé zariadenie zvlášť |
+| kľúčovanie nastavení | **na používateľa (`sub`)**, nie na organizáciu — pozri „Scope" nižšie |
 
 ---
 
 ## Východisko
 
-Appka dnes nemá žiadne serverové úložisko. Všetko, čo si pamätá, je v prehliadači, teda
-per zariadenie a per profil prehliadača. Konkrétny inventár:
+Appka nemá žiadne serverové úložisko. Všetko, čo si pamätá, je v prehliadači, teda per
+zariadenie a per profil prehliadača.
 
-### Skupina A — nastavenia, ktoré MAJÚ cestovať za používateľom
+### Skupina A — nastavenia, ktoré majú cestovať za používateľom
 
 | kľúč | kde vzniká | obsah |
 |---|---|---|
@@ -29,212 +42,229 @@ per zariadenie a per profil prehliadača. Konkrétny inventár:
 | `kros_dashboard_expenses_selected_companies` | `src/app/expenses/page.tsx:51` | vybrané firmy (Výdavky) |
 | `kros_dashboard_cashflow_selected_companies` | `src/app/cashflow/page.tsx:32` | vybrané firmy (Cashflow) |
 | `kros_dashboard_collapsed_tag_categories` | `src/components/categorized-tags-dashboard.tsx:15` | zbalené kategórie štítkov |
-| `kros_dashboard_collapsed_companies` | `src/components/companies-dashboard.tsx` | zbalený panel firiem |
+| `kros_dashboard_collapsed_companies` | `src/components/companies-dashboard.tsx:30` | zbalený panel firiem |
 | `kros_dashboard_expenses_collapsed_companies` | `src/app/expenses/page.tsx:691` | to isté vo Výdavkoch |
-| `kros_dashboard_collapsed_recent_invoices` | `src/components/recent-invoices-section.tsx` | zbalené posledné faktúry |
-| `kros_dashboard_collapsed_recent_expenses` | `src/components/recent-expenses-section.tsx` | zbalené posledné výdavky |
-| `kros_dashboard_collapsed_expense_vendors` | `src/components/expense-vendors-section.tsx` | zbalení dodávatelia |
+| `kros_dashboard_collapsed_recent_invoices` | `src/components/recent-invoices-section.tsx:15` | zbalené posledné faktúry |
+| `kros_dashboard_collapsed_recent_expenses` | `src/components/recent-expenses-section.tsx:98` | zbalené posledné výdavky |
+| `kros_dashboard_collapsed_expense_vendors` | `src/components/expense-vendors-section.tsx:14` | zbalení dodávatelia |
 | *(granularita)* | `globalThis.__krosDashboardGranularity` | **nepersistuje sa vôbec** — prežije prechod medzi stránkami, nie F5 |
 
-Granularita je zvláštny prípad: dnes žije v globálnej premennej, takže sa stráca pri
-každom reloade aj na tom istom zariadení. Je to najlacnejší viditeľný zisk celej úlohy.
+Granularita je zvláštny prípad: dnes žije v globálnej premennej, takže sa stráca pri každom
+reloade aj na tom istom zariadení. Je to najlacnejší viditeľný zisk celej úlohy.
 
-### Skupina B — čo cestovať NESMIE
+### Skupina B — čo cestovať nesmie ani po presune dát na server
 
-| kľúč | prečo nie |
+| kľúč | prečo |
 |---|---|
-| IndexedDB `kros_dashboard_cache`, `kros_dashboard_expenses_cache`, `kros_dashboard_cashflow_cache` | lokálna kópia dát z KROS API, desiatky MB, každé zariadenie si ju natiahne samo |
-| `kros_dashboard_last_sync_at` | *„kedy toto zariadenie naposledy sťahovalo"* — po synchronizácii by telefón tvrdil, že má dáta, ktoré nikdy nestiahol |
+| `kros_dashboard_last_sync_at` | *„kedy TOTO zariadenie naposledy sťahovalo"* — po presune sťahovania na server tento údaj stráca zmysel a nahradí ho serverový `synced_at` per firma |
 | `kros_dashboard_pending_state` | jednorazový CSRF `state` pre KROS consent, žije sekundy |
-
-Toto nie je detail: naliať skupinu B do serverového úložiska je najbežnejší spôsob, ako
-sa z „pamätaj si filtre" stane pomalá appka s rozbitou cache.
+| IndexedDB `kros_dashboard_cache`, `..._expenses_cache`, `..._cashflow_cache` | lokálna kópia dokladov; po presune na server sa zmenšuje na offline cache posledných odpovedí (pozri „Cieľový tvar") |
 
 ### Skupina C — KROS pripojenia (`kros_dashboard_connections`)
 
 `src/lib/kros-storage.ts` drží v `localStorage` zoznam firiem **aj s KROS OAuth tokenmi**;
-klient ich posiela v tele requestu do `/api/kros/*`.
+klient ich posiela v tele requestu do `/api/kros/*`. Rozhodnuté: presúva sa na server.
+Je to zároveň **technický predpoklad** serverového sťahovania dokladov — bez tokenov na
+serveri nemá čo sťahovať, keď má človek zavretý prehliadač.
 
-**Toto je skutočná prekážka cross-device zážitku.** Aj keby sa filtre prenášali dokonale,
-človek sa prihlási na telefóne, uvidí prázdny dashboard a obrazovku „Prepojiť s KROS" —
-a povie, že sa nič neprenieslo. Filtre a pripojenia sú z pohľadu používateľa jedna vec,
-z pohľadu bezpečnosti dve úplne rôzne (pozri „Fáza 2" nižšie).
-
-### Čo už máme a čo z toho platí
+### Čo už máme
 
 - `sub` v session (`src/lib/sso-claims.ts`) — stabilná referencia na človeka v službe.
-- `organizationId` a `organizationName` v claimoch — appka prepínač firiem nemá, drží len
-  aktívnu organizáciu.
-- Middleware je **deny-by-default** (`src/middleware.ts`), takže nová route `/api/preferences`
-  je chránená bez toho, aby sa jej ktokoľvek dotkol. Test na to existuje.
-- Appka nemá databázu ani Redis a beží **v presne jednej replike** (`docs/SSO-prechod.md`) —
-  je to podmienka kvôli deduplikácii obnovy tokenov, nie odporúčanie.
+- Middleware je **deny-by-default** (`src/middleware.ts`), takže nové routy sú chránené bez
+  toho, aby sa ich niekto dotkol. Test na to existuje.
+- Appka beží **v presne jednej replike** (`docs/SSO-prechod.md`) — podmienka kvôli
+  deduplikácii obnovy tokenov. Pre plánovaný sync je to zhodou okolností výhoda: jeden
+  proces = jeden plánovač, žiadne súbežné sťahovanie tej istej firmy.
 
 ---
 
-## Dve pasce, ktoré rozhodujú viac než výber databázy
+## Prečo je to dnes pomalé
 
-### 1. Filtre odkazujú na firmy podľa NÁZVU, nie podľa pripojenia
+Nie je to výkon appky, je to tvar sťahovania. `src/app/page.tsx` zostavuje plán krokov —
+**pre každú firmu a každý mesiac jeden request** do `/api/kros/invoices`, ktorý je relay do
+`api-economy.kros.sk` — a výsledok ukladá do IndexedDB. Dôsledky:
 
-Vo všetkých troch dashboardoch je vybraná firma reťazec `companyName`. Cashflow to dnes
-rieši takto (`src/app/cashflow/page.tsx`):
+- Každé zariadenie prejde ten istý beh **od nuly**. Nový telefón = celá história znova.
+- Prehliadač musí byť otvorený, inak sa nesťahuje nič; človek teda čaká práve vtedy, keď sa
+  pozerá.
+- Filtrovanie a agregácia bežia nad všetkými dokladmi v pamäti prehliadača.
+- Verzia cache sa zvýši (`DB_VERSION`, dnes 3) → **všetkým sa premaže celá história** a
+  sťahuje sa nanovo, na každom zariadení zvlášť.
 
-> *„If the user has a non-empty persisted selection but no name matches current connections,
-> sync nothing (do not fall back to loading every firm)."*
-
-Na jednom zariadení je to správne — prázdna obrazovka je lepšia než ticho zobrazené cudzie
-čísla. Po synchronizácii je to však bežný stav, nie výnimka: notebook je pripojený na tri
-firmy, telefón na jednu, filter si prinesie výber tých troch — a telefón ukáže prázdno bez
-vysvetlenia.
-
-**Pravidlo, ktoré musí byť v implementácii:** uložený výber sa aplikuje ako **prienik**
-s firmami pripojenými na tomto zariadení; keď je prienik prázdny a výber nie, appka to
-**povie** („Uložený filter obsahuje firmy, ktoré na tomto zariadení nie sú pripojené"),
-nie ticho ukáže nulu. To isté platí pre štítky — tie sú per firma, takže filter zo
-zariadenia s inou firmou obsahuje štítky, ktoré tu neexistujú.
-
-### 2. Blikanie nefiltrovaného obsahu
-
-Filtre sa dnes čítajú v `useEffect` po mounte a stránky sú `"use client"`. Keď sa
-načítanie presunie na sieť, medzi prvým paintom a odpoveďou servera človek uvidí
-nefiltrovaný dashboard a potom preskok. Preto: **`localStorage` neodchádza.** Zostáva ako
-lokálna cache pre okamžitý paint a offline (appka je PWA), server je zdroj pravdy pri
-načítaní. Nikdy sa nečaká na sieť pred vykreslením.
+Uloženie dokladov na server nie je „ďalšia vec, ktorú by sa hodilo mať". Je to jediná
+zmena, ktorá tú pomalosť odstráni namiesto zamaskovania.
 
 ---
 
-## Možnosti úložiska
+## Čo to znamená pre výber úložiska
 
-### A. JSON súbor na volume (žiadna nová infraštruktúra)
+Pôvodne bolo vo hre aj *JSON súbor na volume* a *SQLite na volume* (lacné, bez novej služby).
+Informácia „chcem tam aj doklady" ich odstraňuje:
 
-Jeden súbor per `sub` v perzistentnom adresári, atomický zápis cez `rename`. Appka už
-niečo podobné robí pre `runtime-logs/` (`src/lib/kros-logs.ts`).
+- **JSON súbor** — pár kilobajtov preferencií uniesie, státisíce riadkov dokladov s
+  inkrementálnym sync-om a agregáciami nie. Netreba o tom diskutovať.
+- **SQLite** — technicky by to zvládol, ale: `better-sqlite3` je natívny modul (build cez
+  nixpacks je riziko, ktoré padne až na serveri), celé to visí na namontovanom volume, a
+  **zabudnutý volume nespôsobí chybu — len tiché miznutie dát po redeploy**. Pri
+  preferenciách je to nepríjemné, pri dokladoch je to strata celej histórie a nový niekoľko-
+  minútový sync z KROS API.
+- **Preferencie v `authentication_service`** — na nastavenia by to šlo, na doklady zákazníka
+  v žiadnom prípade; a viedlo by to k dvom úložiskám pre jednu appku.
 
-- **Pre:** nula nových závislostí, nula nových služieb, hotové za deň.
-- **Proti:** funguje len pri jednej replike (dnes podmienka, zajtra pasca) a **iba
-  s namontovaným volume** — bez neho sa dáta ticho stratia pri každom redeploy. Nikto si
-  toho nevšimne týždeň, lebo appka funguje, len „zabúda".
-- **Kedy áno:** ak toto má byť rýchly experiment pre pár ľudí a rozhodne sa, že strata
-  nastavení pri redeploy je prijateľná.
-
-### B. SQLite na volume
-
-`better-sqlite3` alebo `libsql`; `node:sqlite` neprichádza do úvahy — je od Node 22, appka
-beží na Node 20 (`nixpacks.toml`).
-
-- **Pre:** skutočné transakcie a migrácie, dotazovateľné, stále bez ďalšej služby.
-- **Proti:** rovnaká pasca s volume ako A; `better-sqlite3` je natívny modul, takže build
-  cez nixpacks potrebuje build toolchain — je to presne ten typ veci, ktorá build zhodí až
-  na serveri, nie lokálne.
-
-### C. Postgres ako služba (Dokploy/Coolify) — **odporúčané**
-
-Tabuľka `user_preferences`, ovládač `pg` (čistý JS, žiadny natívny build).
-
-- **Pre:** prežije redeploy aj bez toho, aby si niekto spomenul na volume; migrácie sú
-  bežná vec; je to **zdieľaný stav**, takže tam raz môže bývať aj zámok pre obnovu
-  refresh tokenu (`src/lib/single-flight.ts`), čo je dnes jediný dôvod podmienky „jedna
-  replika". Samotný Postgres tú podmienku nezruší, ale je jej predpokladom.
-- **Proti:** ďalšia služba na správu a zálohovanie; connection pooling v Next.js sa musí
-  urobiť vedome (jeden pool na modul, nie na request).
-- **Poznámka:** neodstraňuje podmienku jednej repliky sám o sebe — to je samostatná úloha.
-
-### D. Preferencie v `authentication_service`
-
-Služba dostane generické per-app úložisko kľúč/hodnota (`GET/PUT /api/apps/{app}/preferences`).
-
-- **Pre:** jedno miesto pre všetky appky (`prehlady`, `payment_connector`, ďalšie),
-  nastavenia prežijú aj kompletné prestavanie dashboardu, appka nedostane databázu.
-- **Proti:** zmena v druhom repozitári a v jeho release cykle; výpadok služby prestane byť
-  „nedá sa prihlásiť" a stane sa aj „nefungujú filtre"; a hlavne — ide **proti rozhodnutiu
-  z fázy SSO**, že služba vlastní identitu a appka business dáta. Filtre štítkov a firiem
-  sú business dáta dashboardu, nie vlastnosť konta.
-- **Kedy áno:** ak sa už teraz vie, že rovnaké nastavenia bude chcieť viac appiek.
-
-### Zamietnuté
-
-- **Cookie** — limit ~4 kB na všetky cookies domény spolu, a hlavne je per zariadenie.
-  Rieši presne to, čo `localStorage` rieši dnes.
-- **Len `localStorage` + export/import** — človek prenáša nastavenia ručne; to nie je
-  „zapamätané".
-- **Externá služba (Upstash, Supabase)** — dáta o firmách a štítkoch zákazníka mimo našej
-  infraštruktúry, kvôli pár kilobajtom preferencií.
+**Postgres** je teda odporúčanie: ovládač `pg` je čistý JS (žiadny natívny build), migrácie
+sú bežná vec, agregácie `group by` s indexom robia presne to, čo dnes robí prehliadač nad
+celým poľom, a dáta prežijú redeploy bez toho, aby si niekto musel spomenúť na volume.
+Zálohy Postgresu sú vyriešená úloha; zálohy volume s SQLite súborom nie sú.
 
 ---
 
-## Odporúčanie
+## Cieľový tvar
 
-**C (Postgres) pre úložisko, `localStorage` ostáva ako cache, prienik s pripojeniami ako
-pravidlo zobrazenia.** Dôvod pre C proti lacnejším A/B nie je výkon ani škálovanie — je to
-tichosť zlyhania: zabudnutý volume nespôsobí chybu, len postupné zabúdanie nastavení, čo je
-najhoršie hlásenie chyby, aké môže prísť. Ak sa rozhodne, že ďalšia služba za to nestojí,
-**B je prijateľný kompromis, A nie** (v A je zápis súboru bez transakcie a bez migrácií
-vec, ktorú aj tak raz prepíšeme).
+**Dnes:** prehliadač → relay `/api/kros/*` → KROS API → IndexedDB → agregácia v prehliadači.
+
+**Cieľ:** server → KROS API → Postgres; prehliadač si pýta **agregáty**, nie doklady.
+
+1. **Sync beží na serveri**, nie v prehliadači:
+   - na požiadanie (pull-to-refresh v `DashboardShell` → `POST /api/sync`),
+   - plánovane (jedna replika = jeden `setInterval`, alebo externý cron ping na chránený
+     endpoint s tajomstvom — rozhodne sa v pláne).
+   - Inkrementálne rovnako ako dnes, cez `lastModifiedTimestamp` per firma. Logika už
+     existuje v `src/app/page.tsx`, len sa presťahuje na server, kde beží raz pre všetkých.
+2. **Klient pýta agregáty:** `GET /api/analytics/revenue?granularity=month&…` vráti body
+   grafu, KPI a breakdown ako pár kilobajtov namiesto megabajtov dokladov. Posledné faktúry
+   sú `order by delivery_date desc limit 50`, nie filtrovanie celej histórie v pamäti.
+3. **IndexedDB cache sa zmenší** na offline cache posledných odpovedí (appka je PWA), alebo
+   zmizne. Prestáva byť zdrojom pravdy, takže `DB_VERSION` prestane byť udalosťou.
+4. **Nový telefón:** prihlásenie → firmy sú pripojené (server) → agregáty prídu hneď.
+   Žiadne prepájanie, žiadny prvý sync.
+
+**Prechod:** dnešná klientska cesta ostáva funkčná, kým sa serverová nedokončí — appka
+použije serverové dáta pre firmu, ktorú server už má nasyncovanú, inak spadne na dnešné
+správanie. Nasadenie tak nie je jeden veľký prepínač.
 
 ---
 
-## Dátový model (pre variantu C)
+## Dátový model (návrh)
 
 ```sql
-create table user_preferences (
-  user_sub    text        not null,
-  scope       text        not null,  -- organizationId, alebo '_' keď claim chýba
-  key         text        not null,  -- napr. 'revenue.companies'
-  value       jsonb       not null,
-  updated_at  timestamptz not null default now(),
-  primary key (user_sub, scope, key)
+-- 1. Nastavenia (fáza 1)
+create table user_preference (
+  user_sub   text        not null,
+  key        text        not null,           -- 'revenue.companies', 'ui.granularity', …
+  value      jsonb       not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_sub, key)
 );
+
+-- 2. Pripojenie firmy + prístup k nej (fáza 2)
+create table kros_connection (
+  company_id       bigint      primary key,   -- id firmy v KROS
+  company_name      text        not null,
+  refresh_token_enc bytea       not null,      -- AES-256-GCM, kľúč z env
+  access_token_enc  bytea,
+  token_expires_at  timestamptz,
+  synced_at         timestamptz,
+  last_modified_ts  text                       -- kurzor inkrementálneho syncu
+);
+
+create table company_access (
+  user_sub     text        not null,
+  company_id   bigint      not null references kros_connection(company_id) on delete cascade,
+  connected_at timestamptz not null default now(),
+  primary key (user_sub, company_id)
+);
+
+-- 3. Doklady (fáza 3) — analogicky expense, payment, tag
+create table invoice (
+  company_id    bigint      not null references kros_connection(company_id) on delete cascade,
+  external_id   text        not null,
+  delivery_date date        not null,
+  total         numeric(14,2) not null,
+  currency      text        not null,
+  customer_name text,
+  tags          text[]      not null default '{}',
+  last_modified timestamptz,
+  primary key (company_id, external_id)
+);
+create index on invoice (company_id, delivery_date);
 ```
 
-**Prečo per kľúč a nie jeden dokument:** dva riadky namiesto jedného JSON blobu znamenajú,
-že keď telefón uloží filter firiem a notebook o pár sekúnd filter štítkov, prežijú oba.
-Pri jednom dokumente druhý zápis prepíše prvý celý — a je to presne tá strata, ktorú
-človek nikdy nenahlási ako chybu, len prestane veriť, že si to appka pamätá.
+**Prečo `user_preference` per kľúč a nie jeden JSON dokument:** keď telefón uloží filter
+firiem a notebook o pár sekúnd filter štítkov, prežijú oba. Pri jednom dokumente druhý zápis
+prepíše prvý celý — a je to presne tá strata, ktorú človek nikdy nenahlási ako chybu, len
+prestane veriť, že si to appka pamätá.
 
-**Prečo `scope` = organizácia:** filtre odkazujú na firmy a štítky, ktoré patria
-organizácii. Keď človek patrí do dvoch, filtre jednej nemajú čo robiť v druhej. Keď claim
-chýba, `'_'` je neutrálny scope.
+**Prečo je prístup k firme vlastná tabuľka:** pripojenie na firmu je fakticky organizačné,
+nie osobné. Keď tú istú firmu pripoja dvaja ľudia, doklady sa sťahujú **raz** a obaja ich
+vidia; odpojenie jedného nesmie zmazať dáta druhému. Každý dotaz na doklady preto vždy
+filtruje `company_id in (select company_id from company_access where user_sub = :sub)` —
+bez výnimky.
 
-**Čo sa NIKDY neukladá:** čokoľvek zo skupiny B, a žiadne tokeny (tie sú vlastná fáza).
+### Scope: prečo len `sub` (a v čom bola otázka nedorozumením)
+
+Obava, že kľúčovanie na organizáciu rozbije prípad „jeden používateľ, viac firiem", je
+založená na dvoch rôznych veciach s podobným menom:
+
+- `organizationId` v claimoch je **organizácia v `authentication_service`** (konto v systéme
+  prihlásenia),
+- **firmy v KROS** sú pripojenia (`company_id`), s tým nemajú nič spoločné.
+
+Kľúčovanie na organizáciu by teda „viac firiem pod jedným človekom" nerozbilo. Napriek tomu
+je rozhodnutie **`sub` samotný správne**: appka dnes prepínač organizácií nemá a v claimoch
+drží len aktívnu, takže scope by bol stĺpec, ktorý nikto nečíta. Ak raz prepínač pribudne,
+pridá sa stĺpec `scope` s defaultom `'_'` — a to je jednoduchá migrácia, nie prestavba.
 
 ---
 
-## Tok
+## Tok nastavení (fáza 1)
 
 **Načítanie**
 1. Stránka sa vykreslí okamžite z `localStorage` (dnešné správanie, bez zmeny).
-2. Paralelne `GET /api/preferences` → server vráti hodnoty pre `sub` + `scope`.
-3. Novšia hodnota (`updated_at` per kľúč) vyhrá, stav sa prepíše, `localStorage` sa dorovná.
-4. Keď server nedostupný → ostáva lokálny stav. Offline appka funguje ďalej.
+2. Paralelne `GET /api/preferences` → hodnoty pre `sub` zo session.
+3. Novšia hodnota per kľúč (`updated_at`) vyhrá, stav sa prepíše, `localStorage` sa dorovná.
+4. Server nedostupný → ostáva lokálny stav; appka funguje offline ďalej.
 
 **Zápis**
-1. Zmena filtra ide do stavu a do `localStorage` okamžite (žiadne čakanie na sieť).
+1. Zmena ide do stavu a do `localStorage` okamžite — nikdy sa nečaká na sieť pred paintom.
 2. `PATCH /api/preferences` s debounce ~800 ms, telo je len zmenené kľúče.
-3. Zlyhanie zápisu sa nezobrazuje ako chyba — hodnota ostáva lokálne a pošle sa pri ďalšej
-   zmene alebo pri ďalšom načítaní stránky.
+3. Zlyhanie zápisu sa nezobrazuje ako chyba; hodnota ostáva lokálne a odošle sa pri ďalšej
+   zmene alebo pri ďalšom načítaní.
 
-**Konflikt** — last-write-wins per kľúč podľa `updated_at`. Filtre nemajú zlučovaciu
-sémantiku (výber firiem nie je množina, ktorú má zmysel zjednocovať) a dve zariadenia toho
-istého človeka nemenia to isté v tej istej sekunde. Zložitejšie (CRDT, revízie
-s odmietnutím) by tu bola technika bez úžitku.
+**Konflikt** — last-write-wins per kľúč. Filtre nemajú zlučovaciu sémantiku a dve zariadenia
+toho istého človeka nemenia to isté v tej istej sekunde; CRDT by tu bola technika bez úžitku.
 
-**Migrácia z `localStorage`** — pri prvom načítaní po nasadení: ak server pre daný kľúč nemá
-nič a lokálne niečo je, lokálna hodnota sa nahrá. Dnešné nastavenia sa teda neztratia
-a nikto nemusí nič robiť ručne. Jednorazovo, označené príznakom, aby vymazaný filter
-nevstal z mŕtvych.
+**Migrácia z `localStorage`** — pri prvom načítaní po nasadení: ak server pre kľúč nemá nič
+a lokálne niečo je, lokálna hodnota sa nahrá. Jednorazovo, označené príznakom, aby zmazaný
+filter nevstal z mŕtvych. Nikto nemusí nič nastavovať znova.
+
+### Pasca, ktorá prežije aj presun dokladov na server
+
+Filtre odkazujú na firmy podľa **názvu** (`companyName`), nie podľa `company_id`. Cashflow
+dnes robí toto: *„ak je uložený výber neprázdny a žiadny názov nesedí s pripojeniami,
+nesťahuj nič"* — na jednom zariadení správne, po synchronizácii bežný stav. Kým sú
+pripojenia per zariadenie (teda do konca fázy 2), platí: uložený výber sa aplikuje ako
+**prienik** s dostupnými firmami a keď je prienik prázdny a výber nie, appka to **povie**,
+nie ticho ukáže nulu. Po fáze 2 je zoznam firiem rovnaký všade, ale pravidlo ostáva ako
+poistka a filtre sa pri tej príležitosti prekľúčujú na `company_id`.
 
 ---
 
 ## Bezpečnosť
 
-- **`sub` sa berie VÝHRADNE zo session, nikdy z tela requestu ani z query.** Toto je jediné
-  pravidlo, ktorého porušenie z „pamätaj si filtre" spraví čítanie cudzích nastavení.
-- Route `/api/preferences` je chránená automaticky (deny-by-default middleware), ale test na
-  „bez session → 401" tam patrí explicitne, lebo je to prvý endpoint appky s per-user dátami.
-- Nastavenia obsahujú **názvy firiem a štítkov zákazníka** — teda business metadáta. Nepatria
-  do logov (`src/lib/kros-logs.ts` loguje telá odpovedí pri chybách; preferencie doň nesmú).
-- Zmazanie konta v službe dnes appku nijako neinformuje, takže riadky by po zrušenom človeku
-  ostali. Otvorená otázka nižšie.
+- **`sub` sa berie výhradne zo session, nikdy z tela requestu ani z query.** Porušenie tohto
+  jediného pravidla mení „pamätaj si filtre" na čítanie cudzích nastavení a cudzích dokladov.
+- Nové routy sú chránené deny-by-default middlewarom, ale test „bez session → 401" tam patrí
+  explicitne — sú to prvé endpointy appky s per-user dátami.
+- **KROS tokeny na serveri:** AES-256-GCM, kľúč z env (`KROS_TOKEN_KEY`, `openssl rand -base64 32`),
+  vlastné IV per riadok, tokeny nikdy do logov. `src/lib/kros-logs.ts` dnes pri chybách loguje
+  telá odpovedí — musí byť overené, že sa tam token nedostane. Odpojenie firmy token odvolá
+  v KROS, nielen zmaže riadok.
+- **Zmena triedy incidentu:** dnes ležia doklady zákazníka v jeho prehliadači; po tejto zmene
+  ležia v našej databáze. Únik DB prestáva byť únikom metadát a stáva sa únikom účtovných dát.
+  Vyžaduje si to zálohy so šifrovaním, obmedzený prístup k DB a vedomé prijatie rizika — to je
+  cena za rýchlosť a cross-device, nie vedľajší efekt.
+- Zmazanie konta v službe appku nijako neinformuje, takže riadky po zrušenom človeku ostanú.
+  Otvorená otázka nižšie.
 
 ---
 
@@ -243,45 +273,54 @@ nevstal z mŕtvych.
 Podľa pravidla z fázy SSO — každá asercia typu „X sa stalo" sa dokazuje mutáciou.
 
 - **čisté funkcie:** zlúčenie serverového a lokálneho stavu (novší vyhrá per kľúč);
-  jednorazová migrácia z `localStorage`; prienik uloženého výberu firiem s pripojeniami —
-  vrátane prípadu „výber neprázdny, prienik prázdny" → hlásenie, nie ticho nula.
-- **route handler:** bez session 401; `sub` z tela requestu sa **ignoruje**; zápis cudzieho
-  `sub` nie je možný.
+  jednorazová migrácia z `localStorage`; prienik uloženého výberu firiem s dostupnými;
+  plánovač inkrementálneho syncu (z ktorého kurzora sa pokračuje).
+- **route handlery:** bez session 401; `sub` z tela requestu sa ignoruje; dotaz nevráti
+  doklady firmy, ku ktorej používateľ nemá riadok v `company_access` — toto je najdôležitejší
+  test celej úlohy.
+- **šifrovanie tokenov:** zašifruj → dešifruj → rovnaká hodnota; iný kľúč → zlyhá, nie ticho
+  prázdny reťazec.
 - **regresia:** nová route je chránená bez zásahu do `middleware.ts` (test už existuje).
 
 ---
 
 ## Fázovanie
 
-**Fáza 1 — nastavenia (tento návrh).** Skupina A, plus granularita, ktorá sa dnes
-nepersistuje vôbec. Žiadne tokeny, žiadne cache.
+**Fáza 1 — Postgres + nastavenia.** Služba, migrácie, `user_preference`,
+`GET/PATCH /api/preferences`, migrácia z `localStorage`, granularita sa začne pamätať.
+Malá, samostatne nasaditeľná, a postaví infraštruktúru pre zvyšok.
 
-**Fáza 2 — KROS pripojenia (samostatné rozhodnutie).** Presun `kros_dashboard_connections`
-do serverového úložiska by znamenal, že sa človek na novom zariadení prihlási a **rovno
-vidí dáta**. Znamená to však, že server drží KROS refresh tokeny zákazníka: šifrovanie
-v pokoji vlastným kľúčom, rotácia, odvolanie pri odhlásení, a rozhodnutie, či sú viazané na
-`sub` alebo na organizáciu (dnes je pripojenie fakticky organizačné, nie osobné — čo je
-argument, že by ho nemal „vlastniť" ten, kto ho prvý klikol). To je vlastný návrh, nie
-odsek v tomto.
+**Fáza 2 — pripojenia na server.** `kros_connection` + `company_access`, šifrované tokeny,
+`/api/kros/*` prestane brať pripojenia z tela requestu a vezme si ich z DB podľa session.
+Tu vzniká skutočný cross-device zážitok: prihlásim sa na telefóne a firmy tam sú.
+
+**Fáza 3 — doklady na serveri.** Serverový sync (na požiadanie + plánovaný), tabuľky
+dokladov, agregačné endpointy, prepnutie dashboardov na ne a scvrknutie IndexedDB cache.
+Toto je fáza, ktorá odstraňuje pomalosť.
+
+Poradie nie je voliteľné: fáza 3 potrebuje tokeny na serveri, teda fázu 2.
 
 ---
 
 ## Mimo rozsahu
 
-- Zrušenie podmienky jednej repliky (potrebuje zdieľaný zámok pre obnovu tokenov, nielen
-  zdieľané úložisko).
-- Synchronizácia cache dokladov medzi zariadeniami.
-- Zdieľanie nastavení medzi ľuďmi v tej istej organizácii („firemný default filter").
+- Zrušenie podmienky jednej repliky (potrebuje zdieľaný zámok pre obnovu tokenov —
+  `src/lib/single-flight.ts` — nielen zdieľané úložisko; Postgres advisory lock je kandidát).
+- Zdieľanie nastavení medzi ľuďmi v tej istej firme („firemný default filter").
 - Prepínač organizácií v appke.
+- Prepis KPI a grafov — agregačné endpointy vracajú rovnaké tvary, aké dnes počítajú funkcie
+  v `src/lib/dashboard-live.ts`.
 
 ---
 
 ## Otvorené otázky
 
-1. **Úložisko:** Postgres ako služba (C), SQLite na volume (B), alebo preferencie
-   v `authentication_service` (D)?
-2. **Pripojenia na KROS:** má cross-device zážitok zahŕňať aj ne (fáza 2), alebo ostáva
-   „na novom zariadení sa raz prepojíš"?
-3. **Scope:** viazať nastavenia na `sub` + organizáciu, alebo len na `sub`?
-4. **Zmazanie konta:** má služba appke oznámiť zrušenie konta (webhook), alebo stačí
-   pravidlo „riadky bez aktivity 12 mesiacov sa mažú"?
+1. **Plánovaný sync:** interný `setInterval` v jedinej replike (nulová infraštruktúra, spí
+   s appkou) alebo externý cron ping na chránený endpoint (viditeľný, monitorovateľný)?
+   A ako často — každých 15 minút, hodinu?
+2. **Retencia dokladov:** držať celú históriu, ktorú KROS vydá, alebo strop (napr. 3 roky)?
+   Ovplyvní veľkosť DB a čas prvého syncu.
+3. **Zmazanie konta:** má služba appke oznámiť zrušenie konta (webhook), alebo stačí pravidlo
+   „nastavenia bez aktivity 12 mesiacov sa mažú"?
+4. **Odpojenie poslednej firmy:** keď firmu odpojí posledný človek, ktorý k nej mal prístup —
+   zmazať jej doklady hneď, alebo ich nechať X dní pre prípad omylu?
