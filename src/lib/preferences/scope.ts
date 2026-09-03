@@ -19,16 +19,25 @@ const PERSONAL_PREFIX = "user:";
 export function preferenceScope(claims: Pick<SsoClaims, "sub" | "organizationId" | "organizations">): PreferenceScope {
   const tenantId = claims.organizationId;
 
-  // Aktívna firma mimo zoznamu členstiev je stav, ktorý služba naozaj vracia (pokrýva ho
-  // test v `sso-claims.test.ts`). Zapísať doň firemné nastavenie by znamenalo písať do
-  // firmy, ku ktorej členstvo nevieme doložiť — preto osobný scope, nie dôvera claimu.
-  const isMember = tenantId !== null && claims.organizations.some((organization) => organization.id === tenantId);
-
-  if (tenantId === null || !isMember) {
-    return { tenantId: `${PERSONAL_PREFIX}${claims.sub}`, userSub: claims.sub, isPersonalFallback: true };
+  // Rozhoduje VÝHRADNE `active_organization` zo `/api/me`. Overovať ho ešte proti zoznamu
+  // členstiev vyzeralo ako obozretnosť, ale bola to chyba: `organizations` pribudli do
+  // claimov až v tejto fáze, takže každá session vydaná pred nasadením ich nemá — a až do
+  // najbližšej obnovy claimov (`AUTH_SERVICE_CLAIMS_TTL`, 15 min) by kontrola zhodila
+  // každého do osobného scope. Zápisy z toho okna by potom po obnove „zmizli", lebo by
+  // ležali pod `user:<sub>` a appka by ich hľadala pod firmou.
+  //
+  // Oba údaje pritom pochádzajú z tej istej odpovede služby: keď dôverujeme `sub`, nie je
+  // dôvod neveriť `active_organization`. Klient ani jedno ovplyvniť nevie.
+  if (tenantId === null) {
+    return { tenantId: personalTenantId(claims.sub), userSub: claims.sub, isPersonalFallback: true };
   }
 
   return { tenantId, userSub: claims.sub, isPersonalFallback: false };
+}
+
+/** Scope človeka bez firmy. Verejné, aby sa dali dohľadať zápisy z takého okna. */
+export function personalTenantId(sub: string): string {
+  return `${PERSONAL_PREFIX}${sub}`;
 }
 
 /**

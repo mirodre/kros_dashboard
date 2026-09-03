@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       endpoint: "/kros/callback",
       method: "POST",
       status: 200,
-      message: `POST callback prijatý: firmy=${companies.length}, prepojenie uložené pre firmu`,
+      message: `POST callback prijatý: firmy=${companies.length}, uložené pre tenanta ${binding.tenantId}`,
       payload: {
         // Token v logu nemá čo robiť — telá odpovedí sa tu pri chybách zapisujú na disk.
         companies: companies.map((company) => ({
