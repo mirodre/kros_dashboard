@@ -10,6 +10,16 @@ Frontend-first prototyp pre mobilný dashboard:
 - Filter granularít: týždeň / mesiac / rok
 - PWA manifest pripravený
 
+## Prihlásenie
+
+Appka nemá vlastné prihlasovacie obrazovky ani vlastných používateľov — identitu vlastní
+`authentication_service` (`https://login.krosdoplnky.sk`). Appka je jeho OAuth2 klient
+(authorization code + PKCE, Auth.js v5); prístup na `https://prehlady.krosdoplnky.sk` bez
+platnej session tam automaticky presmeruje.
+
+Registrácia klienta v službe, premenné prostredia potrebné na oboch stranách a overovací
+checklist po nasadení: [docs/SSO-prechod.md](docs/SSO-prechod.md).
+
 ## Premenné prostredia
 
 Všetky premenné sú voliteľné (majú rozumné defaulty v kóde). Ak ich chceš prepísať, skopíruj `.env.example` → `.env`.
@@ -29,7 +39,7 @@ npm install
 npm run dev
 ```
 
-3. Otvor `http://localhost:3000` — dashboard je dostupný priamo.
+3. Otvor `http://localhost:3000` — bez platnej session ťa middleware presmeruje na prihlásenie cez `authentication_service` (pozri [Prihlásenie](#prihlásenie)).
 
 ## Nasadenie na server
 
@@ -44,7 +54,7 @@ npm run build
 npm run start
 ```
 
-Po reštarte otvor URL aplikácie — dashboard je dostupný priamo, prístup k dátam vyžaduje prepojenie s KROS.
+Po reštarte otvor URL aplikácie — prihlásenie vyžaduje `authentication_service` (pozri [Prihlásenie](#prihlásenie)), prístup k dátam po prihlásení ešte vyžaduje prepojenie s KROS.
 
 Aktualizácia z repozitára:
 
@@ -57,7 +67,7 @@ npm run build
 
 ## Bezpečnosť (verejné nasadenie)
 
-- Dashboard nemá vlastné prihlásenie — prístup k dátam je viazaný na prepojenie s KROS (OAuth tokeny sa ukladajú lokálne v prehliadači).
+- Prístup do appky vyžaduje prihlásenie cez `authentication_service` (pozri [Prihlásenie](#prihlásenie)); appka nemá vlastné prihlasovacie obrazovky. Nad tým, po prihlásení, je prístup k dátam ešte viazaný na prepojenie s KROS (OAuth tokeny sa ukladajú lokálne v prehliadači).
 - KROS OAuth callback vyžaduje platný server-side `state` (CSRF ochrana).
 - Po aktualizácii nasaď `next@16.2.6+` kvôli opraveným CVE v starších verziách Next.js.
 - **Cloudflare loader** (ochrana pred botmi pred appkou): návod [docs/cloudflare-loader.md](docs/cloudflare-loader.md).
