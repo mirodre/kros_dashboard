@@ -39,9 +39,10 @@ export function CompaniesDashboard({
       items={companies}
       selectedItems={selectedCompanies}
       availableItemNames={availableCompanyNames}
-      focusedItem={focusedCompany}
+      focusedItems={focusedCompany ? [focusedCompany] : []}
       onSelectionChange={onSelectionChange}
-      onFocusedItemChange={onFocusedCompanyChange}
+      // Firmy ostávajú na jednom fokuse — z viacnásobného výberu berieme posledný klik.
+      onFocusedItemsChange={(items) => onFocusedCompanyChange(items[items.length - 1] ?? null)}
       invertDeltaColor={invertDeltaColor}
       collapsible
       collapsed={collapsed}

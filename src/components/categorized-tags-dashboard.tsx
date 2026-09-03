@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { AggregatedBreakdownPoint } from "@/lib/kros-types";
 import {
+  categoryForTag,
   FLAT_TAG_FILTER_KEY,
   groupTagPointsByCategory,
   hasRealCategories,
@@ -20,9 +21,10 @@ type Props = {
   availableTags?: AggregatedBreakdownPoint[];
   categoryIndex: TagCategoryIndex;
   categoryFilters: TagCategoryFilters;
-  focusedTag: string | null;
+  /** Focusnuté štítky naprieč kategóriami v poradí klikov. */
+  focusedTags: string[];
   onCategoryFiltersChange: (filters: TagCategoryFilters) => void;
-  onFocusedTagChange: (tag: string | null) => void;
+  onFocusedTagsChange: (tags: string[]) => void;
   baseTitle?: string;
   ariaLabelPrefix?: string;
   invertDeltaColor?: boolean;
@@ -33,9 +35,9 @@ export function CategorizedTagsDashboard({
   availableTags,
   categoryIndex,
   categoryFilters = {},
-  focusedTag,
+  focusedTags,
   onCategoryFiltersChange,
-  onFocusedTagChange,
+  onFocusedTagsChange,
   baseTitle = "Tržby podľa štítkov",
   ariaLabelPrefix = "Filtrovať prehľad podľa štítku",
   invertDeltaColor = false
@@ -87,11 +89,11 @@ export function CategorizedTagsDashboard({
         items={tags}
         availableItemNames={dialogSource.map((point) => point.name)}
         selectedItems={selectedFlat}
-        focusedItem={focusedTag}
+        focusedItems={focusedTags}
         onSelectionChange={(next) =>
           onCategoryFiltersChange(setCategoryTagFilter({}, FLAT_TAG_FILTER_KEY, next))
         }
-        onFocusedItemChange={onFocusedTagChange}
+        onFocusedItemsChange={onFocusedTagsChange}
         invertDeltaColor={invertDeltaColor}
       />
     );
@@ -104,11 +106,11 @@ export function CategorizedTagsDashboard({
       {availableGroups.map((availableGroup) => {
         const displayGroup = groups.find((group) => group.category === availableGroup.category);
         const selectedForCategory = filters[availableGroup.category] ?? [];
-        const focusedForCategory =
-          focusedTag &&
-          availableGroup.points.some((point) => point.name === focusedTag)
-            ? focusedTag
-            : null;
+        // Sekcia vidí len focus svojej kategórie; pri zmene ho vrátime k focusu
+        // ostatných kategórií, aby klik v jednej sekcii nezrušil focus v inej.
+        const isInCategory = (tag: string) =>
+          categoryForTag(categoryIndex, tag) === availableGroup.category;
+        const focusedForCategory = focusedTags.filter(isInCategory);
 
         return (
           <FilterableBreakdownSection
@@ -121,13 +123,15 @@ export function CategorizedTagsDashboard({
             items={displayGroup?.points ?? []}
             availableItemNames={availableNamesByCategory.get(availableGroup.category) ?? []}
             selectedItems={selectedForCategory}
-            focusedItem={focusedForCategory}
+            focusedItems={focusedForCategory}
             onSelectionChange={(next) =>
               onCategoryFiltersChange(
                 setCategoryTagFilter(filters, availableGroup.category, next)
               )
             }
-            onFocusedItemChange={onFocusedTagChange}
+            onFocusedItemsChange={(next) =>
+              onFocusedTagsChange([...focusedTags.filter((tag) => !isInCategory(tag)), ...next])
+            }
             invertDeltaColor={invertDeltaColor}
             collapsible
             collapsed={collapsedSet.has(availableGroup.category)}

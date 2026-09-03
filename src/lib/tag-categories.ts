@@ -94,18 +94,17 @@ export function isTagAllowedByFilters(
 /**
  * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND).
  * V rámci kategórie stačí jeden zo zvolených štítkov (OR).
- * Focusnutý štítok musí byť na doklade a zároveň platia všetky filtre kategórií.
+ * Focusnuté štítky musia byť na doklade všetky — dva rozkliknuté štítky teda dáta
+ * zúžia na doklady, ktoré nesú oba — a zároveň platia všetky filtre kategórií.
  */
 export function documentMatchesTagFilters(
   documentTags: string[],
   filters: TagCategoryFilters,
-  focusedTag: string | null = null
+  focusedTags: string[] = []
 ): boolean {
-  if (focusedTag) {
-    const focused = focusedTag.trim().toLowerCase();
-    if (!documentTags.some((tag) => tag.trim().toLowerCase() === focused)) {
-      return false;
-    }
+  const documentTagSet = new Set(documentTags.map((tag) => tag.trim().toLowerCase()));
+  if (focusedTags.some((tag) => !documentTagSet.has(tag.trim().toLowerCase()))) {
+    return false;
   }
 
   const constraints = Object.values(filters).filter((selected) => selected.length > 0);
@@ -130,6 +129,14 @@ export function setCategoryTagFilter(
     next[category] = selected;
   }
   return next;
+}
+
+/**
+ * Kľúč, pod ktorý štítok patrí vo filtri aj vo fokuse. Bez skutočných kategórií
+ * (KROS ich nemá vyplnené) žijú všetky štítky v jednej spoločnej sekcii.
+ */
+export function tagFilterKey(index: TagCategoryIndex, tagName: string): string {
+  return hasRealCategories(index) ? categoryForTag(index, tagName) : FLAT_TAG_FILTER_KEY;
 }
 
 /** Všetky explicitne zvolené štítky naprieč kategóriami (na kontrolu focusu a pod.). */

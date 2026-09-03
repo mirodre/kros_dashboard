@@ -401,7 +401,7 @@ export default function HomePage() {
   const filterScopedInvoices = useMemo(
     () =>
       liveInvoices.filter((invoice) =>
-        documentMatchesTagFilters(invoice.tags, categoryFilters, null)
+        documentMatchesTagFilters(invoice.tags, categoryFilters)
       ),
     [liveInvoices, categoryFilters]
   );
@@ -410,7 +410,7 @@ export default function HomePage() {
   const tagScopedInvoices = useMemo(
     () =>
       liveInvoices.filter((invoice) =>
-        documentMatchesTagFilters(invoice.tags, categoryFilters, focusedTag)
+        documentMatchesTagFilters(invoice.tags, categoryFilters, focusedTag ? [focusedTag] : [])
       ),
     [liveInvoices, categoryFilters, focusedTag]
   );
@@ -547,9 +547,10 @@ export default function HomePage() {
         availableTags={availableTagsData}
         categoryIndex={tagCategoryIndex}
         categoryFilters={categoryFilters}
-        focusedTag={focusedTag}
+        focusedTags={focusedTag ? [focusedTag] : []}
         onCategoryFiltersChange={handleCategoryFiltersChange}
-        onFocusedTagChange={setFocusedTag}
+        // Tržby ostávajú na jednom focusnutom štítku — z klikov berieme ten posledný.
+        onFocusedTagsChange={(tags) => setFocusedTag(tags[tags.length - 1] ?? null)}
       />
       <RecentInvoicesSection invoices={recentInvoices} />
       <CompaniesDashboard

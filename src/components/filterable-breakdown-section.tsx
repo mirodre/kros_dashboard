@@ -18,9 +18,10 @@ type Props = {
   items: BreakdownItem[];
   selectedItems: string[];
   availableItemNames?: string[];
-  focusedItem: string | null;
+  /** Focusnuté (rozkliknuté) riadky. Viac riadkov = drill-down podľa všetkých. */
+  focusedItems: string[];
   onSelectionChange: (items: string[]) => void;
-  onFocusedItemChange: (item: string | null) => void;
+  onFocusedItemsChange: (items: string[]) => void;
   /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
   invertDeltaColor?: boolean;
   /** Ak je true, sekciu ide zbaliť (schovať zoznam). */
@@ -38,9 +39,9 @@ export function FilterableBreakdownSection({
   items,
   selectedItems,
   availableItemNames,
-  focusedItem,
+  focusedItems,
   onSelectionChange,
-  onFocusedItemChange,
+  onFocusedItemsChange,
   invertDeltaColor = false,
   collapsible = false,
   collapsed = false,
@@ -85,16 +86,18 @@ export function FilterableBreakdownSection({
   const resetFilter = () => {
     setPendingSelection([]);
     onSelectionChange([]);
-    onFocusedItemChange(null);
+    onFocusedItemsChange([]);
     closeFilter();
   };
 
+  // Klik pridá riadok k focusu, ďalší klik ho z focusu vyhodí — poradie klikov
+  // ostáva zachované, aby si ho volajúci vedel prečítať (napr. „posledný vyhráva“).
   const handleItemClick = (itemName: string) => {
-    if (focusedItem === itemName) {
-      onFocusedItemChange(null);
-      return;
-    }
-    onFocusedItemChange(itemName);
+    onFocusedItemsChange(
+      focusedItems.includes(itemName)
+        ? focusedItems.filter((name) => name !== itemName)
+        : [...focusedItems, itemName]
+    );
   };
 
   const toggleCollapsed = () => {
@@ -132,7 +135,7 @@ export function FilterableBreakdownSection({
             <ul className="tag-list">
               {filteredItems.map((item) => {
                 const delta = getDeltaPct(item.amount, item.previousAmount);
-                const isActive = focusedItem === item.name;
+                const isActive = focusedItems.includes(item.name);
                 const share = shareTotal > 0 ? Math.max(item.amount, 0) / shareTotal : 0;
 
                 return (

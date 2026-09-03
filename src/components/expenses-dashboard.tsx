@@ -31,11 +31,11 @@ type Props = {
   dueWatchlist: ExpenseDueWatchlist;
   selectedTags?: string[];
   selectedCompanies?: string[];
-  activeTagLabel?: string;
+  /** Focusnuté štítky — dáta sú podľa nich odfiltrované, v donute sú zvýraznené. */
+  activeTagLabels?: string[];
   activeCompanyLabel?: string;
-  onClearTagFilter?: () => void;
+  onFocusTagsChange?: (tags: string[]) => void;
   onClearCompanyFilter?: () => void;
-  onFocusTag?: (tag: string | null) => void;
   isMockData?: boolean;
 };
 
@@ -50,11 +50,10 @@ export function ExpensesDashboard({
   dueWatchlist,
   selectedTags = [],
   selectedCompanies = [],
-  activeTagLabel,
+  activeTagLabels = [],
   activeCompanyLabel,
-  onClearTagFilter,
+  onFocusTagsChange,
   onClearCompanyFilter,
-  onFocusTag,
   isMockData = false
 }: Props) {
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
@@ -155,10 +154,13 @@ export function ExpensesDashboard({
     () => donutData.reduce((sum, slice) => sum + slice.documentCount, 0),
     [donutData]
   );
-  const activeSlice = useMemo(
-    () => (activeTagLabel ? donutData.find((slice) => slice.name === activeTagLabel) ?? null : null),
-    [donutData, activeTagLabel]
+  // Focusnuté štítky, ktoré v donute naozaj majú výsek — podľa nich sa zvýrazňuje
+  // a keď je taký práve jeden, stred donutu píše jeho sumu namiesto celku.
+  const focusedSlices = useMemo(
+    () => donutData.filter((slice) => activeTagLabels.includes(slice.name)),
+    [donutData, activeTagLabels]
   );
+  const activeSlice = focusedSlices.length === 1 ? focusedSlices[0] : null;
 
   useEffect(() => {
     setIsPieAnimated(false);
@@ -206,9 +208,15 @@ export function ExpensesDashboard({
     setDetailSide(side);
   };
 
+  // Klik na výsek štítok k focusu pridá, opätovný klik ho odoberie — focus na inom
+  // štítku pritom ostáva, takže dáta sa dajú zúžiť viacerými štítkami naraz.
   const handleSliceClick = (tagName: string) => {
-    if (!onFocusTag) return;
-    onFocusTag(activeTagLabel === tagName ? null : tagName);
+    if (!onFocusTagsChange) return;
+    onFocusTagsChange(
+      activeTagLabels.includes(tagName)
+        ? activeTagLabels.filter((tag) => tag !== tagName)
+        : [...activeTagLabels, tagName]
+    );
   };
 
   const openCategoryFilter = () => {
@@ -237,12 +245,17 @@ export function ExpensesDashboard({
         <div className="filters-inline">
           <GranularityToggle value={granularity} onChange={onGranularityChange} />
           {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
-          {activeTagLabel ? (
-            <button type="button" className="active-tag-badge" onClick={onClearTagFilter}>
-              <span>{activeTagLabel}</span>
+          {activeTagLabels.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className="active-tag-badge"
+              onClick={() => onFocusTagsChange?.(activeTagLabels.filter((name) => name !== tag))}
+            >
+              <span>{tag}</span>
               <span className="badge-close">×</span>
             </button>
-          ) : null}
+          ))}
           {activeCompanyLabel ? (
             <button type="button" className="active-tag-badge" onClick={onClearCompanyFilter}>
               <span>{activeCompanyLabel}</span>
@@ -348,7 +361,7 @@ export function ExpensesDashboard({
           <div className="cashflow-donut-card">
               <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Výdavky podľa štítkov">
                 {donutData.map((slice, sliceIndex) => {
-                  const isActive = activeTagLabel === slice.name;
+                  const isActive = activeTagLabels.includes(slice.name);
                   const outerRadius = isActive ? 136 : 126;
                   const innerRadius = 90;
                   const center = 160;
@@ -373,7 +386,7 @@ export function ExpensesDashboard({
                   ].join(" ");
                   // Zvýraznenie má zmysel len vtedy, keď focusnutý štítok v donute naozaj je —
                   // pri focuse z inej kategórie by inak zosvetleli všetky výseky.
-                  const isDimmed = Boolean(activeSlice) && !isActive;
+                  const isDimmed = focusedSlices.length > 0 && !isActive;
                   return (
                     <path
                       key={slice.name}
@@ -414,7 +427,11 @@ export function ExpensesDashboard({
                   <li key={slice.name}>
                     <button
                       type="button"
-                      className={activeTagLabel === slice.name ? "cashflow-legend-item active" : "cashflow-legend-item"}
+                      className={
+                        activeTagLabels.includes(slice.name)
+                          ? "cashflow-legend-item active"
+                          : "cashflow-legend-item"
+                      }
                       style={{ "--legend-accent": slice.color } as React.CSSProperties}
                       onClick={() => handleSliceClick(slice.name)}
                     >
@@ -430,11 +447,13 @@ export function ExpensesDashboard({
               })}
             </ul>
         </div>
-        {donutData.length === 0 && (activeTagLabel || activeDonutCategories.length > 0) ? (
+        {donutData.length === 0 && (activeTagLabels.length > 0 || activeDonutCategories.length > 0) ? (
           <p className="tag-sub">
-            {activeTagLabel
-              ? `Štítok „${activeTagLabel}“ nemá v tomto období žiadne výdavky.`
-              : "Vybrané kategórie nemajú v tomto období žiadne výdavky."}
+            {activeTagLabels.length === 1
+              ? `Štítok „${activeTagLabels[0]}“ nemá v tomto období žiadne výdavky.`
+              : activeTagLabels.length > 1
+                ? "Zvolené štítky nemajú v tomto období žiadne spoločné výdavky."
+                : "Vybrané kategórie nemajú v tomto období žiadne výdavky."}
           </p>
         ) : null}
       </article>
