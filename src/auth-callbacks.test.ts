@@ -173,6 +173,20 @@ describe("sessionCallback", () => {
     expect(serialized).not.toContain("refreshToken");
   });
 
+  it("session.user sa nerozchadza s claimami", () => {
+    // `{ ...token, ...next }` nikdy neaktualizuje `token.name`/`token.email`, z ktorych si
+    // Auth.js sklada `user`, a `user.id` je uz od zaciatku nahodne UUID. Bez tohto prepisu
+    // by `session.user.email` bol po prvej obnove natrvalo zvetrany.
+    const result = sessionCallback({
+      session: { ...session, user: { name: "Stare Meno", email: "stary@firma.sk" } } as never,
+      token: staleToken()
+    });
+
+    expect(result.user?.email).toBe(result.claims.email);
+    expect(result.user?.name).toBe(result.claims.name);
+    expect(result.user?.id).toBe(result.claims.sub);
+  });
+
   it("claims.sub je v session dostupny", () => {
     // Predpoklad buducich per-user dat: `sub` je jedina identita, ktora sa niekedy dostane
     // do vlastnej tabulky.

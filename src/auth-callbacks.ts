@@ -76,15 +76,40 @@ export async function jwtCallback({
   return next === null ? null : { ...token, ...next };
 }
 
-export function sessionCallback({
-  session,
-  token
-}: {
-  session: Session;
-  token: JWT;
-}): Session & { claims: SsoClaims } {
+/**
+ * `claims` v `Session` je JEDINÁ identita, ktorú appka číta. `claims.sub` je aj jediné, čo
+ * sa niekedy dostane do vlastnej databázy (budúca tabuľka nastavení) — ako referencia na
+ * používateľa v službe, nie ako kópia jeho dát.
+ */
+declare module "next-auth" {
+  interface Session {
+    claims: SsoClaims;
+  }
+}
+
+export function sessionCallback({ session, token }: { session: Session; token: JWT }): Session {
   const sso = token as unknown as SsoToken;
 
   // Do klienta ide identita a firma, NIKDY tokeny.
-  return { ...session, claims: sso.claims };
+  return {
+    ...session,
+    claims: sso.claims,
+    // `user` sa prepisuje z claimov, aby appka nemala dve identity, ktoré sa rozchádzajú.
+    // Auth.js si `user` skladá zo svojich vlastných polí tokenu (`name`, `email`, `picture`),
+    // ktoré obnova claimov nikdy nemení — `session.user.email` by teda po prvej obnove
+    // ostal natrvalo zvetraný, kým `session.claims.email` by bol svieži. Navyše `user.id`
+    // je u @auth/core `crypto.randomUUID()`, teda hodnota bez akéhokoľvek vzťahu k `sub`
+    // zo služby.
+    //
+    // Druhá možnosť bola `user` zo session zahodiť. Zamietnutá: serverová cesta
+    // (`auth()` v RSC a v middleware) si `user` dopĺňa sama — `const user = args[0].user ??
+    // args[0].token` v `node_modules/next-auth/lib/actions.js` — takže bez nášho `user` by
+    // sa do session dostal CELÝ token vrátane access a refresh tokenu.
+    user: {
+      id: sso.claims.sub,
+      email: sso.claims.email,
+      name: sso.claims.name,
+      image: sso.claims.avatar
+    }
+  };
 }

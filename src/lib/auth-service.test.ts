@@ -28,6 +28,29 @@ describe("auth-service", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete process.env.AUTH_SERVICE_TIMEOUT_MS;
+  });
+
+  it("nezmyselny AUTH_SERVICE_TIMEOUT_MS neabortuje volanie okamzite", async () => {
+    // `Math.max(1000, NaN)` je `NaN` a `AbortSignal.timeout(NaN)` sa pretypuje na 0, takze
+    // preklep v premennej by abortoval kazde volanie a nikto by sa neprihlasil.
+    process.env.AUTH_SERVICE_TIMEOUT_MS = "abc";
+    const signals: Array<AbortSignal | null | undefined> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        signals.push(init.signal);
+
+        return respond(200, ME);
+      })
+    );
+
+    await fetchMe("AT");
+    // Necháme prejsť timery: pri 0 ms by bol signál dovtedy už zrušený.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
   });
 
   it("vrati claimy zo /api/me", async () => {

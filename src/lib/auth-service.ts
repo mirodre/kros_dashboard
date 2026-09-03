@@ -28,7 +28,16 @@ export function serviceUrl(): string {
 }
 
 function timeoutMs(): number {
-  return Math.max(1000, Number(process.env.AUTH_SERVICE_TIMEOUT_MS ?? 5000));
+  const raw = Number(process.env.AUTH_SERVICE_TIMEOUT_MS);
+
+  // Hodnota sa musí validovať, nie len obmedziť zdola: `Math.max(1000, NaN)` je `NaN`
+  // a `AbortSignal.timeout(NaN)` v Node 20 hodí `RangeError`, ktorý `send()` nižšie prekryje
+  // na `SsoUnavailable`. Preklep v premennej (`abc`, `5 s`) by teda vyzeral ako trvalý
+  // výpadok služby: nikto by sa neprihlásil a existujúce session by po grace perióde
+  // ticho dožili. Rovnaký guard ako `seconds()` v `src/auth-callbacks.ts`.
+  const configured = Number.isFinite(raw) && raw > 0 ? raw : 5000;
+
+  return Math.max(1000, configured);
 }
 
 /** 5xx aj 429 sú výpadok, nie výrok o prístupe — musí sa to vyhodnotiť PRED `ok`. */
