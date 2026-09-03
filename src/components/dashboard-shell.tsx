@@ -103,27 +103,33 @@ export function DashboardShell({
             </Link>
           </nav>
         </div>
-        {onRefresh ? (
-          <button
-            type="button"
-            className="header-refresh-btn"
-            onClick={() => onRefresh()}
-            disabled={isSyncing}
-            data-syncing={isSyncing}
-            aria-label="Obnoviť dáta"
-            title="Obnoviť dáta"
-          >
-            <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M20 11a8 8 0 1 0-.9 4.5" />
-              <path d="M20 4v6h-6" />
-            </svg>
-          </button>
-        ) : null}
-        <form action={signOutAction}>
-          <button type="submit" className="header-refresh-btn" aria-label="Odhlásiť sa">
-            Odhlásiť sa
-          </button>
-        </form>
+        <div className="header-actions">
+          {onRefresh ? (
+            <button
+              type="button"
+              className="header-icon-btn"
+              onClick={() => onRefresh()}
+              disabled={isSyncing}
+              data-syncing={isSyncing}
+              aria-label="Obnoviť dáta"
+              title="Obnoviť dáta"
+            >
+              <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 11a8 8 0 1 0-.9 4.5" />
+                <path d="M20 4v6h-6" />
+              </svg>
+            </button>
+          ) : null}
+          <form action={signOutAction}>
+            <button type="submit" className="header-icon-btn" aria-label="Odhlásiť sa" title="Odhlásiť sa">
+              <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2" />
+                <path d="M10 12h10" />
+                <path d="M17 9l3 3-3 3" />
+              </svg>
+            </button>
+          </form>
+        </div>
       </header>
 
       {progress ? (
