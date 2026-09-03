@@ -21,6 +21,8 @@ export type PreferenceValueMap = {
   "cashflow.companies": string[];
   "ui.granularity": Granularity;
   "ui.collapsed.tagCategories": string[];
+  /** Kategórie štítkov zobrazené v donute Výdavkov — lupa na graf, nie firemný filter. */
+  "ui.expensesDonutCategories": string[];
   "ui.collapsed.companies": boolean;
   "ui.collapsed.expensesCompanies": boolean;
   "ui.collapsed.recentInvoices": boolean;
@@ -122,6 +124,12 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
   "ui.collapsed.tagCategories": {
     level: "user",
     storageKey: "kros_dashboard_collapsed_tag_categories",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.expensesDonutCategories": {
+    level: "user",
+    storageKey: "kros_dashboard_expenses_donut_categories",
     default: [],
     isValid: isStringArray
   },

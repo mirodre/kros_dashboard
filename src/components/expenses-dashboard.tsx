@@ -5,8 +5,15 @@ import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import type { NormalizedExpense } from "@/lib/kros-types";
 import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
+import {
+  categoryForTag,
+  hasRealCategories,
+  sortTagCategories,
+  type TagCategoryIndex
+} from "@/lib/tag-categories";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { parseDocumentDate } from "@/lib/document-date";
+import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
@@ -19,6 +26,8 @@ type Props = {
   points: RevenuePoint[];
   expenses: NormalizedExpense[];
   tagStructure: ExpenseTagSlice[];
+  /** Kategórie štítkov pre Filter kategórií nad donutom (nič iné neovplyvňuje). */
+  tagCategoryIndex?: TagCategoryIndex;
   dueWatchlist: ExpenseDueWatchlist;
   selectedTags?: string[];
   selectedCompanies?: string[];
@@ -37,6 +46,7 @@ export function ExpensesDashboard({
   points,
   expenses,
   tagStructure,
+  tagCategoryIndex,
   dueWatchlist,
   selectedTags = [],
   selectedCompanies = [],
@@ -53,6 +63,11 @@ export function ExpensesDashboard({
   const [isDueSheetOpen, setIsDueSheetOpen] = useState(false);
   const [dueSheetTab, setDueSheetTab] = useState<"overdue" | "upcoming">("overdue");
   const [isPieAnimated, setIsPieAnimated] = useState(false);
+  // Lupa na graf je osobné nastavenie, preto ide cez `usePreference`, nie cez vlastný
+  // zápis do localStorage — server aj lokálna cache tak držia jeden tvar.
+  const [donutCategoryFilter, setDonutCategoryFilter] = usePreference("ui.expensesDonutCategories");
+  const [pendingDonutCategories, setPendingDonutCategories] = useState<string[]>([]);
+  const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
 
@@ -69,6 +84,38 @@ export function ExpensesDashboard({
     });
   }, [detailPoint, expenses, granularity, selectedTags, selectedCompanies]);
 
+  const categoryBySliceName = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!tagCategoryIndex) return map;
+    for (const slice of tagStructure) {
+      map.set(slice.name, categoryForTag(tagCategoryIndex, slice.name));
+    }
+    return map;
+  }, [tagStructure, tagCategoryIndex]);
+
+  const availableDonutCategories = useMemo(
+    () => sortTagCategories(Array.from(new Set(categoryBySliceName.values()))),
+    [categoryBySliceName]
+  );
+
+  const showCategoryFilter =
+    Boolean(tagCategoryIndex) &&
+    hasRealCategories(tagCategoryIndex ?? { categoryByTag: new Map() }) &&
+    availableDonutCategories.length > 1;
+
+  // Kategórie, ktoré v aktuálnych dátach nie sú, filter neaktivujú — inak by
+  // uložený výber po zmene firiem vyprázdnil graf.
+  const activeDonutCategories = useMemo(
+    () => donutCategoryFilter.filter((category) => availableDonutCategories.includes(category)),
+    [donutCategoryFilter, availableDonutCategories]
+  );
+
+  const visibleTagStructure = useMemo(() => {
+    if (!showCategoryFilter || activeDonutCategories.length === 0) return tagStructure;
+    const allowed = new Set(activeDonutCategories);
+    return tagStructure.filter((slice) => allowed.has(categoryBySliceName.get(slice.name) ?? ""));
+  }, [tagStructure, showCategoryFilter, activeDonutCategories, categoryBySliceName]);
+
   const donutData = useMemo(() => {
     // Largest slices get rank 0,1,… — rovnaká paleta a rozostup ako donut v module Peniaze.
     const palette = [
@@ -81,7 +128,7 @@ export function ExpensesDashboard({
       "#ffc46b",
       "#9edc7a"
     ];
-    const positive = tagStructure.filter((slice) => slice.amount > 0);
+    const positive = visibleTagStructure.filter((slice) => slice.amount > 0);
     const total = positive.reduce((sum, slice) => sum + slice.amount, 0);
 
     let cumulative = -Math.PI / 2;
@@ -98,7 +145,7 @@ export function ExpensesDashboard({
         endAngle
       };
     });
-  }, [tagStructure]);
+  }, [visibleTagStructure]);
 
   const donutTotal = useMemo(
     () => donutData.reduce((sum, slice) => sum + slice.amount, 0),
@@ -164,6 +211,17 @@ export function ExpensesDashboard({
     onFocusTag(activeTagLabel === tagName ? null : tagName);
   };
 
+  const openCategoryFilter = () => {
+    setPendingDonutCategories(activeDonutCategories);
+    setIsCategoryFilterOpen(true);
+  };
+
+  const togglePendingCategory = (category: string) => {
+    setPendingDonutCategories((prev) =>
+      prev.includes(category) ? prev.filter((name) => name !== category) : [...prev, category]
+    );
+  };
+
   const detailDocs = bucketDocs?.[detailSide] ?? [];
   // Legislatívna suma bez DPH — súčet zoznamu sedí so stĺpcom grafu aj s ostatnými prehľadmi.
   const detailTotal = detailDocs.reduce((sum, expense) => sum + expense.totalPrice, 0);
@@ -171,7 +229,7 @@ export function ExpensesDashboard({
   const overdueCount = dueWatchlist.overdue.length;
   const dueSheetDocs = dueSheetTab === "overdue" ? dueWatchlist.overdue : dueWatchlist.upcoming;
   const dueSheetTotal = dueSheetTab === "overdue" ? dueWatchlist.overdueTotal : dueWatchlist.upcomingTotal;
-  const isOverlayOpen = detailPoint !== null || isDueSheetOpen;
+  const isOverlayOpen = detailPoint !== null || isDueSheetOpen || isCategoryFilterOpen;
 
   return (
     <section className={isOverlayOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
@@ -279,6 +337,12 @@ export function ExpensesDashboard({
       <article className="panel">
         <header className="panel-head">
           <h3>Štruktúra výdavkov podľa štítkov</h3>
+          {showCategoryFilter ? (
+            <button type="button" className="secondary-button" onClick={openCategoryFilter}>
+              Filter kategórií
+              {activeDonutCategories.length > 0 ? ` (${activeDonutCategories.length})` : ""}
+            </button>
+          ) : null}
         </header>
         <div className="cashflow-donut-wrap">
           <div className="cashflow-donut-card">
@@ -364,7 +428,79 @@ export function ExpensesDashboard({
               })}
             </ul>
         </div>
+        {donutData.length === 0 && activeDonutCategories.length > 0 ? (
+          <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>
+        ) : null}
       </article>
+
+      {isCategoryFilterOpen ? (
+        <div
+          className="tag-filter-overlay"
+          onClick={() => setIsCategoryFilterOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="tag-filter-sheet"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Filter kategórií štítkov"
+          >
+            <header className="tag-filter-head">
+              <h4>Filter kategórií</h4>
+              <button
+                type="button"
+                className="filter-close"
+                onClick={() => setIsCategoryFilterOpen(false)}
+              >
+                Zavrieť
+              </button>
+            </header>
+
+            <p className="tag-filter-help">
+              Vyber kategórie, ktorých štítky chceš vidieť v grafe. Ak nevyberieš nič, zobrazia sa
+              všetky. Filter platí len pre tento graf — ostatné prehľady neovplyvní.
+            </p>
+
+            <div className="tag-filter-options">
+              {availableDonutCategories.map((category) => (
+                <button
+                  type="button"
+                  key={category}
+                  className={pendingDonutCategories.includes(category) ? "filter-chip active" : "filter-chip"}
+                  onClick={() => togglePendingCategory(category)}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+
+            <footer className="tag-filter-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setPendingDonutCategories([]);
+                  setDonutCategoryFilter([]);
+                  setIsCategoryFilterOpen(false);
+                }}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                className="sync-button"
+                onClick={() => {
+                  setDonutCategoryFilter(pendingDonutCategories);
+                  setIsCategoryFilterOpen(false);
+                }}
+              >
+                Použiť filter
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
 
       {detailPoint && bucketDocs ? (
         <div className="tag-filter-overlay" onClick={() => setDetailPoint(null)} role="presentation">
