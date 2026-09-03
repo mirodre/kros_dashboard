@@ -11,15 +11,23 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#111420",
     theme_color: "#111420",
     lang: "sk",
+    // Android inštaláciu robí z PNG — SVG tu bolo deklarované s `sizes: "192x192"`,
+    // čo je pre vektor nezmysel a niektoré launchery ho preto preskočili. PNG-ká
+    // vznikli z `public/icon.svg`, takže ikona zostáva jedna, len v troch formátoch.
     icons: [
       {
-        src: "/icon.svg",
+        src: "/icon-192.png",
         sizes: "192x192",
-        type: "image/svg+xml"
+        type: "image/png"
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png"
       },
       {
         src: "/icon.svg",
-        sizes: "512x512",
+        sizes: "any",
         type: "image/svg+xml"
       }
     ]
