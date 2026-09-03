@@ -6,9 +6,26 @@ import { auth } from "@/auth";
 import { PreferencesBoot } from "@/components/preferences-boot";
 
 export const metadata: Metadata = {
-  title: "KROS tržbový prehľad",
+  // Názov záložky si každý modul určuje vo svojom layoute (`src/app/expenses/layout.tsx`
+  // a spol.) a `template` mu dopredu dá „KROS", aby sa prefix nepísal v každom module
+  // znova a nerozišel sa. `default` je pre koreňovú route `/`, čo je modul Príjmy —
+  // a zároveň slúži ako fallback pre route bez vlastného titulku.
+  title: {
+    default: "KROS Príjmy",
+    template: "KROS %s"
+  },
   description: "Mobile-first prehľad tržieb a štítkov pre dáta z KROS",
   manifest: "/manifest.webmanifest",
+  // SVG je prvé naschvál: prehliadače, ktoré ho zvládnu, si vezmú ostrú vektorovú verziu,
+  // ostatné spadnú na `favicon.ico` (16/32/48 px). Apple touch icon musí byť PNG — iOS
+  // SVG na domovskej obrazovke ignoruje.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "48x48", type: "image/x-icon" }
+    ],
+    apple: { url: "/apple-icon.png", sizes: "180x180", type: "image/png" }
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
