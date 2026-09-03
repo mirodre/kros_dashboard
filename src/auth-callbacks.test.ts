@@ -24,7 +24,7 @@ vi.mock("@/lib/auth-service", async (importOriginal) => ({
   fetchMe: fetchMeMock
 }));
 
-const { jwtCallback } = await import("@/auth-callbacks");
+const { jwtCallback, sessionCallback } = await import("@/auth-callbacks");
 
 const ME = {
   sub: "01jbq2z9k7n4p6r8t0v2x4y6a8",
@@ -105,5 +105,80 @@ describe("jwtCallback", () => {
     expect(outage).not.toBeNull();
     expect(outage?.degradedSince).toBeGreaterThan(monday);
     expect(outage?.accessToken).toBe("AT2");
+  });
+
+  it("dva subezne requesty s tym istym zvetranym tokenom obnovia tokeny raz", async () => {
+    // To iste ako v `token-lifecycle.test.ts`, ale na SPOJENI: dokazuje, ze deduplikacia
+    // je naozaj zapojena v `src/auth-callbacks.ts`, nie len ze existuje. Bez nej by druhy
+    // request pouzil uz revokovany refresh token, dostal 4xx a cloveka by to odhlasilo.
+    let releaseRefresh!: (tokens: { accessToken: string; refreshToken: string }) => void;
+    const rotated = new Promise<{ accessToken: string; refreshToken: string }>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    refreshTokensMock.mockReturnValue(rotated);
+    fetchMeMock.mockResolvedValue(ME);
+
+    const both = Promise.all([
+      jwtCallback({ token: staleToken(), account: null }),
+      jwtCallback({ token: staleToken(), account: null })
+    ]);
+    releaseRefresh({ accessToken: "AT2", refreshToken: "RT2" });
+    const [first, second] = await both;
+
+    expect(refreshTokensMock).toHaveBeenCalledTimes(1);
+    expect(refreshTokensMock).toHaveBeenCalledWith("RT");
+    // Obe session ziju a obe maju rotovany par.
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first?.refreshToken).toBe("RT2");
+    expect(second?.refreshToken).toBe("RT2");
+  });
+
+  it("prve prihlasenie ulozi claimy z /api/me a tokeny z accountu", async () => {
+    const next = await jwtCallback({
+      token: { sub: "auth-js-vlastne-sub" } as unknown as JWT,
+      account: { provider: "krosdoplnky", access_token: "AT1", refresh_token: "RT1" } as never,
+      profile: ME as never
+    });
+
+    expect(next?.claims).toMatchObject({ sub: ME.sub, email: ME.email, name: "Miro Novy" });
+    expect(next?.accessToken).toBe("AT1");
+    expect(next?.refreshToken).toBe("RT1");
+    // Bez znacky casu by prvy dalsi request obnovoval hned.
+    expect(next?.refreshedAt).toBeGreaterThan(0);
+    expect(refreshTokensMock).not.toHaveBeenCalled();
+  });
+
+  it("zamietnuty grant vrati null, cim Auth.js session zahodi", async () => {
+    const { SsoAuthFailed } = await import("@/lib/auth-service");
+    refreshTokensMock.mockRejectedValue(new SsoAuthFailed("invalid_grant"));
+
+    await expect(jwtCallback({ token: staleToken(), account: null })).resolves.toBeNull();
+  });
+});
+
+describe("sessionCallback", () => {
+  const session = { expires: "2026-09-30T00:00:00.000Z", user: { name: "Miro", email: ME.email } };
+
+  it("do session nikdy nepusti access ani refresh token", () => {
+    const result = sessionCallback({
+      session: session as never,
+      token: staleToken({ accessToken: "TAJNY-AT", refreshToken: "TAJNY-RT" })
+    });
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("TAJNY-AT");
+    expect(serialized).not.toContain("TAJNY-RT");
+    expect(serialized).not.toContain("accessToken");
+    expect(serialized).not.toContain("refreshToken");
+  });
+
+  it("claims.sub je v session dostupny", () => {
+    // Predpoklad buducich per-user dat: `sub` je jedina identita, ktora sa niekedy dostane
+    // do vlastnej tabulky.
+    const result = sessionCallback({ session: session as never, token: staleToken() });
+
+    expect(result.claims.sub).toBe(ME.sub);
+    expect(result.claims.organizationId).toBe("01jbq3aaaaaaaaaaaaaaaaaaaa");
   });
 });
