@@ -3,8 +3,20 @@
 Runbook pre nasadenie fázy, po ktorej `kros_dashboard` (appka `prehlady.krosdoplnky.sk`)
 prestáva byť verejne dostupný a stáva sa OAuth2 klientom `authentication_service`
 (`login.krosdoplnky.sk`), authorization code + PKCE. Krok 1–3 nižšie **musia** prebehnúť
-pred nasadením appky — bez nich sa po nasadení nedostane do appky nikto (appka bude vracať
-presmerovania/401 na neexistujúceho klienta).
+pred nasadením appky — bez nich sa po nasadení nedostane do appky nikto.
+
+> **POZOR na poradie, ak je na `main` naviazaný auto-deploy.** Toto sa už raz stalo: push na
+> `origin/main` spustil nasadenie skôr, než boli v Dokploy nastavené premenné appky (krok 3),
+> a **každá** chránená cesta začala vracať `500 Internal Server Error` — nie presmerovanie,
+> nie 401. Dôvod je zámerný: `serviceUrl()` v `src/lib/auth-service.ts` pri chýbajúcej
+> `AUTH_SERVICE_URL` hodí výnimku, aby sa chybná konfigurácia neprejavila ticho relatívnymi
+> adresami. Volá sa z `src/auth-provider.ts` pri každom requeste, takže výnimka zhodí všetko,
+> čo prejde cez `auth()`. Verejné cesty (statické assety, `/api/auth/*`) fungujú ďalej, lebo
+> `src/middleware.ts` ich odbaví pred `auth()` — **200 na `/icon.svg` a 500 na `/` je podpis
+> presne tejto chyby.** Dáta pri tom neunikajú (`/api/kros/logs` vracia 500, nie obsah logu).
+>
+> Preto: **premenné z krokov 1–3 nastav pred pushom na `main`**, alebo auto-deploy dočasne
+> vypni. Keď už appka beží s 500, náprava je dokončiť krok 3 a spraviť redeploy — nie revert.
 
 Súvisiaci kód: `src/auth.ts` (konfigurácia Auth.js), `src/auth-provider.ts` (provider
 `krosdoplnky`), `src/auth-callbacks.ts` (`jwt`/`session` callbacky, obnova claimov),
@@ -20,16 +32,26 @@ Súvisiaci kód: `src/auth.ts` (konfigurácia Auth.js), `src/auth-provider.ts` (
 Na serveri, v kontajneri `login.krosdoplnky.sk`:
 
 ```bash
-cd /var/www/html && php artisan passport:client --public=0 --name="KROS prehlady" --redirect_uri="https://prehlady.krosdoplnky.sk/api/auth/callback/krosdoplnky"
+cd /var/www/html && php artisan passport:client --name="KROS prehlady" --redirect_uri="https://prehlady.krosdoplnky.sk/api/auth/callback/krosdoplnky"
 ```
 
 Poznač si `client_id` a `client_secret`, ktoré príkaz vypíše — pôjdu do appky (krok 3).
 
-**Prečo `--public=0`:** appka posiela `client_secret` (pozri `src/lib/auth-service.ts`,
+**Kontrola, že klient vznikol správne:** výstup MUSÍ vypísať `Client Secret`. Príkaz ho totiž
+vypisuje len `if ($client->confidential())` (`vendor/laravel/passport/src/Console/ClientCommand.php`,
+metóda `handle`). Ak vidíš iba `Client ID`, vznikol verejný klient — zmaž ho a spusti príkaz znova,
+inak prihlásenie padne na `invalid_client` až pri prvom pokuse.
+
+**Prečo tu NIE JE `--public`:** appka posiela `client_secret` (pozri `src/lib/auth-service.ts`,
 funkcia `refreshTokens`, a `src/auth-provider.ts`, `clientSecret: process.env.AUTH_SERVICE_CLIENT_SECRET`).
 Passport 13 rozhoduje o dôvernosti klienta čisto podľa `! empty($secret)` — verejnému klientovi
-(`secret` je `NULL`) by pri výmene kódu za token odpovedal `invalid_client`. Vynechanie
-`--public=0` je najčastejší spôsob, ako si túto fázu na prvý pokus pokaziť.
+(`secret` je `NULL`) by pri výmene kódu za token odpovedal `invalid_client`. `--public` je
+**boolean prepínač bez hodnoty** (`{--public : Create a public client (without secret) }`
+v `ClientCommand.php`, overené na Passport v13.7.6), takže dôverný klient sa nevyrába zápisom
+`--public=0` — ten skončí chybou `The "--public" option does not accept a value.` — ale tým, že
+sa `--public` **vynechá úplne**. Rovnako sa vynechávajú aj všetky grant prepínače: `handle()` má
+`default => $this->createAuthCodeClient($clients)`, čo je presne ten authorization code klient,
+ktorý potrebujeme.
 
 **Redirect URI musí sedieť presne** na `https://prehlady.krosdoplnky.sk/api/auth/callback/krosdoplnky`
 — žiadne koncové lomítko, presne táto schéma+host+cesta. Passport ho validuje presnou zhodou;
