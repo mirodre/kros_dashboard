@@ -13,6 +13,15 @@ import { startKrosConnect } from "@/lib/kros-connect";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import type { KrosConnection } from "@/lib/kros-types";
 
+/** Dôvody, s ktorými sa `/kros/callback` vracia, preložené do vety pre človeka. */
+function connectErrorMessage(reason: string | null): string {
+  if (reason === "state") return "Prepojenie vypršalo alebo bolo prerušené. Skús to prosím znova.";
+  if (reason === "empty") return "KROS nevrátil žiadnu firmu — v súhlase treba vybrať aspoň jednu.";
+  if (reason === "db") return "Server nemá pripojenú databázu, prepojenie sa nemá kam uložiť.";
+  if (reason === "save") return "Prepojenie sa nepodarilo uložiť. Podrobnosť je v zázname servera.";
+  return "Prepojenie sa nepodarilo dokončiť. Skús to znova.";
+}
+
 export default function SettingsPage() {
   const { connections, isLoading: isLoadingConnections, error: connectionsError, refresh, disconnect } =
     useKrosConnections();
@@ -26,15 +35,13 @@ export default function SettingsPage() {
     if (!result) return;
 
     // Prepojenie zapísal `/kros/callback` rovno do databázy — prehliadač už žiadny zoznam
-    // firiem ani token nedostáva, len správu, ako to dopadlo.
-    setStatusMessage(
-      result === "error"
-        ? "Prepojenie sa nepodarilo dokončiť. Skús to znova."
-        : "Prepojenie hotové. Firmy vidia všetci vo firme."
-    );
+    // firiem ani token nedostáva, len správu, ako to dopadlo. Dôvod zlyhania nesie URL,
+    // aby sa nemusel hľadať v logu servera.
+    setStatusMessage(result === "error" ? connectErrorMessage(params.get("reason")) : "Prepojenie hotové. Firmy vidia všetci vo firme.");
     void refresh();
 
     params.delete("kros_post_result");
+    params.delete("reason");
     window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
   }, [refresh]);
 
