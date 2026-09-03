@@ -177,6 +177,11 @@ body {
   display: none;
 }
 
+/* Na desktope odhlásenie ponúka ikona v hlavičke, v nastaveniach by bolo navyše. */
+.mobile-only-settings {
+  display: none;
+}
+
 .header-icon-link {
   align-items: center;
   border: 1px solid #2b3558;
@@ -1845,27 +1850,6 @@ body {
   color: #ffffff;
 }
 
-.log-message {
-  max-width: min(48vw, 360px);
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.log-detail-pre {
-  background: #0f1526;
-  border: 1px solid #2b3864;
-  border-radius: 10px;
-  color: #d8e0ff;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  margin: 0.75rem 0 0;
-  max-height: 52vh;
-  overflow: auto;
-  padding: 0.8rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .secondary-button {
   background: linear-gradient(180deg, #212d4f 0%, #1a2340 100%);
   border-color: #3b4d85;
@@ -2027,6 +2011,11 @@ body {
 
   .header-actions {
     display: none;
+  }
+
+  /* Hlavička na mobile nemá tlačidlo odhlásenia, ponúkame ho v Nastaveniach. */
+  .mobile-only-settings {
+    display: block;
   }
 
   .mobile-liquid-nav {
