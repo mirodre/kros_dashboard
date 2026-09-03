@@ -544,12 +544,11 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
-  // Donut ide z rovnakých dokladov ako stĺpcový graf a KPI — teda aj s focusom. V kategórii
-  // focusnutých štítkov tak ostanú ich výseky (klik na výsek ten štítok z focusu odoberie),
-  // v ostatných kategóriách sa podiely prepočítajú len z výdavkov s focusnutými štítkami —
-  // klik na taký výsek focus rozšíri a dáta zúži podľa oboch štítkov.
+  // Donut drží celý obraz podľa Filtra štítkov — focus doň nezasahuje. Rozkliknutý štítok
+  // sa v ňom len zvýrazní (ostatné výseky zosvetlia), rovnako ako účet v module Peniaze:
+  // podiely na celku tak ostanú čitateľné a z grafu sa dá klikať ďalej.
   const tagStructure = useMemo(() => {
-    const slices = computeExpenseTagStructure(tagScopedExpenses, [], effectiveCompanies).filter(
+    const slices = computeExpenseTagStructure(filterScopedExpenses, [], effectiveCompanies).filter(
       (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
     );
     const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
@@ -557,7 +556,7 @@ export default function ExpensesPage() {
       ...slice,
       share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
     }));
-  }, [tagScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
+  }, [filterScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
 
   const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),

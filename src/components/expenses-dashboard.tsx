@@ -154,8 +154,8 @@ export function ExpensesDashboard({
     () => donutData.reduce((sum, slice) => sum + slice.documentCount, 0),
     [donutData]
   );
-  // Focusnuté štítky, ktoré v donute naozaj majú výsek — podľa nich sa zvýrazňuje
-  // a keď je taký práve jeden, stred donutu píše jeho sumu namiesto celku.
+  // Focusnuté štítky, ktoré v donute naozaj majú výsek — donut sa podľa focusu nefiltruje,
+  // len zvýrazňuje, a keď je zvýraznený práve jeden, stred píše jeho sumu namiesto celku.
   const focusedSlices = useMemo(
     () => donutData.filter((slice) => activeTagLabels.includes(slice.name)),
     [donutData, activeTagLabels]
@@ -447,14 +447,8 @@ export function ExpensesDashboard({
               })}
             </ul>
         </div>
-        {donutData.length === 0 && (activeTagLabels.length > 0 || activeDonutCategories.length > 0) ? (
-          <p className="tag-sub">
-            {activeTagLabels.length === 1
-              ? `Štítok „${activeTagLabels[0]}“ nemá v tomto období žiadne výdavky.`
-              : activeTagLabels.length > 1
-                ? "Zvolené štítky nemajú v tomto období žiadne spoločné výdavky."
-                : "Vybrané kategórie nemajú v tomto období žiadne výdavky."}
-          </p>
+        {donutData.length === 0 && activeDonutCategories.length > 0 ? (
+          <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>
         ) : null}
       </article>
 
