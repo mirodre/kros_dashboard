@@ -1,7 +1,28 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="128" fill="#0C1020"/>
-  <rect x="80" y="92" width="352" height="328" rx="40" fill="#141A32"/>
-  <path d="M150 334V198" stroke="#6A8EFF" stroke-width="28" stroke-linecap="round"/>
-  <path d="M255 334V156" stroke="#6A8EFF" stroke-width="28" stroke-linecap="round"/>
-  <path d="M360 334V236" stroke="#6A8EFF" stroke-width="28" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    Favicon prehľadu. Kreslená v 64px mriežke naschvál: pri 16px sa z ikony stane
+    ~2px stopa, takže tu nie je nič menšie ako 9 jednotiek (= 2.25px pri 16px)
+    a všetky okraje sú 12 jednotiek, aby ikona po zmenšení nezostala rozstrapatená.
+    Farby sú tie isté tokeny ako v globals.css (bg, accent, success).
+
+    Oba gradienty sú naschvál v userSpaceOnUse: predvolený objectBoundingBox je pre
+    svislú čiaru degenerovaný (bounding box má nulovú šírku) a rasterizér taký ťah
+    vynechá - najvyšší stĺpec by v PNG aj v .ico jednoducho chýbal.
+  -->
+  <defs>
+    <linearGradient id="kros-icon-bg" gradientUnits="userSpaceOnUse" x1="32" y1="0" x2="32" y2="64">
+      <stop offset="0" stop-color="#242c4d" />
+      <stop offset="1" stop-color="#111420" />
+    </linearGradient>
+    <linearGradient id="kros-icon-peak" gradientUnits="userSpaceOnUse" x1="47.5" y1="47.5" x2="47.5" y2="14.5">
+      <stop offset="0" stop-color="#5c83ff" />
+      <stop offset="1" stop-color="#39d499" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#kros-icon-bg)" />
+  <g fill="none" stroke-width="9" stroke-linecap="round">
+    <path d="M16.5 47.5V37" stroke="#39508f" />
+    <path d="M32 47.5V29" stroke="#5c83ff" />
+    <path d="M47.5 47.5V19" stroke="url(#kros-icon-peak)" />
+  </g>
 </svg>
