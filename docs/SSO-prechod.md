@@ -6,9 +6,12 @@ prestáva byť verejne dostupný a stáva sa OAuth2 klientom `authentication_ser
 pred nasadením appky — bez nich sa po nasadení nedostane do appky nikto (appka bude vracať
 presmerovania/401 na neexistujúceho klienta).
 
-Súvisiaci kód: `src/auth.ts` (provider `krosdoplnky`), `src/middleware.ts` (deny-by-default),
+Súvisiaci kód: `src/auth.ts` (konfigurácia Auth.js), `src/auth-provider.ts` (provider
+`krosdoplnky`), `src/auth-callbacks.ts` (`jwt`/`session` callbacky, obnova claimov),
+`src/app/prihlasenie/route.ts` (vstup do služby), `src/middleware.ts` (deny-by-default),
 `src/lib/public-paths.ts` (jediný zoznam verejných ciest), `src/lib/auth-service.ts`
-(komunikácia so službou), `src/lib/sign-out-url.ts` (odhlásenie). Dizajn: pozri
+(komunikácia so službou), `src/lib/single-flight.ts` (deduplikácia obnovy tokenov),
+`src/lib/sign-out-url.ts` (odhlásenie). Dizajn: pozri
 `docs/superpowers/specs/2026-09-02-kros-dashboard-sso-klient-design.md`, implementačný plán:
 `docs/superpowers/plans/2026-09-02-kros-dashboard-sso-klient.md`.
 
@@ -23,7 +26,7 @@ cd /var/www/html && php artisan passport:client --public=0 --name="KROS prehlady
 Poznač si `client_id` a `client_secret`, ktoré príkaz vypíše — pôjdu do appky (krok 3).
 
 **Prečo `--public=0`:** appka posiela `client_secret` (pozri `src/lib/auth-service.ts`,
-funkcia `refreshTokens`, a `src/auth.ts`, `clientSecret: process.env.AUTH_SERVICE_CLIENT_SECRET`).
+funkcia `refreshTokens`, a `src/auth-provider.ts`, `clientSecret: process.env.AUTH_SERVICE_CLIENT_SECRET`).
 Passport 13 rozhoduje o dôvernosti klienta čisto podľa `! empty($secret)` — verejnému klientovi
 (`secret` je `NULL`) by pri výmene kódu za token odpovedal `invalid_client`. Vynechanie
 `--public=0` je najčastejší spôsob, ako si túto fázu na prvý pokus pokaziť.
@@ -74,6 +77,41 @@ hodnota (default alebo nastavená) **nezhoduje** so záznamom v `AUTH_RETURN_APP
 (krok 2) — vtedy služba kľúč vyhodnotí ako neznámy a človek po odhlásení skončí na profile
 služby namiesto späť v appke. Over oba konce zhody, nie len appku.
 
+**Po zmene ktorejkoľvek premennej appky: redeploy, nie restart** — rovnako ako v kroku 2 pri
+službe. Platí to aj pre `AUTH_SERVICE_CLAIMS_TTL`, `AUTH_SERVICE_GRACE_PERIOD` a
+`AUTH_SERVICE_TIMEOUT_MS`: čítajú sa z `process.env` v edge sandboxe, ktorý si kópiu
+prostredia vyrobí **raz pri vytvorení kontextu** — a middleware, teda aj celá obnova claimov,
+beží práve tam. Zmena hodnoty bez redeployu sa navonok vôbec neprejaví a človek ju potom
+hľadá v kóde.
+
+### Počet replík appky: presne JEDNA (podmienka, nie odporúčanie)
+
+V Dokploy je počet replík obyčajné pole vo formulári, takže sa dá zvýšiť jedným klikom — a
+appka to nijako nezistí ani neohlási. Obnova tokenov je deduplikovaná v pamäti procesu
+(`src/lib/single-flight.ts`): keď claimy zvetrajú, súbežné requesty tej istej session sa
+musia zhodnúť na JEDNOM volaní `/oauth/token`, pretože Passport pri rotácii starý refresh
+token okamžite revokuje. Dve repliky majú dve nezávislé mapy, takže obe zavolajú obnovu tým
+istým tokenom, druhá dostane `invalid_grant` a človeka to odhlási. Navonok to vyzerá ako
+náhodné hromadné odhlasovanie v čase najvyššej prevádzky — teda presne to zlyhanie, kvôli
+ktorému táto fáza vznikla.
+
+Kým appka nemá zdieľaný stav (Redis lock, alebo tokeny v serverovej session ako
+`payment_connector`), platí: **jedna replika**. Horizontálne škálovanie tejto appky je
+samostatná úloha, nie zmena hodnoty vo formulári.
+
+### `/prihlasenie` — vstupná cesta appky, ktorá sa nikde neregistruje
+
+Každý neprihlásený človek prechádza cez `/prihlasenie` (`src/app/prihlasenie/route.ts`):
+middleware ho tam pošle s `callbackUrl` a route hneď skočí do služby, žiadna prihlasovacia
+obrazovka v appke nie je. Na rozdiel od redirect URI z kroku 1 sa táto cesta v službe
+**nikde nezapisuje** — služba o nej nevie a vedieť nemá; do `passport:client` patrí len
+`/api/auth/callback/krosdoplnky`.
+
+Pri ladení sa hodí vedieť, že tá istá cesta je aj `pages.signIn`, takže Auth.js sem posiela
+chyby prihlásenia. S `?error=` route vykreslí slovenskú chybu s kódom a odkazom na nový pokus
+a prihlásenie ZÁMERNE nespustí znova — inak by vznikol nekonečný cyklus, ktorý páli
+autorizačný kód na každom kole.
+
 ## 4. Overovací checklist po nasadení
 
 Vyplň výsledok každého bodu priamo v tomto súbore a commitni ako záznam nasadenia.
@@ -88,6 +126,8 @@ Vyplň výsledok každého bodu priamo v tomto súbore a commitni ako záznam na
 | 6 | Statické assety a `/api/auth/*` fungujú aj bez session | _(nevyplnené)_ |
 | 7 | Celý KROS consent flow: `Prepojiť s KROS` → súhlas na `firma.kros.sk` → cross-site POST na `/kros/callback` → firma reálne pribudne v appke, prihlásený aj po (znovu)prihlásení | _(nevyplnené)_ |
 | 8 | Odhlásenie zruší aj session v službe: po kliknutí na „Odhlásiť sa" v appke skús znova otvoriť appku bez nového prihlásenia cez `login.krosdoplnky.sk` v tom istom prehliadači — služba musí vyžadovať nové prihlásenie, nie ticho vrátiť starú session | _(nevyplnené)_ |
+| 9 | **Prvé prihlásenie rob s otvorenými devtools na karte Network.** Po návrate zo služby musí nasledovať jeden skok do appky. Séria skokov medzi `/prihlasenie` a službou (alebo `ERR_TOO_MANY_REDIRECTS`) znamená chybu v OAuth callbacku | _(nevyplnené)_ |
+| 10 | V logu služby na token endpointe over, že jedna session vyvolá **presne jedno** volanie `/oauth/token` za 15-minútové okno | _(nevyplnené)_ |
 
 Bod 3 je ten, kvôli ktorému celá fáza vznikla — `/api/kros/logs` bol pred touto fázou
 verejne dostupný a vydával mená firiem.
@@ -116,6 +156,23 @@ requestu). Zlyhanie, ktoré bod 8 chytá, sa navonok netvári ako chyba: appka p
 „Odhlásiť sa" vyzerá odhlásená (lokálna cookie je preč), ale ďalšie prihlásenie prejde bez
 prihlasovacej obrazovky služby — ticho vráti toho istého človeka.
 
+**Bod 9 je poistka proti cyklu, nie kozmetika.** `/prihlasenie` je aj `pages.signIn`, takže
+tam Auth.js posiela chyby typu `OAuthCallbackError` — zlý `AUTH_SERVICE_CLIENT_SECRET`,
+zrušený grant, neznámy scope. Route na ne odpovedá chybovou stránkou a prihlásenie sama
+nespúšťa; keby to niekto zmenil, cyklus by nepotreboval žiadnu interakciu (služba už dala
+klientovi súhlas) a bežal by až do `ERR_TOO_MANY_REDIRECTS`. Na karte Network je rozdiel
+medzi „chybová stránka s kódom" a „séria presmerovaní" vidieť okamžite; bez devtools sa to
+dá prehliadnuť ako pomalé načítanie.
+
+**Bod 10 overuje vec, ktorú testy overiť nemôžu.** Rotovaná session cookie odchádza na
+`Set-Cookie` odpovede toho requestu, ktorý obnovu spustil, a tá odpoveď prichádza z
+middleware. Keby ich Next niekedy prestal posielať na odpovediach s `x-middleware-next`
+(alebo keby sa zmenila cesta, akou `handleAuth` cookies pripája), appka by síce fungovala,
+ale **každý** request by obnovoval znova: v logu služby by bola séria volaní `/oauth/token`
+namiesto jedného za 15 minút, každé s rotáciou a revokáciou predchádzajúceho. Automatická
+smoke skúška to zachytiť nedokáže, pretože beží proti fiktívnej službe, ktorá žiadny log
+nemá. Preto sa to overuje raz, ručne, v logu skutočnej služby.
+
 ## Čo sa oproti pôvodnému plánu zmenilo (implementačná revízia)
 
 Kód prešiel review, ktoré v pôvodnom pláne (`docs/superpowers/plans/2026-09-02-kros-dashboard-sso-klient.md`)
@@ -130,7 +187,8 @@ odhalilo reálne chyby. Opravy sú už v repe; tu je prevádzkový dôsledok ka�
    appky v pláne ju vynechal. Musí byť v `AUTH_RETURN_APPS` v službe, inak sa po odhlásení
    a novom prihlásení skončí na profile služby namiesto v appke.
 4. **Prvé prihlásenie ide cez appkin `fetchMe`**, nie cez holý Auth.js `userinfo` fetch —
-   provider v `src/auth.ts` deleguje `userinfo.request` na `fetchMe()` zo `src/lib/auth-service.ts`.
+   provider v `src/auth-provider.ts` deleguje `userinfo.request` na `fetchMe()` zo
+   `src/lib/auth-service.ts`.
    Tvar odpovede `/api/me` sa tak overuje pri prvom prihlásení rovnako prísne ako pri každej
    obnove claimov. Ak služba niekedy zmení tvar odpovede, appka pri prihlásení zlyhá nahlas
    (výnimka), nie ticho so session bez identity.
@@ -141,5 +199,12 @@ odhalilo reálne chyby. Opravy sú už v repe; tu je prevádzkový dôsledok ka�
    nič nevie. Keby sa `middleware.ts` niekedy premenoval na `proxy.ts`, over to explicitne
    proti tomu, ako `auth()` appku obaľuje (`export default auth((request) => ...)`) — nepredpokladaj,
    že je to bezobsažná premenná náhrada.
-6. **`runtime-logs/` JE v `.gitignore`** (riadok 18). Sekcia „Čo tento plán vedome nerieší" v
+6. **Authorize request posiela `scope=` (prázdny), a to naschvál.** `@auth/core` doplní
+   `scope=openid profile email` každému OAuth provideru, ktorý scope v authorize URL nemá,
+   a služba nemá zaregistrovaný ani jeden scope — dostala by `invalid_scope` ešte pred
+   consent obrazovkou. Prázdna hodnota v `src/auth-provider.ts` je preto funkčná súčasť
+   konfigurácie, nie zabudnutý zvyšok; kto ju „uklidí", zhasne prihlásenie úplne. Ak by
+   služba niekedy scopy zaregistrovala (`Passport::tokensCan`), treba tú hodnotu doplniť
+   vedome na oboch stranách.
+7. **`runtime-logs/` JE v `.gitignore`** (riadok 18). Sekcia „Čo tento plán vedome nerieší" v
    pôvodnom pláne tvrdí opak — to tvrdenie neplatí, neopakuj ho.
