@@ -137,23 +137,35 @@ export function allSelectedTags(filters: TagCategoryFilters): string[] {
   return Object.values(filters).flat();
 }
 
+/**
+ * Zrovná uloženú hodnotu filtra na dnešný tvar. Zvlášť od `parseStoredTagFilters`, lebo tú
+ * istú normalizáciu potrebuje aj register nastavení (`src/lib/preferences/registry.ts`) nad
+ * hodnotou, ktorá už prešla `JSON.parse` — a bez nej by sa STARÝ plochý formát (pole štítkov
+ * bez kategórií) zahodil ako neplatný a ľuďom by pri prvom načítaní zmizli filtre.
+ */
+export function normalizeTagFilters(parsed: unknown): TagCategoryFilters {
+  if (Array.isArray(parsed)) {
+    const tags = parsed.filter((tag): tag is string => typeof tag === "string");
+    return tags.length > 0 ? { [FLAT_TAG_FILTER_KEY]: tags } : {};
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const result: TagCategoryFilters = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!Array.isArray(value)) continue;
+      const tags = value.filter((tag): tag is string => typeof tag === "string");
+      if (tags.length > 0) result[key] = tags;
+    }
+    return result;
+  }
+
+  return {};
+}
+
 export function parseStoredTagFilters(raw: string | null): TagCategoryFilters {
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      const tags = parsed.filter((tag): tag is string => typeof tag === "string");
-      return tags.length > 0 ? { [FLAT_TAG_FILTER_KEY]: tags } : {};
-    }
-    if (parsed && typeof parsed === "object") {
-      const result: TagCategoryFilters = {};
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (!Array.isArray(value)) continue;
-        const tags = value.filter((tag): tag is string => typeof tag === "string");
-        if (tags.length > 0) result[key] = tags;
-      }
-      return result;
-    }
+    return normalizeTagFilters(JSON.parse(raw) as unknown);
   } catch {
     // Ignore invalid persisted filter payload.
   }

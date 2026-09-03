@@ -1,6 +1,9 @@
 # Nastavenia viazané na firmu (tenanta) — implementačný plán fáz 0 a 1
 
-> **Pre agentov:** kroky sú checkboxy (`- [ ]`) kvôli sledovaniu postupu. Rovnako ako plán
+> **Stav: hotové (3.9.2026).** Všetky úlohy sú implementované, overené `npm test`,
+> `npx tsc --noEmit`, `npm run lint` a `npm run build`. Odchýlky sú vyznačené pri krokoch.
+>
+> **Pre agentov:** kroky sú checkboxy (`- [x]`) kvôli sledovaniu postupu. Rovnako ako plán
 > fázy SSO sa vykonáva po úlohách — každá úloha je samostatne recenzovateľná a samostatne
 > nasaditeľná.
 
@@ -52,24 +55,27 @@ mimo Reactu aj mimo route handlerov, aby sa dala testovať bez Next runtime — 
 
 **Rozhrania:** `getPool(): Pool | null` (null keď `DATABASE_URL` chýba), `runMigrations(): Promise<void>`.
 
-- [ ] **Krok 1:** `npm install pg` a `npm install -D @types/pg`.
-- [ ] **Krok 2:** `pool.ts` — pool ako singleton cez `globalThis`. Bez toho ho hot reload v dev
+- [x] **Krok 1:** `npm install pg` a `npm install -D @types/pg`.
+- [x] **Krok 2:** `pool.ts` — pool ako singleton cez `globalThis`. Bez toho ho hot reload v dev
       režime vyrobí pri každej zmene znova a Postgres vyčerpá spojenia. Chýbajúci `DATABASE_URL`
       vráti `null` a **hlasno zaloguje raz**, nehodí výnimku (viď globálne obmedzenia).
-- [ ] **Krok 3:** `001_preferences.sql` — tabuľky `tenant_preference` a `user_preference` podľa
+- [x] **Krok 3:** `001_preferences.sql` — tabuľky `tenant_preference` a `user_preference` podľa
       spec-u, plus `schema_migrations (name text primary key, applied_at timestamptz)`.
-- [ ] **Krok 4:** `migrate.ts` — načíta `migrations/*.sql` v abecednom poradí, preskočí už
+- [x] **Krok 4:** `migrate.ts` — načíta `migrations/*.sql` v abecednom poradí, preskočí už
       aplikované, každú aplikuje v transakcii. Celý beh obalí `pg_advisory_lock`: jedna replika
       je dnes podmienka, nie zámok, a migrácie sú presne to miesto, kde by jej porušenie
       spôsobilo tichú škodu.
-- [ ] **Krok 5:** test — dvojitý beh `runMigrations()` neaplikuje nič druhýkrát; zlyhanie
+- [x] **Krok 5:** test — dvojitý beh `runMigrations()` neaplikuje nič druhýkrát; zlyhanie
       v strede súboru nenechá polovičnú schému (transakcia).
-- [ ] **Krok 6:** `instrumentation.ts` s `register()` — migrácie pri štarte servera, len
+- [x] **Krok 6:** `instrumentation.ts` s `register()` — migrácie pri štarte servera, len
       v `nodejs` runtime. Deploy je `npm run build && npm run start` (README), takže migračný
-      krok navyše by sa raz zabudol. Pridaj aj `npm run migrate` na ručné spustenie.
-- [ ] **Krok 7:** `.env.example` + `README.md` — `DATABASE_URL`, poznámka že po zmene premennej
+      krok navyše by sa raz zabudol.
+      **Odchýlka:** `npm run migrate` nepribudol. Migrácie sú TypeScript modul, takže ručný
+      príkaz by si vyžiadal runner (`tsx`) ako ďalšiu závislosť pre jediné použitie. Štart
+      servera ich aplikuje sám a do logu píše, ktoré prebehli.
+- [x] **Krok 7:** `.env.example` + `README.md` — `DATABASE_URL`, poznámka že po zmene premennej
       je potrebný **redeploy, nie restart** (rovnako ako pri SSO premenných).
-- [ ] **Krok 8:** overenie — `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+- [x] **Krok 8:** overenie — `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
 
 ---
 
@@ -85,18 +91,18 @@ zaviesť zodpovedne.
 
 **Rozhrania:** `preferenceScope(claims) → { tenantId, userSub, isPersonalFallback }`.
 
-- [ ] **Krok 1:** test — `claimsFromMe` si zachová celý zoznam organizácií (`id`, `name`, `role`),
+- [x] **Krok 1:** test — `claimsFromMe` si zachová celý zoznam organizácií (`id`, `name`, `role`),
       nielen aktívnu. Dnes ho zahadzuje.
-- [ ] **Krok 2:** rozšíriť `SsoClaims` o `organizations` a naplniť ho. Komentár nech povie, že
+- [x] **Krok 2:** rozšíriť `SsoClaims` o `organizations` a naplniť ho. Komentár nech povie, že
       zoznam je pre budúci prepínač a pre kontrolu, do ktorej firmy zápis patrí.
-- [ ] **Krok 3:** test — `preferenceScope` vráti `tenantId = organizationId`, keď je; a
+- [x] **Krok 3:** test — `preferenceScope` vráti `tenantId = organizationId`, keď je; a
       `user:<sub>` s `isPersonalFallback: true`, keď `active_organization` je `null` **alebo**
       ukazuje na firmu mimo zoznamu (na oba prípady existuje test v `sso-claims.test.ts`).
-- [ ] **Krok 4:** implementovať `scope.ts`. Je to jediné miesto, kde sa rozhoduje, čo je tenant —
+- [x] **Krok 4:** implementovať `scope.ts`. Je to jediné miesto, kde sa rozhoduje, čo je tenant —
       nikde inde sa `organizationId` nečíta priamo.
-- [ ] **Krok 5:** `DashboardShell` ukáže názov firmy v hlavičke; pri osobnom fallbacku nič,
+- [x] **Krok 5:** `DashboardShell` ukáže názov firmy v hlavičke; pri osobnom fallbacku nič,
       žiadne „(bez firmy)".
-- [ ] **Krok 6:** overenie ako v úlohe 1. Cookie po pridaní zoznamu narástla — pozri jej veľkosť
+- [x] **Krok 6:** overenie ako v úlohe 1. Cookie po pridaní zoznamu narástla — pozri jej veľkosť
       v prehliadači, limit je 4 kB na doménu.
 
 ---
@@ -115,18 +121,18 @@ Srdce celej fázy. Žiadna databáza, žiadny React — len funkcie a testy.
 - `resolvePreferences({ tenant, user }) → { values, personalKeys }`
 - `migrationFromLocalStorage(localValues, serverValues) → Partial<Values>`
 
-- [ ] **Krok 1:** test — kľúč s osobnou aj firemnou hodnotou vráti osobnú; bez osobnej firemnú;
+- [x] **Krok 1:** test — kľúč s osobnou aj firemnou hodnotou vráti osobnú; bez osobnej firemnú;
       bez oboch default z registra; `personalKeys` obsahuje presne tie, čo sú prepísané.
-- [ ] **Krok 2:** test — **zbalenie sekcie ani granularita sa nikdy nezapíšu na firemnú úroveň.**
+- [x] **Krok 2:** test — **zbalenie sekcie ani granularita sa nikdy nezapíšu na firemnú úroveň.**
       Toto je test na register, nie na route: keď niekto neskôr pridá kľúč, musí sa rozhodnúť.
-- [ ] **Krok 3:** implementovať `registry.ts` s piatimi `tenant` kľúčmi (filtre) a siedmimi
+- [x] **Krok 3:** implementovať `registry.ts` s piatimi `tenant` kľúčmi (filtre) a siedmimi
       `user` (5× zbalenie, granularita, a rezerva na ergonómiu) podľa tabuľky v spec-e.
-- [ ] **Krok 4:** test migrácie — lokálna hodnota sa nahrá, len keď server pre kľúč **nemá nič**;
+- [x] **Krok 4:** test migrácie — lokálna hodnota sa nahrá, len keď server pre kľúč **nemá nič**;
       keď server hodnotu má, lokálna sa ignoruje (inak by zmazaný filter vstal z mŕtvych).
-- [ ] **Krok 5:** implementovať `legacy-keys.ts` — mapovanie 11 dnešných `kros_dashboard_*`
+- [x] **Krok 5:** implementovať `legacy-keys.ts` — mapovanie 11 dnešných `kros_dashboard_*`
       kľúčov na nové mená, na jednom mieste. Staré kľúče sa **nemažú**: keby sa nasadenie
       vrátilo, appka o nastavenia nepríde.
-- [ ] **Krok 6:** overenie.
+- [x] **Krok 6:** overenie.
 
 ---
 
@@ -143,19 +149,19 @@ Srdce celej fázy. Žiadna databáza, žiadny React — len funkcie a testy.
 - `PUT /api/preferences/tenant` `{ [key]: value }` → firemná úroveň
 - `DELETE /api/preferences` `{ keys: string[] }` → zmaže osobné prepísanie („vrátiť sa na firemné")
 
-- [ ] **Krok 1:** test — bez session vracia 401 (nie redirect, je to `/api/`).
-- [ ] **Krok 2:** test — **`tenant_id` z tela requestu sa ignoruje**; človek z tenanta A
+- [x] **Krok 1:** test — bez session vracia 401 (nie redirect, je to `/api/`).
+- [x] **Krok 2:** test — **`tenant_id` z tela requestu sa ignoruje**; človek z tenanta A
       nedostane hodnoty tenanta B a nezapíše doň. Najdôležitejší test celej úlohy: rola sa
       nekontroluje, takže tenant zo session je jediná hranica.
-- [ ] **Krok 3:** test — neznámy kľúč (nie je v registri) sa odmietne 400. Bez toho je
+- [x] **Krok 3:** test — neznámy kľúč (nie je v registri) sa odmietne 400. Bez toho je
       `user_preference` otvorené úložisko ľubovoľného JSON-u na cudzí účet.
-- [ ] **Krok 4:** test — `PATCH` na kľúč úrovne `user` prejde; `PUT /tenant` na taký kľúč
+- [x] **Krok 4:** test — `PATCH` na kľúč úrovne `user` prejde; `PUT /tenant` na taký kľúč
       vráti 400.
-- [ ] **Krok 5:** implementovať repository (`insert … on conflict do update`) a oba handlery.
+- [x] **Krok 5:** implementovať repository (`insert … on conflict do update`) a oba handlery.
       `updated_by_sub` sa zapisuje pri každom firemnom zápise.
-- [ ] **Krok 6:** test — pri nedostupnej databáze handler vráti 503 a **nezhodí** proces.
-- [ ] **Krok 7:** regresia — nová route je chránená bez zásahu do `middleware.ts`.
-- [ ] **Krok 8:** overenie.
+- [x] **Krok 6:** test — pri nedostupnej databáze handler vráti 503 a **nezhodí** proces.
+- [x] **Krok 7:** regresia — nová route je chránená bez zásahu do `middleware.ts`.
+- [x] **Krok 8:** overenie.
 
 ---
 
@@ -169,22 +175,22 @@ Najväčšia úloha na počet dotknutých súborov, ale bez rozhodovania — to 
 - Upraviť: `src/app/page.tsx`, `src/app/expenses/page.tsx`, `src/app/cashflow/page.tsx`,
   `src/lib/use-persisted-collapsed.ts`, `src/components/categorized-tags-dashboard.tsx`
 
-- [ ] **Krok 1:** test store-u (čistý modul, `useSyncExternalStore` až nad ním) — zápis
+- [x] **Krok 1:** test store-u (čistý modul, `useSyncExternalStore` až nad ním) — zápis
       aktualizuje stav aj `localStorage` synchrónne; odpoveď servera prepíše stav; zlyhanie
       zápisu stav nezmení a nevyhodí chybu do UI.
-- [ ] **Krok 2:** test — zápisy sa zlučujú s debounce ~800 ms do jedného `PATCH` (rýchle
+- [x] **Krok 2:** test — zápisy sa zlučujú s debounce ~800 ms do jedného `PATCH` (rýchle
       klikanie vo filtri nesmie poslať dvadsať requestov).
-- [ ] **Krok 3:** implementovať store: načítanie z `localStorage` → okamžitý stav, `GET`
+- [x] **Krok 3:** implementovať store: načítanie z `localStorage` → okamžitý stav, `GET`
       na pozadí, zlúčenie cez `resolvePreferences`, jednorazová migrácia s príznakom
       `kros_dashboard_prefs_migrated_v1`.
-- [ ] **Krok 4:** `useSyncExternalStore` hook `usePreference(key)`; nahradiť ním priame
+- [x] **Krok 4:** `useSyncExternalStore` hook `usePreference(key)`; nahradiť ním priame
       `localStorage` čítania a zápisy v troch stránkach a v `usePersistedCollapsed`.
       Kľúč `storageKey` v komponentoch zostáva rovnaký reťazec — mapuje ho `legacy-keys.ts`.
-- [ ] **Krok 5:** granularita prestáva žiť v `globalThis.__krosDashboardGranularity`
+- [x] **Krok 5:** granularita prestáva žiť v `globalThis.__krosDashboardGranularity`
       a stáva sa osobným kľúčom `ui.granularity`. Deklaráciu `declare global` odstrániť.
-- [ ] **Krok 6:** overiť ručne v prehliadači: filtre nastavené v jednom okne sa po reloade
+- [x] **Krok 6:** overiť ručne v prehliadači: filtre nastavené v jednom okne sa po reloade
       v druhom (iná session toho istého konta) zobrazia; pri vypnutom serveri appka funguje.
-- [ ] **Krok 7:** overenie príkazmi.
+- [x] **Krok 7:** overenie príkazmi.
 
 ---
 
@@ -197,14 +203,14 @@ prepojené iné firmy — a to je do fázy 2 bežný stav, nie výnimka.
 - Vytvoriť: `src/lib/preferences/company-filter.ts`, `src/lib/preferences/company-filter.test.ts`
 - Upraviť: `src/app/page.tsx`, `src/app/expenses/page.tsx`, `src/app/cashflow/page.tsx`
 
-- [ ] **Krok 1:** test — prázdny výber = všetky dostupné firmy (dnešné správanie); neprázdny
+- [x] **Krok 1:** test — prázdny výber = všetky dostupné firmy (dnešné správanie); neprázdny
       výber sa oreže na dostupné; **neprázdny výber s prázdnym prienikom vráti príznak
       `noneAvailable`**, nie tichú nulu.
-- [ ] **Krok 2:** implementovať čistú funkciu a nahradiť ňou tri kópie tejto logiky
+- [x] **Krok 2:** implementovať čistú funkciu a nahradiť ňou tri kópie tejto logiky
       (`syncConnections` v každej stránke robí dnes takmer to isté, len cashflow inak).
-- [ ] **Krok 3:** UI hláška pri `noneAvailable`: „Uložený filter obsahuje firmy, ktoré na tomto
+- [x] **Krok 3:** UI hláška pri `noneAvailable`: „Uložený filter obsahuje firmy, ktoré na tomto
       zariadení nie sú prepojené." s odkazom na Nastavenia.
-- [ ] **Krok 4:** overenie.
+- [x] **Krok 4:** overenie.
 
 ---
 
@@ -214,16 +220,16 @@ prepojené iné firmy — a to je do fázy 2 bežný stav, nie výnimka.
 - Upraviť: `src/app/settings/page.tsx`
 - Vytvoriť: `src/app/settings/settings.test.ts` (ak dá zmysel bez jsdom, inak len čisté funkcie)
 
-- [ ] **Krok 1:** v Nastaveniach panel „Firemné predvolené" s dvoma akciami: *Nastaviť aktuálne
+- [x] **Krok 1:** v Nastaveniach panel „Firemné filtre" s dvoma akciami: *Nastaviť aktuálne
       filtre ako firemné* (`PUT /api/preferences/tenant`) a *Vrátiť sa na firemné* (`DELETE`).
-- [ ] **Krok 2:** ukázať `tenantUpdatedBy` a čas — keďže to smie meniť hocikto, stopa je jediné,
+- [x] **Krok 2:** ukázať `tenantUpdatedBy` a čas — keďže to smie meniť hocikto, stopa je jediné,
       čo zostáva. Bez nej sa nedá zistiť, kto firemný filter prestavil.
-- [ ] **Krok 3:** text dialógu pri zdieľaní musí povedať, že sa to prejaví **všetkým vo firme**.
-- [ ] **Krok 4:** **test regresie: „Vymazať cache dát" nezmaže filtre.** Dnešný
+- [x] **Krok 3:** text dialógu pri zdieľaní musí povedať, že sa to prejaví **všetkým vo firme**.
+- [x] **Krok 4:** **test regresie: „Vymazať cache dát" nezmaže filtre.** Dnešný
       `handleClearInvoiceCache` maže tri cache a `kros_dashboard_last_sync_at`; po tejto fáze
       žijú filtre v tom istom `localStorage`, takže je to jedna „oprava" od zmazania. Test na
       zoznam kľúčov, ktorých sa tlačidlo smie dotknúť.
-- [ ] **Krok 5:** overenie.
+- [x] **Krok 5:** overenie.
 
 ---
 

@@ -1,4 +1,5 @@
 import type { Granularity } from "@/lib/mock-data";
+import { normalizeTagFilters } from "@/lib/tag-categories";
 
 /**
  * Jediné miesto pravdy o tom, čo si appka pamätá a na akej úrovni.
@@ -39,6 +40,12 @@ type Definition<K extends PreferenceKey> = {
   storageKey: string;
   default: PreferenceValueMap[K];
   isValid: (value: unknown) => value is PreferenceValueMap[K];
+  /**
+   * Doplnkový prevod pri čítaní z `localStorage`. Existuje kvôli tvarom, ktoré tam zapísali
+   * staršie verzie appky — bez neho by ich validácia zahodila ako neplatné a ľuďom by
+   * nastavenia pri prvom načítaní zmizli.
+   */
+  normalize?: (value: unknown) => PreferenceValueMap[K];
 };
 
 function isStringArray(value: unknown): value is string[] {
@@ -77,7 +84,8 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
     level: "tenant",
     storageKey: "kros_dashboard_selected_tags",
     default: {},
-    isValid: isTagFilters
+    isValid: isTagFilters,
+    normalize: normalizeTagFilters
   },
   "revenue.companies": {
     level: "tenant",
@@ -89,7 +97,8 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
     level: "tenant",
     storageKey: "kros_dashboard_expenses_selected_tags",
     default: {},
-    isValid: isTagFilters
+    isValid: isTagFilters,
+    normalize: normalizeTagFilters
   },
   "expenses.companies": {
     level: "tenant",
@@ -158,7 +167,9 @@ export function parseStoredValue(key: PreferenceKey, raw: string | null): unknow
   }
 
   try {
-    return JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw) as unknown;
+    const normalize = PREFERENCE_KEYS[key].normalize;
+    return normalize ? normalize(parsed) : parsed;
   } catch {
     return undefined;
   }

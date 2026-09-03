@@ -95,7 +95,7 @@ type Props = {
 
 export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
-    "kros_dashboard_collapsed_recent_expenses"
+    "ui.collapsed.recentExpenses"
   );
 
   return (

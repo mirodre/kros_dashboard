@@ -12,7 +12,7 @@ type Props = {
 
 export function RecentInvoicesSection({ invoices, isLoading = false }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
-    "kros_dashboard_collapsed_recent_invoices"
+    "ui.collapsed.recentInvoices"
   );
 
   return (

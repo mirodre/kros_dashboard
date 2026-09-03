@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { PREFERENCE_KEYS, PREFERENCE_KEY_LIST, isTenantKey, isValidValue } from "@/lib/preferences/registry";
+import {
+  PREFERENCE_KEYS,
+  PREFERENCE_KEY_LIST,
+  isTenantKey,
+  isValidValue,
+  parseStoredValue
+} from "@/lib/preferences/registry";
 import { migrationFromLocalStorage, resolvePreferences } from "@/lib/preferences/resolve";
 
 describe("resolvePreferences", () => {
@@ -111,5 +117,27 @@ describe("migrationFromLocalStorage", () => {
     const upload = migrationFromLocalStorage({ "revenue.companies": { nie: "pole" } }, []);
 
     expect(upload).toEqual({});
+  });
+});
+
+describe("citanie starych formatov z localStorage", () => {
+  it("plochy filter stitkov (pole) sa prevedie na kategorie, nie zahodi", () => {
+    // Takto filtre ukladala verzia pred kategoriami. Bez prevodu by ich validacia zahodila
+    // ako neplatne a ludom by pri prvom nacitani zmizli.
+    const value = parseStoredValue("revenue.tagFilters", JSON.stringify(["Praca", "Material"]));
+
+    expect(value).toEqual({ __all__: ["Praca", "Material"] });
+    expect(isValidValue("revenue.tagFilters", value)).toBe(true);
+  });
+
+  it("zbalenie ulozene ako 1/0 sa cita ako boolean", () => {
+    expect(parseStoredValue("ui.collapsed.companies", "1")).toBe(true);
+    expect(parseStoredValue("ui.collapsed.companies", "0")).toBe(false);
+  });
+
+  it("1 v poli firiem nie je true, ale neplatna hodnota", () => {
+    const value = parseStoredValue("revenue.companies", "1");
+
+    expect(isValidValue("revenue.companies", value)).toBe(false);
   });
 });

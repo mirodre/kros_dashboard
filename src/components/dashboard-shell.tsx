@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { formatSyncEta, type SyncProgress } from "@/lib/use-sync-progress";
 
 import { signOutAction } from "@/app/actions/sign-out";
+import { useTenantName } from "./preferences-boot";
 
 type Props = {
   children: React.ReactNode;
@@ -27,6 +28,8 @@ export function DashboardShell({
   const isPullingRef = useRef(false);
   const pullThreshold = 86;
   const pathname = usePathname();
+  // Filtre sú firemné, takže človek musí vidieť, ktorej firmy ich práve mení.
+  const tenantName = useTenantName();
   const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
   const progressPct = progress
     ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
@@ -85,6 +88,7 @@ export function DashboardShell({
       <header className="app-header">
         <div>
           <h1>{title}</h1>
+          {tenantName ? <p className="header-tenant">{tenantName}</p> : null}
           <nav className="header-nav desktop-only-nav" aria-label="Navigácia prehľadov">
             <Link href="/" className={pathname === "/" ? "header-nav-link active" : "header-nav-link"}>
               Príjmy

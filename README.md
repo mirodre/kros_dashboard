@@ -26,6 +26,7 @@ Všetky premenné sú voliteľné (majú rozumné defaulty v kóde). Ak ich chce
 
 | Premenná | Povinné | Popis |
 |----------|---------|--------|
+| `DATABASE_URL` | nie | Postgres pre nastavenia používateľov (filtre). Bez nej si appka filtre pamätá len v prehliadači. |
 | `KROS_API_BASE_URL` | nie | Default `https://api-economy.kros.sk` |
 | `NEXT_PUBLIC_KROS_CONSENT_BASE_URL` | nie | Default `https://firma.kros.sk/integration-consent` |
 
@@ -64,6 +65,27 @@ npm install
 npm run build
 # reštart procesu (pm2, systemd, …)
 ```
+
+## Zapamätané nastavenia (filtre)
+
+Filtre firiem a štítkov sa ukladajú **na firmu** (tenant zo `authentication_service`), takže
+človeka nasledujú na iné zariadenie a dajú sa zdieľať s kolegami. Zbalenie panelov
+a granularita sú **osobné** — zdieľať ich by znamenalo prestavovať kolegovi obrazovku.
+
+- Bežná zmena filtra sa ukladá **len pre mňa**. Firemné predvolené nastaví výslovná akcia
+  v `/settings` → **Firemné filtre → Nastaviť pre celú firmu** (smie ju urobiť ktokoľvek
+  v tej firme; kto to bol naposledy, panel ukazuje).
+- **Vrátiť sa na firemné filtre** zmaže moje osobné prepísanie.
+- `localStorage` zostáva ako cache, takže prvé vykreslenie je okamžité a appka funguje aj
+  offline. Bez `DATABASE_URL` sa nastavenia neukladajú na server a appka beží ako predtým.
+- **Migrácie schémy sa aplikujú pri štarte servera** (`src/instrumentation.ts`), samostatný
+  krok pri nasadení netreba — v logu sa objaví `Migrácie aplikované: …`. Zámerne tu nie je
+  `npm run migrate`: samostatný TypeScript runner by si vyžiadal ďalšiu závislosť, ktorú by
+  používal jeden príkaz.
+- Existujúce filtre z prehliadača sa pri prvom otvorení nahrajú **do osobnej úrovne**, nie do
+  firemnej — inak by prvý človek po nasadení prestavil dashboard celej firme.
+- Tlačidlo **Vymazať cache dát** maže len doklady z KROS API a stav synchronizácie; filtre
+  ostávajú (stráži to test v `src/lib/cache-clear.test.ts`).
 
 ## Bezpečnosť (verejné nasadenie)
 

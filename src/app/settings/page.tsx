@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
+import { TenantDefaultsCard } from "@/components/tenant-defaults-card";
+import { clearLocalDataCacheKeys } from "@/lib/cache-clear";
 import { clearCashflowCache } from "@/lib/cashflow-cache";
 import { clearExpenseCache } from "@/lib/expense-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
@@ -11,7 +13,7 @@ import { startKrosConnect } from "@/lib/kros-connect";
 import type { KrosConnection } from "@/lib/kros-types";
 import type { KrosApiLogEntry } from "@/lib/kros-logs";
 
-const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
+
 
 export default function SettingsPage() {
   const [connections, setConnections] = useState<KrosConnection[]>([]);
@@ -145,7 +147,9 @@ export default function SettingsPage() {
     await clearInvoiceCache();
     await clearCashflowCache();
     await clearExpenseCache();
-    localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
+    // Zoznam mazaných kľúčov je v `src/lib/cache-clear.ts` a stráži ho test: filtre sa tu
+    // mazať nesmú, hoci ležia v tom istom `localStorage` ako stav synchronizácie.
+    clearLocalDataCacheKeys(localStorage);
     setIsCacheClearOpen(false);
     setStatusMessage(
       "Lokálna cache faktúr (Príjmy), dokladov (Výdavky) a platieb (Financie) bola vymazaná. Prehľady sa pri ďalšom otvorení načítajú odznova."
@@ -154,6 +158,8 @@ export default function SettingsPage() {
 
   return (
     <DashboardShell title="Nastavenia">
+      <TenantDefaultsCard />
+
       <KrosConnectionCard
         connections={connections}
         statusMessage={statusMessage}

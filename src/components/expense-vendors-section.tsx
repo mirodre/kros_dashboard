@@ -11,7 +11,7 @@ type Props = {
 
 export function ExpenseVendorsSection({ vendors, isLoading = false }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
-    "kros_dashboard_collapsed_expense_vendors"
+    "ui.collapsed.expenseVendors"
   );
 
   return (

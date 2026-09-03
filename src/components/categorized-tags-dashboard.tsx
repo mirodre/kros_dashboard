@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { AggregatedBreakdownPoint } from "@/lib/kros-types";
 import {
   FLAT_TAG_FILTER_KEY,
@@ -10,9 +10,8 @@ import {
   type TagCategoryFilters,
   type TagCategoryIndex
 } from "@/lib/tag-categories";
+import { usePreference } from "@/lib/use-preference";
 import { FilterableBreakdownSection } from "./filterable-breakdown-section";
-
-const COLLAPSED_CATEGORIES_STORAGE_KEY = "kros_dashboard_collapsed_tag_categories";
 
 type Props = {
   /** Body na zobrazenie (už prepočítané podľa aktívneho filtra). */
@@ -28,22 +27,7 @@ type Props = {
   baseTitle?: string;
   ariaLabelPrefix?: string;
   invertDeltaColor?: boolean;
-  /** Oddelený kľúč localStorage, ak majú Tržby/Výdavky vlastný stav zbalenia. */
-  collapsedStorageKey?: string;
 };
-
-function readCollapsedCategories(storageKey: string): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((value): value is string => typeof value === "string");
-  } catch {
-    return [];
-  }
-}
 
 export function CategorizedTagsDashboard({
   tags,
@@ -56,33 +40,20 @@ export function CategorizedTagsDashboard({
   isLoading = false,
   baseTitle = "Tržby podľa štítkov",
   ariaLabelPrefix = "Filtrovať prehľad podľa štítku",
-  invertDeltaColor = false,
-  collapsedStorageKey = COLLAPSED_CATEGORIES_STORAGE_KEY
+  invertDeltaColor = false
 }: Props) {
   const filters = categoryFilters ?? {};
   const dialogSource = availableTags ?? tags;
-  const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
-  const [hasLoadedCollapsed, setHasLoadedCollapsed] = useState(false);
-
-  useEffect(() => {
-    setCollapsedCategories(readCollapsedCategories(collapsedStorageKey));
-    setHasLoadedCollapsed(true);
-  }, [collapsedStorageKey]);
-
-  useEffect(() => {
-    if (!hasLoadedCollapsed) return;
-    localStorage.setItem(collapsedStorageKey, JSON.stringify(collapsedCategories));
-  }, [collapsedCategories, collapsedStorageKey, hasLoadedCollapsed]);
+  // Zbalenie kategórií je osobné nastavenie a Tržby aj Výdavky ho zdieľajú — rovnako ako
+  // pred presunom na server, kde obe stránky písali do toho istého kľúča.
+  const [collapsedCategories, setCollapsedCategories] = usePreference("ui.collapsed.tagCategories");
 
   const collapsedSet = useMemo(() => new Set(collapsedCategories), [collapsedCategories]);
 
   const setCategoryCollapsed = (category: string, collapsed: boolean) => {
-    setCollapsedCategories((prev) => {
-      const has = prev.includes(category);
-      if (collapsed && !has) return [...prev, category];
-      if (!collapsed && has) return prev.filter((name) => name !== category);
-      return prev;
-    });
+    const has = collapsedCategories.includes(category);
+    if (collapsed && !has) setCollapsedCategories([...collapsedCategories, category]);
+    if (!collapsed && has) setCollapsedCategories(collapsedCategories.filter((name) => name !== category));
   };
 
   const groups = useMemo(

@@ -5,6 +5,7 @@ import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoDataBanner } from "@/components/demo-data-banner";
+import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { CASHFLOW_MOCK_COMPANIES, getCashflowOverview } from "@/lib/cashflow-mock-data";
 import {
   computeCashflowOverviewFromLiveData,
@@ -22,19 +23,13 @@ import {
   writeCashflowSyncMeta
 } from "@/lib/cashflow-cache";
 import { readConnections } from "@/lib/kros-storage";
+import { usePreference } from "@/lib/use-preference";
+import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import type {
   KrosConnection,
   NormalizedPaymentAccount,
   NormalizedPaymentTransaction
 } from "@/lib/kros-types";
-import type { Granularity } from "@/lib/mock-data";
-
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
-
-declare global {
-  // eslint-disable-next-line no-var -- globalThis typing requires `var`
-  var __krosDashboardGranularity: Granularity | undefined;
-}
 
 function getMaxLastModified(transactions: NormalizedPaymentTransaction[], fallback?: string) {
   return transactions.reduce<string | undefined>((max, transaction) => {
@@ -63,10 +58,10 @@ function withLastModifiedOverlap(value: string) {
 }
 
 export default function CashflowPage() {
-  const [granularity] = useState<Granularity>(
-    globalThis.__krosDashboardGranularity ?? "month"
-  );
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  // Granularitu Financie len čítajú (vlastný prepínač nemajú), ale je to to isté osobné
+  // nastavenie ako na ostatných prehľadoch — teraz už prežije aj reload.
+  const [granularity] = usePreference("ui.granularity");
+  const [selectedCompanies, setSelectedCompanies] = usePreference("cashflow.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   const [connections, setConnections] = useState<KrosConnection[]>([]);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
@@ -98,46 +93,22 @@ export default function CashflowPage() {
     return normalizedSelectedCompanies;
   }, [focusedCompany, normalizedSelectedCompanies, preferredCompanySet]);
 
-  /**
-   * Same idea as Biznis: empty selection = all connected companies; otherwise only selected names.
-   * If the user has a non-empty persisted selection but no name matches current connections, sync nothing
-   * (do not fall back to loading every firm).
-   */
-  const syncConnections = useMemo(() => {
-    if (selectedCompanies.length === 0) return connections;
-    if (normalizedSelectedCompanies.length === 0) return [];
-    const selectedSet = new Set(normalizedSelectedCompanies);
-    return connections.filter((connection) => selectedSet.has(connection.companyName));
-  }, [connections, selectedCompanies, normalizedSelectedCompanies]);
+  // Prázdny výber = všetky prepojené firmy; inak prienik. Neprázdny výber bez prieniku
+  // nesťahuje nič a povie to hláškou — nespadne späť na sťahovanie všetkých firiem.
+  const companyFilter = useMemo(
+    () => applyCompanyFilter(connections, selectedCompanies, (connection) => connection.companyName),
+    [connections, selectedCompanies]
+  );
+  const syncConnections = companyFilter.companies;
 
   useEffect(() => {
     setConnections(readConnections());
   }, []);
 
+  // Prvý render beží ešte pred pripojením k store-u, takže sa sťahovanie odkladá o tik.
   useEffect(() => {
-    try {
-      const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
-      if (rawCompanies) {
-        const parsedCompanies = JSON.parse(rawCompanies) as string[];
-        if (Array.isArray(parsedCompanies)) {
-          setSelectedCompanies(parsedCompanies);
-        }
-      }
-    } catch {
-      // Ignore invalid persisted filter payload.
-    } finally {
-      setHasLoadedPersistedFilters(true);
-    }
+    setHasLoadedPersistedFilters(true);
   }, []);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(COMPANY_FILTER_STORAGE_KEY, JSON.stringify(selectedCompanies));
-  }, [hasLoadedPersistedFilters, selectedCompanies]);
-
-  useEffect(() => {
-    globalThis.__krosDashboardGranularity = granularity;
-  }, [granularity]);
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
@@ -362,6 +333,7 @@ export default function CashflowPage() {
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {shouldShowMockData ? <DemoDataBanner /> : null}
+      {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <CashflowDashboard
         kpis={overview.kpis}
         points={overview.points}
