@@ -4,22 +4,19 @@ import { createContext, useContext, useEffect } from "react";
 
 import { preferenceStore } from "@/lib/use-preference";
 
-const TenantNameContext = createContext<string | null>(null);
 const ViewerSubContext = createContext<string | null>(null);
 
 /**
- * Načíta serverové nastavenia raz po štarte appky a sprístupní názov firmy hlavičke.
+ * Načíta serverové nastavenia raz po štarte appky.
  *
  * Načítanie je zámerne AŽ v efekte: stránky sa medzitým vykreslia z `localStorage`, takže
  * človek nevidí nefiltrovaný dashboard a potom preskok. Keď server neodpovie, ostáva
  * lokálny stav — appka je PWA a musí fungovať aj offline.
  */
 export function PreferencesBoot({
-  tenantName,
   viewerSub,
   children
 }: {
-  tenantName: string | null;
   viewerSub: string | null;
   children: React.ReactNode;
 }) {
@@ -27,16 +24,7 @@ export function PreferencesBoot({
     void preferenceStore().load();
   }, []);
 
-  return (
-    <TenantNameContext.Provider value={tenantName}>
-      <ViewerSubContext.Provider value={viewerSub}>{children}</ViewerSubContext.Provider>
-    </TenantNameContext.Provider>
-  );
-}
-
-/** Názov firmy, ktorej nastavenia sa práve menia. `null` = človek bez firmy. */
-export function useTenantName(): string | null {
-  return useContext(TenantNameContext);
+  return <ViewerSubContext.Provider value={viewerSub}>{children}</ViewerSubContext.Provider>;
 }
 
 /** `sub` prihláseného človeka — len na rozlíšenie „toto som nastavil ja" od „nastavil kolega". */

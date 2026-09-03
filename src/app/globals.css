@@ -145,15 +145,6 @@ body {
   margin: 0.25rem 0 0;
 }
 
-/* Ktorej firmy nastavenia clovek prave meni. Filtre su firemne, takze bez tohto by pri
-   viacerych firmach nevedel, komu ich prestavuje. */
-.header-tenant {
-  color: #8ea0cc;
-  font-size: 0.78rem;
-  letter-spacing: 0.01em;
-  margin: 0.15rem 0 0;
-}
-
 .header-nav {
   display: flex;
   gap: 0.45rem;

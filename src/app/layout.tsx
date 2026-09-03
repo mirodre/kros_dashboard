@@ -33,18 +33,15 @@ export const viewport: Viewport = {
 export default async function RootLayout({
   children
 }: Readonly<{ children: React.ReactNode }>) {
-  // Session sa tu číta len kvôli názvu firmy v hlavičke — nastavenia sú kľúčované tenantom
-  // a človek musí vidieť, ktorej firmy filtre práve mení. Middleware session aj tak overuje
-  // pri každom requeste, takže tu nepribúda žiadne nové rozhodnutie o prístupe.
+  // Session sa tu číta len kvôli `sub` prihláseného človeka — nastavenia potrebujú rozlíšiť
+  // „toto som nastavil ja" od „nastavil kolega". Middleware session aj tak overuje pri každom
+  // requeste, takže tu nepribúda žiadne nové rozhodnutie o prístupe.
   const session = await auth();
 
   return (
     <html lang="sk">
       <body>
-        <PreferencesBoot
-          tenantName={session?.claims?.organizationName ?? null}
-          viewerSub={session?.claims?.sub ?? null}
-        >
+        <PreferencesBoot viewerSub={session?.claims?.sub ?? null}>
           {children}
         </PreferencesBoot>
         <div className="orientation-lock" aria-hidden="true">
