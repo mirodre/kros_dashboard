@@ -22,4 +22,18 @@ describe("serviceSignOutUrl", () => {
 
     expect(serviceSignOutUrl()).toBe("https://login.test/logout?app=ine");
   });
+
+  it("prazdny kluc appky pouzije default", () => {
+    process.env.AUTH_SERVICE_URL = "https://login.test";
+    process.env.AUTH_SERVICE_APP_KEY = "";
+
+    expect(serviceSignOutUrl()).toBe("https://login.test/logout?app=prehlady");
+  });
+
+  it("kluc appky iba z bielych znakov pouzije default", () => {
+    process.env.AUTH_SERVICE_URL = "https://login.test";
+    process.env.AUTH_SERVICE_APP_KEY = "   ";
+
+    expect(serviceSignOutUrl()).toBe("https://login.test/logout?app=prehlady");
+  });
 });
