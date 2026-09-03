@@ -6,7 +6,7 @@ type Props = {
   progress: SyncProgress;
   /** Čo sa sťahuje, napr. „Výdavky“ — dopĺňa nadpis obrazovky sťahovania. */
   title: string;
-  /** Vysvetlenie, prečo prvé načítanie trvá; zobrazí sa pod popisom kroku. */
+  /** Vysvetlenie, prečo prvé načítanie trvá; drží sa pri spodku obrazovky. */
   note?: string;
 };
 
@@ -71,9 +71,10 @@ export function SyncOverlay({ progress, title, note }: Props) {
             Krok {currentStepNumber} z {progress.steps.length}
           </em>
         </div>
-
-        {note ? <p className="sync-overlay-note">{note}</p> : null}
       </div>
+
+      {/* Pri spodku obrazovky — pre toho, koho zaujme, prečo to trvá. */}
+      {note ? <p className="sync-overlay-note">{note}</p> : null}
     </div>
   );
 }

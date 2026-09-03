@@ -2315,27 +2315,29 @@ body {
 }
 
 /* Sťahovanie na celú obrazovku — prvé načítanie modulu. */
+/* Kruh s popisom kroku drží stred, vysvetlenie sedí na spodku obrazovky. */
 .sync-overlay {
-  align-items: center;
   animation: sync-overlay-in 240ms ease both;
   backdrop-filter: blur(20px) saturate(150%);
   background:
     radial-gradient(ellipse 820px 560px at 50% 16%, rgba(66, 94, 186, 0.5) 0%, rgba(17, 20, 32, 0) 68%),
     rgba(10, 13, 23, 0.93);
-  display: flex;
+  display: grid;
+  grid-template-rows: 1fr auto;
   inset: 0;
-  justify-content: center;
+  justify-items: center;
   overflow-y: auto;
   padding: calc(2.2rem + env(safe-area-inset-top)) 1.35rem calc(2.2rem + env(safe-area-inset-bottom));
   position: fixed;
+  row-gap: 1.6rem;
   z-index: 150;
 }
 
 .sync-overlay-card {
+  align-self: center;
   display: grid;
   gap: 1.15rem;
   justify-items: center;
-  margin: auto;
   max-width: 540px;
   text-align: center;
   width: 100%;
@@ -2441,11 +2443,12 @@ body {
 }
 
 .sync-overlay-note {
-  color: #7e89ab;
+  color: #6b7594;
   font-size: 0.74rem;
   line-height: 1.5;
   margin: 0;
-  max-width: 400px;
+  max-width: 420px;
+  text-align: center;
 }
 
 @keyframes sync-overlay-in {
