@@ -63,7 +63,20 @@ nie pri registrácii klienta (chyba sa prejaví až pri prvom pokuse o prihláse
 Do Dokploy Environment **služby** (`login.krosdoplnky.sk`):
 
 - `PASSPORT_TRUSTED_CLIENTS` — doplniť o `client_id` z kroku 1. Bez toho dostane každý
-  používateľ pri prvom prihlásení **403** namiesto preskočeného consentu.
+  používateľ pri prvom prihlásení **403** namiesto preskočeného consentu, a to s presne
+  touto hláškou v prehliadači, už na `login.krosdoplnky.sk/oauth/authorize`:
+
+  > Táto appka vyžaduje potvrdenie prístupu, ktoré tento server nepodporuje. Kontaktujte správcu.
+
+  Vracia ju `Passport::authorizationView(...)` v `app/Providers/AppServiceProvider.php` služby;
+  je to zámerná politika (Passport 13 už nedodáva default consent view), nie chyba. Ak ju vidíš,
+  chýba práve tento záznam.
+
+  **Doplniť, nie prepísať.** Hodnota je zoznam client ID oddelený čiarkami
+  (`config/oauth.php`: `explode(',', ...)` + `trim`) a porovnáva sa striktne ako string
+  (`OAuthClient::skipsAuthorization()`, `in_array(..., true)`) — takže ID musí sedieť presne
+  a prepísaním hodnoty len novým ID stratí dôveryhodnosť `payment_connector` a jeho ľudia
+  narazia na tú istú 403.
 - `AUTH_RETURN_APPS` — doplniť o `prehlady=https://prehlady.krosdoplnky.sk`. Toto je kľúč,
   ktorý appka posiela pri odhlásení ako `?app=` (pozri časť 3 nižšie aj bod 4 checklistu) —
   bez tohto záznamu služba po odhlásení a opätovnom prihlásení vráti človeka na svoj vlastný
