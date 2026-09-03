@@ -5,6 +5,7 @@ import { formatSyncEta, getSyncFraction, useSyncProgressValue } from "@/lib/use-
 import { SyncOverlay } from "@/components/sync-overlay";
 
 import { signOutAction } from "@/app/actions/sign-out";
+import { useTenantName } from "./preferences-boot";
 
 type Props = {
   children: React.ReactNode;
@@ -27,6 +28,8 @@ export function DashboardShell({
   const isPullingRef = useRef(false);
   const pullThreshold = 86;
   const syncProgress = useSyncProgressValue();
+  // Filtre sú firemné, takže človek musí vidieť, ktorej firmy ich práve mení.
+  const tenantName = useTenantName();
   const progress = syncProgress && syncProgress.steps.length > 0 ? syncProgress : null;
   const inlineProgress = progress && !progress.immersive ? progress : null;
   const inlinePct = inlineProgress ? Math.round(getSyncFraction(inlineProgress) * 100) : 0;
@@ -85,6 +88,7 @@ export function DashboardShell({
       <header className="app-header">
         <div>
           <h1>{title}</h1>
+          {tenantName ? <p className="header-tenant">{tenantName}</p> : null}
         </div>
         <div className="header-actions">
           {onRefresh ? (

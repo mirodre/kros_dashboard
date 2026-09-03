@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoDataBanner } from "@/components/demo-data-banner";
+import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
 import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { RecentInvoicesSection } from "@/components/recent-invoices-section";
@@ -24,16 +25,15 @@ import {
   getFilteredRecentInvoices,
   normalizeInvoices
 } from "@/lib/dashboard-live";
-import {
-  readConnections,
-} from "@/lib/kros-storage";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
+import { applyCompanyFilter } from "@/lib/preferences/company-filter";
+import { usePreference } from "@/lib/use-preference";
 import {
   categoryForTag,
   documentMatchesTagFilters,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
-  parseStoredTagFilters,
   type TagCategoryFilters
 } from "@/lib/tag-categories";
 import type { KrosConnection, NormalizedInvoice } from "@/lib/kros-types";
@@ -48,8 +48,6 @@ import {
 } from "@/lib/invoice-cache";
 import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 
-const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_revenue_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 type LiveDataRange = "ytd" | "history";
@@ -83,11 +81,6 @@ function toSyncStep(step: InvoiceSyncStep): SyncStep {
     group: step.connection.companyName,
     label: "zmenené faktúry"
   };
-}
-
-declare global {
-  // eslint-disable-next-line no-var -- globalThis typing requires `var`
-  var __krosDashboardGranularity: Granularity | undefined;
 }
 
 function getLiveDataRange(granularity: Granularity): LiveDataRange {
@@ -157,14 +150,15 @@ function withLastModifiedOverlap(value: string) {
 }
 
 export default function HomePage() {
-  const [granularity, setGranularity] = useState<Granularity>(
-    globalThis.__krosDashboardGranularity ?? "month"
-  );
-  const [categoryFilters, setCategoryFilters] = useState<TagCategoryFilters>({});
+  // Nastavenia žijú v spoločnom store (server + `localStorage` ako cache), nie v stave
+  // stránky: to je celý zmysel tejto fázy — filtre nasledujú človeka na iné zariadenie.
+  const [granularity, setGranularity] = usePreference("ui.granularity");
+  const [categoryFilters, setCategoryFilters] = usePreference("revenue.tagFilters");
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  const [selectedCompanies, setSelectedCompanies] = usePreference("revenue.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
+  // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [liveInvoices, setLiveInvoices] = useState<NormalizedInvoice[]>([]);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [, setLiveError] = useState<string | null>(null);
@@ -177,51 +171,20 @@ export default function HomePage() {
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
     [focusedCompany, selectedCompanies]
   );
-  const syncConnections = useMemo(() => {
-    if (selectedCompanies.length === 0) return connections;
+  // Uložený filter sa aplikuje ako prienik s prepojenými firmami; `noneAvailable` znamená,
+  // že sem filter z iného zariadenia nesedí — a to sa musí povedať, nie ukázať ako nulu.
+  const companyFilter = useMemo(
+    () => applyCompanyFilter(connections, selectedCompanies, (connection) => connection.companyName),
+    [connections, selectedCompanies]
+  );
+  const syncConnections = companyFilter.companies;
 
-    const selectedCompanySet = new Set(selectedCompanies);
-    return connections.filter((connection) => selectedCompanySet.has(connection.companyName));
-  }, [connections, selectedCompanies]);
-
+  // Prvý render beží ešte pred pripojením k store-u (server snapshot = defaulty), takže sa
+  // sťahovanie odkladá o jeden tik. Bez toho by prvý fetch šiel s prázdnym filtrom a hneď
+  // za ním druhý so skutočným.
   useEffect(() => {
-    const storedConnections = readConnections();
-    setConnections(storedConnections);
+    setHasLoadedPersistedFilters(true);
   }, []);
-
-  useEffect(() => {
-    try {
-      const rawTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
-      const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
-
-      setCategoryFilters(parseStoredTagFilters(rawTags));
-
-      if (rawCompanies) {
-        const parsedCompanies = JSON.parse(rawCompanies) as string[];
-        if (Array.isArray(parsedCompanies)) {
-          setSelectedCompanies(parsedCompanies);
-        }
-      }
-    } catch {
-      // Ignore invalid persisted filter payload.
-    } finally {
-      setHasLoadedPersistedFilters(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(categoryFilters));
-  }, [hasLoadedPersistedFilters, categoryFilters]);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(COMPANY_FILTER_STORAGE_KEY, JSON.stringify(selectedCompanies));
-  }, [hasLoadedPersistedFilters, selectedCompanies]);
-
-  useEffect(() => {
-    globalThis.__krosDashboardGranularity = granularity;
-  }, [granularity]);
 
   useEffect(() => {
     if (!hasLoadedPersistedFilters) return;
@@ -246,7 +209,7 @@ export default function HomePage() {
     const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
 
     const fetchInvoices = async (body: {
-      companies: KrosConnection[];
+      companyIds: number[];
       deliveryDateFrom?: string;
       deliveryDateTo?: string;
       lastModifiedTimestamp?: string;
@@ -347,12 +310,12 @@ export default function HomePage() {
           const rawInvoices = await fetchInvoices(
             step.kind === "month"
               ? {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   deliveryDateFrom: step.monthRange.from,
                   deliveryDateTo: step.monthRange.to
                 }
               : {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
                 }
           );
@@ -431,8 +394,11 @@ export default function HomePage() {
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
 
   useEffect(() => {
-    setCategoryFilters((prev) => migrateFlatFiltersToCategories(prev, tagCategoryIndex));
-  }, [tagCategoryIndex]);
+    const migrated = migrateFlatFiltersToCategories(categoryFilters, tagCategoryIndex);
+    // Porovnanie referencie stačí: `migrateFlatFiltersToCategories` vracia pôvodný objekt,
+    // keď nie je čo prerobiť. Bez tejto podmienky by zápis spustil efekt znova dokola.
+    if (migrated !== categoryFilters) setCategoryFilters(migrated);
+  }, [tagCategoryIndex, categoryFilters, setCategoryFilters]);
 
   const filterScopedInvoices = useMemo(
     () =>
@@ -562,7 +528,8 @@ export default function HomePage() {
       syncNote="Faktúry ťaháme po mesiacoch, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
-      {!hasLiveMode ? <DemoDataBanner /> : null}
+      {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
+      {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <RevenueDashboard
         granularity={granularity}
         onGranularityChange={setGranularity}

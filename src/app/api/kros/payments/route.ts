@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { resolveConnections } from "@/lib/kros-connection-handlers";
+import { krosContext } from "../context";
 import {
   readTotalCount,
   trackPaymentDateSpan,
   type PaymentDateSpan
 } from "@/lib/payment-sync-progress";
 
+/** Prepojenie tak, ako ho server načíta z databázy. Z prehliadača token nikdy nechodí. */
 type CompanyConnection = {
   companyId: number;
   companyName: string;
@@ -13,7 +16,8 @@ type CompanyConnection = {
 };
 
 type PaymentsRequestBody = {
-  companies: CompanyConnection[];
+  /** Filter firiem. Prázdne = všetky firmy prepojené touto firmou. */
+  companyIds?: number[];
   lastModifiedTimestamp?: string;
 };
 
@@ -167,8 +171,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
   }
 
-  if (!Array.isArray(body.companies) || body.companies.length === 0) {
-    return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+  const context = await krosContext();
+  if (context instanceof NextResponse) return context;
+
+  // Pred otvorením streamu: prepojenia sa načítajú zo servera podľa firmy zo session,
+  // `companyIds` z tela je len filter. Keby sa načítavali až vnútri, chyba databázy by
+  // odišla ako riadok v NDJSON namiesto stavového kódu.
+  const companies = await resolveConnections(context.connections, context.scope, body.companyIds);
+  if (companies.length === 0) {
+    return NextResponse.json({ error: "Žiadna firma nie je prepojená s KROS." }, { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -186,7 +197,7 @@ export async function POST(request: Request) {
       };
 
       try {
-        await runPaymentsSync(body, request.signal, send);
+        await runPaymentsSync(body, companies, request.signal, send);
       } catch (error) {
         await appendKrosLog({
           direction: "error",
@@ -222,13 +233,14 @@ export async function POST(request: Request) {
 
 async function runPaymentsSync(
   body: PaymentsRequestBody,
+  companies: CompanyConnection[],
   signal: AbortSignal,
   send: (event: unknown) => void
 ) {
   const allPayments: unknown[] = [];
   const errors: { companyName: string; message: string }[] = [];
 
-  for (const company of body.companies) {
+  for (const company of companies) {
     try {
       const companyPayments = await fetchCompanyPayments(
         company,

@@ -1,7 +1,7 @@
 "use client";
 
 import type { CompanyPoint } from "@/lib/mock-data";
-import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
+import { usePersistedCollapsed, type CollapsedPreferenceKey } from "@/lib/use-persisted-collapsed";
 import { FilterableBreakdownSection } from "./filterable-breakdown-section";
 
 type Props = {
@@ -13,7 +13,7 @@ type Props = {
   onFocusedCompanyChange: (company: string | null) => void;
   title?: string;
   invertDeltaColor?: boolean;
-  collapsedStorageKey?: string;
+  collapsedKey?: CollapsedPreferenceKey;
 };
 
 export function CompaniesDashboard({
@@ -25,9 +25,9 @@ export function CompaniesDashboard({
   onFocusedCompanyChange,
   title = "Tržby podľa firiem",
   invertDeltaColor = false,
-  collapsedStorageKey = "kros_dashboard_collapsed_companies"
+  collapsedKey = "ui.collapsed.companies"
 }: Props) {
-  const [collapsed, setCollapsed] = usePersistedCollapsed(collapsedStorageKey);
+  const [collapsed, setCollapsed] = usePersistedCollapsed(collapsedKey);
 
   return (
     <FilterableBreakdownSection

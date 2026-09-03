@@ -62,3 +62,42 @@ describe("claimsAgeSeconds", () => {
     expect(claimsAgeSeconds({ refreshedAt: 2_000_000 }, 1_000_000)).toBe(0);
   });
 });
+
+describe("claimsFromMe — zoznam firiem", () => {
+  it("drzi cely zoznam, nielen aktivnu firmu", () => {
+    // Bez zoznamu sa neda rozlisit „clovek nema firmu" od „aktivna firma ukazuje mimo
+    // zoznamu" — a to su dva rozne scope (osobny vs. firemny), nie jeden.
+    const claims = claimsFromMe({
+      sub: "01jbq2z9k7n4p6r8t0v2x4y6a8",
+      email: "ja@firma.sk",
+      organizations: [
+        { id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "Moja firma", role: "owner" },
+        { id: "01jbq4bbbbbbbbbbbbbbbbbbbb", name: "Druha firma", role: "member" }
+      ],
+      active_organization: "01jbq4bbbbbbbbbbbbbbbbbbbb"
+    });
+
+    expect(claims.organizations).toEqual([
+      { id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "Moja firma", role: "owner" },
+      { id: "01jbq4bbbbbbbbbbbbbbbbbbbb", name: "Druha firma", role: "member" }
+    ]);
+  });
+
+  it("zahodi zaznam bez id", () => {
+    // Zaznam bez id sa neda pouzit na nic — ani na porovnanie s active_organization.
+    const claims = claimsFromMe({
+      sub: "01jbq2z9k7n4p6r8t0v2x4y6a8",
+      email: "ja@firma.sk",
+      organizations: [{ name: "Bez id", role: "owner" }, { id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "S id" }],
+      active_organization: null
+    });
+
+    expect(claims.organizations).toEqual([{ id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "S id", role: null }]);
+  });
+
+  it("bez firiem je zoznam prazdny, nie undefined", () => {
+    const claims = claimsFromMe({ sub: "x", email: "ja@firma.sk", active_organization: null });
+
+    expect(claims.organizations).toEqual([]);
+  });
+});

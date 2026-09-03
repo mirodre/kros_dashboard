@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { getPool } from "@/lib/db/pool";
 import { appendKrosLog } from "@/lib/kros-logs";
-import { consumeOAuthState } from "@/lib/kros-oauth-state";
+import { postgresConnectionRepository } from "@/lib/kros-connections";
+import { oauthStateStore } from "@/lib/kros-oauth-state";
+import { scopeFromBinding } from "@/lib/preferences/scope";
 
 type CallbackCompany = {
   companyId: number;
@@ -47,55 +50,62 @@ function parseCompanies(formData: FormData) {
     );
 }
 
-function renderCallbackPage(payload: { state: string | null; companies: CallbackCompany[] }) {
-  const safePayload = JSON.stringify(payload).replace(/</g, "\\u003c");
-  const settingsUrl = "/settings?kros_post_result=1";
-
-  return `<!DOCTYPE html>
-<html lang="sk">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dokončujem prepojenie...</title>
-  </head>
-  <body style="font-family: Inter, Arial, sans-serif; background:#0a0d16; color:#eef3ff; margin:0; display:flex; min-height:100vh; align-items:center; justify-content:center;">
-    <p>Dokončujem prepojenie s KROS...</p>
-    <script>
-      try {
-        sessionStorage.setItem("kros_post_result", '${safePayload}');
-      } catch (error) {
-        console.error(error);
-      }
-      window.location.replace("${settingsUrl}");
-    </script>
-  </body>
-</html>`;
-}
-
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const state = String(formData.get("state") ?? "") || null;
     const companies = parseCompanies(formData);
 
-    if (!state || !(await consumeOAuthState(state))) {
+    const pool = getPool();
+    if (!pool) {
+      await appendKrosLog({
+        direction: "error",
+        endpoint: "/kros/callback",
+        method: "POST",
+        message: "Callback odmietnutý: appka nemá databázu, prepojenie sa nemá kam uložiť"
+      });
+      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
+    }
+
+    // `state` je jediné, čo o odosielateľovi vieme: cross-site POST z KROS neposiela
+    // session cookie. Väzba na firmu vznikla pri jeho vydaní v `/api/kros/oauth-state`.
+    const binding = state ? await oauthStateStore(pool).consume(state, new Date()) : null;
+
+    if (!binding) {
       await appendKrosLog({
         direction: "error",
         endpoint: "/kros/callback",
         method: "POST",
         message: "Callback odmietnutý: neplatný alebo expirovaný state parameter"
       });
-      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url));
+      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
     }
+
+    if (companies.length === 0) {
+      // KROS poslal callback bez použiteľnej firmy — tichý „úspech" by človeku ukázal
+      // prázdny dashboard bez vysvetlenia.
+      await appendKrosLog({
+        direction: "error",
+        endpoint: "/kros/callback",
+        method: "POST",
+        message: "Callback bez firiem: nie je čo prepojiť"
+      });
+      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url), 303);
+    }
+
+    await postgresConnectionRepository(pool).save(
+      scopeFromBinding(binding.tenantId, binding.userSub),
+      companies
+    );
 
     await appendKrosLog({
       direction: "response",
       endpoint: "/kros/callback",
       method: "POST",
       status: 200,
-      message: `POST callback prijatý: firmy=${companies.length}${state ? ", state je prítomný" : ""}`,
+      message: `POST callback prijatý: firmy=${companies.length}, prepojenie uložené pre firmu`,
       payload: {
-        state,
+        // Token v logu nemá čo robiť — telá odpovedí sa tu pri chybách zapisujú na disk.
         companies: companies.map((company) => ({
           companyId: company.companyId,
           companyName: company.companyName
@@ -103,12 +113,11 @@ export async function POST(request: Request) {
       }
     });
 
-    return new NextResponse(renderCallbackPage({ state, companies }), {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store"
-      }
-    });
+    // 303, aby prehliadač pokračoval GET-om: výsledok už je v databáze, prehliadač
+    // nepotrebuje niesť nič. Do fázy 2 sa tu vracala HTML stránka, ktorá zoznam firiem aj
+    // s tokenmi preniesla cez `sessionStorage` do `/settings`.
+    return NextResponse.redirect(new URL("/settings?kros_post_result=1", request.url), 303);
+
   } catch (error) {
     await appendKrosLog({
       direction: "error",

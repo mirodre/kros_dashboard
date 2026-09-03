@@ -1,28 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { usePreference } from "./use-preference";
 
-/** Zapamätá zbalenie panela v localStorage (true = zbaliť). */
-export function usePersistedCollapsed(storageKey: string, defaultCollapsed = false) {
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const [hasLoaded, setHasLoaded] = useState(false);
+/** Kľúče registra, ktorých hodnota je „panel je zbalený". */
+export type CollapsedPreferenceKey =
+  | "ui.collapsed.companies"
+  | "ui.collapsed.expensesCompanies"
+  | "ui.collapsed.recentInvoices"
+  | "ui.collapsed.recentExpenses"
+  | "ui.collapsed.expenseVendors";
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw === "1" || raw === "true") setCollapsed(true);
-      else if (raw === "0" || raw === "false") setCollapsed(false);
-    } catch {
-      // Ignore invalid persisted value.
-    } finally {
-      setHasLoaded(true);
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!hasLoaded) return;
-    localStorage.setItem(storageKey, collapsed ? "1" : "0");
-  }, [collapsed, hasLoaded, storageKey]);
-
-  return [collapsed, setCollapsed] as const;
+/**
+ * Zapamätá zbalenie panela. Zbalenie je OSOBNÉ nastavenie (register v
+ * `src/lib/preferences/registry.ts`): zdieľať ho firme by znamenalo, že jedno kliknutie
+ * prestaví obrazovku všetkým kolegom.
+ */
+export function usePersistedCollapsed(key: CollapsedPreferenceKey) {
+  return usePreference(key);
 }

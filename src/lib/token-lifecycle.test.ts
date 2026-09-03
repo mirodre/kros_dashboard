@@ -17,7 +17,8 @@ function token(overrides: Partial<SsoToken> = {}): SsoToken {
       avatar: null,
       organizationId: "01jbq3aaaaaaaaaaaaaaaaaaaa",
       organizationName: "Moja firma",
-      role: "owner"
+      role: "owner",
+      organizations: [{ id: "01jbq3aaaaaaaaaaaaaaaaaaaa", name: "Moja firma", role: "owner" }]
     },
     accessToken: "AT",
     refreshToken: "RT",
