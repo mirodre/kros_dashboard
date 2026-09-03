@@ -534,10 +534,11 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
-  // Donut filtrujeme výberom z Filtra štítkov, ale nie focusnutým štítkom —
-  // klik na výsek má slice len zvýrazniť, nie zredukovať donut na jediný výsek.
+  // Donut ide z rovnakých dokladov ako stĺpcový graf a KPI — teda aj s focusnutým
+  // štítkom. V kategórii focusnutého štítku tak ostane jeho výsek (klik naň focus zruší),
+  // v ostatných kategóriách sa podiely prepočítajú len z výdavkov s tým štítkom.
   const tagStructure = useMemo(() => {
-    const slices = computeExpenseTagStructure(filterScopedExpenses, [], effectiveCompanies).filter(
+    const slices = computeExpenseTagStructure(tagScopedExpenses, [], effectiveCompanies).filter(
       (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
     );
     const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
@@ -545,7 +546,7 @@ export default function ExpensesPage() {
       ...slice,
       share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
     }));
-  }, [filterScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
+  }, [tagScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
 
   const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),

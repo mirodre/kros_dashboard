@@ -371,7 +371,9 @@ export function ExpensesDashboard({
                     `A ${innerRadius} ${innerRadius} 0 ${isLargeArc} 0 ${startInnerX} ${startInnerY}`,
                     "Z"
                   ].join(" ");
-                  const isDimmed = Boolean(activeTagLabel) && !isActive;
+                  // Zvýraznenie má zmysel len vtedy, keď focusnutý štítok v donute naozaj je —
+                  // pri focuse z inej kategórie by inak zosvetleli všetky výseky.
+                  const isDimmed = Boolean(activeSlice) && !isActive;
                   return (
                     <path
                       key={slice.name}
@@ -428,8 +430,12 @@ export function ExpensesDashboard({
               })}
             </ul>
         </div>
-        {donutData.length === 0 && activeDonutCategories.length > 0 ? (
-          <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>
+        {donutData.length === 0 && (activeTagLabel || activeDonutCategories.length > 0) ? (
+          <p className="tag-sub">
+            {activeTagLabel
+              ? `Štítok „${activeTagLabel}“ nemá v tomto období žiadne výdavky.`
+              : "Vybrané kategórie nemajú v tomto období žiadne výdavky."}
+          </p>
         ) : null}
       </article>
 
