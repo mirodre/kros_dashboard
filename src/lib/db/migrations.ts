@@ -33,5 +33,27 @@ export const MIGRATIONS: readonly Migration[] = [
         primary key (user_sub, tenant_id, key)
       );
     `
+  },
+  {
+    name: "002_kros_connections",
+    sql: `
+      create table if not exists kros_connection (
+        tenant_id          text        not null,
+        company_id         bigint      not null,
+        company_name       text        not null,
+        token_enc          bytea       not null,
+        webhook_secret_enc bytea,
+        connected_by_sub   text        not null,
+        connected_at       timestamptz not null default now(),
+        primary key (tenant_id, company_id)
+      );
+
+      create table if not exists kros_oauth_state (
+        state      text        primary key,
+        tenant_id  text        not null,
+        user_sub   text        not null,
+        expires_at timestamptz not null
+      );
+    `
   }
 ];

@@ -13,7 +13,7 @@ describe("isPublicPath", () => {
     "/icon-192.png",
     // KROS integration-consent posiela sem cross-site form POST; sameSite=lax cookie sa
     // pri nom neposle, takze session tu nie je k dispozicii. Autorizuje jednorazovy `state`,
-    // ktory handler overuje sam (consumeOAuthState) — `/kros` samotne ostava chranene.
+    // ktory handler overuje sam (oauthStateStore.consume) — `/kros` samotne ostava chranene.
     "/kros/callback",
     // Prihlasovacia route musi byt verejna, inak by ju middleware chranil a poslal
     // neprihlaseneho zase na nu — redirect loop.

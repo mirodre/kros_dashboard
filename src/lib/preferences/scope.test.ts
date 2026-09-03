@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { preferenceScope } from "@/lib/preferences/scope";
+import { preferenceScope, scopeFromBinding } from "@/lib/preferences/scope";
 
 const sub = "01jbq2z9k7n4p6r8t0v2x4y6a8";
 
@@ -40,5 +40,19 @@ describe("preferenceScope", () => {
     const druhy = preferenceScope({ sub: "bbb", organizationId: null, organizations: [] });
 
     expect(prvy.tenantId).not.toBe(druhy.tenantId);
+  });
+});
+
+describe("scopeFromBinding", () => {
+  it("firemny tenant zo state ostava firemny", () => {
+    const scope = scopeFromBinding("tenant-a", "clovek-a");
+
+    expect(scope).toEqual({ tenantId: "tenant-a", userSub: "clovek-a", isPersonalFallback: false });
+  });
+
+  it("osobny tenant sa rozpozna, nehada sa", () => {
+    // Callback z KROS nema session, takze scope vznika z tohto zaznamu — a nesmie tvrdit
+    // „je to firma", ked to firma nie je.
+    expect(scopeFromBinding(`user:${"clovek-a"}`, "clovek-a").isPersonalFallback).toBe(true);
   });
 });

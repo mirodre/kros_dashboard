@@ -1,8 +1,10 @@
+/**
+ * Prepojená firma tak, ako ju vidí prehliadač. Token tu ZÁMERNE nie je: od fázy 2 žije
+ * šifrovaný v databáze a klient posiela len `companyId`.
+ */
 export type KrosConnection = {
   companyId: number;
   companyName: string;
-  token: string;
-  webhookSecret?: string;
   connectedAt: string;
 };
 

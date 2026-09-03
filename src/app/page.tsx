@@ -25,9 +25,7 @@ import {
   getFilteredRecentInvoices,
   normalizeInvoices
 } from "@/lib/dashboard-live";
-import {
-  readConnections,
-} from "@/lib/kros-storage";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import { usePreference } from "@/lib/use-preference";
@@ -139,7 +137,8 @@ export default function HomePage() {
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = usePreference("revenue.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
+  // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [liveInvoices, setLiveInvoices] = useState<NormalizedInvoice[]>([]);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [, setLiveError] = useState<string | null>(null);
@@ -159,11 +158,6 @@ export default function HomePage() {
     [connections, selectedCompanies]
   );
   const syncConnections = companyFilter.companies;
-
-  useEffect(() => {
-    const storedConnections = readConnections();
-    setConnections(storedConnections);
-  }, []);
 
   // Prvý render beží ešte pred pripojením k store-u (server snapshot = defaulty), takže sa
   // sťahovanie odkladá o jeden tik. Bez toho by prvý fetch šiel s prázdnym filtrom a hneď
@@ -195,7 +189,7 @@ export default function HomePage() {
     const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
 
     const fetchInvoices = async (body: {
-      companies: KrosConnection[];
+      companyIds: number[];
       deliveryDateFrom?: string;
       deliveryDateTo?: string;
       lastModifiedTimestamp?: string;
@@ -293,12 +287,12 @@ export default function HomePage() {
           const rawInvoices = await fetchInvoices(
             step.kind === "month"
               ? {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   deliveryDateFrom: step.monthRange.from,
                   deliveryDateTo: step.monthRange.to
                 }
               : {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
                 }
           );
@@ -511,7 +505,7 @@ export default function HomePage() {
       syncProgress={syncProgress}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
-      {!hasLiveMode ? <DemoDataBanner /> : null}
+      {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <RevenueDashboard
         granularity={granularity}

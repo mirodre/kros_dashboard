@@ -22,7 +22,7 @@ import {
   upsertCachedPaymentTransactions,
   writeCashflowSyncMeta
 } from "@/lib/cashflow-cache";
-import { readConnections } from "@/lib/kros-storage";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import { usePreference } from "@/lib/use-preference";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import type {
@@ -63,7 +63,8 @@ export default function CashflowPage() {
   const [granularity] = usePreference("ui.granularity");
   const [selectedCompanies, setSelectedCompanies] = usePreference("cashflow.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
+  // Prepojenia sú firemné a žijú na serveri.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const [liveAccounts, setLiveAccounts] = useState<NormalizedPaymentAccount[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<NormalizedPaymentTransaction[]>([]);
@@ -101,10 +102,6 @@ export default function CashflowPage() {
   );
   const syncConnections = companyFilter.companies;
 
-  useEffect(() => {
-    setConnections(readConnections());
-  }, []);
-
   // Prvý render beží ešte pred pripojením k store-u, takže sa sťahovanie odkladá o tik.
   useEffect(() => {
     setHasLoadedPersistedFilters(true);
@@ -141,7 +138,7 @@ export default function CashflowPage() {
       const response = await fetch("/api/kros/payments/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companies }),
+        body: JSON.stringify({ companyIds: companies.map((connection) => connection.companyId) }),
         signal: abortController.signal
       });
       const payload = await response.json();
@@ -155,7 +152,7 @@ export default function CashflowPage() {
     };
 
     const fetchPayments = async (body: {
-      companies: KrosConnection[];
+      companyIds: number[];
       lastModifiedTimestamp?: string;
     }) => {
       const response = await fetch("/api/kros/payments", {
@@ -236,7 +233,7 @@ export default function CashflowPage() {
           const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
           const previousLastModified = lastModifiedTimestamp;
           const rawPayments = await fetchPayments({
-            companies: [connection],
+            companyIds: [connection.companyId],
             ...(!needsFullSync && previousLastModified
               ? { lastModifiedTimestamp: withLastModifiedOverlap(previousLastModified) }
               : {})
@@ -332,7 +329,7 @@ export default function CashflowPage() {
       syncProgress={syncProgress}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
-      {shouldShowMockData ? <DemoDataBanner /> : null}
+      {shouldShowMockData && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <CashflowDashboard
         kpis={overview.kpis}

@@ -32,6 +32,14 @@ export function preferenceScope(claims: Pick<SsoClaims, "sub" | "organizationId"
 }
 
 /**
+ * Scope zo záznamu, ktorý si appka odložila skôr (väzba OAuth `state` na firmu). Používa ho
+ * `/kros/callback`, kam session nedorazí — cross-site POST Lax cookie neposiela.
+ */
+export function scopeFromBinding(tenantId: string, userSub: string): PreferenceScope {
+  return { tenantId, userSub, isPersonalFallback: tenantId.startsWith(PERSONAL_PREFIX) };
+}
+
+/**
  * Session → scope, alebo `null` keď session nie je použiteľná (chýba, alebo v nej nie sú
  * claimy). `null` znamená 401 — a je to jediná cesta, ako scope vzniká: route handler nemá
  * ako scope poskladať z tela requestu, lebo tento modul mu na to nedá funkciu.

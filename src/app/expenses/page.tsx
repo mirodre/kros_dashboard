@@ -11,7 +11,7 @@ import { RecentExpensesSection } from "@/components/recent-expenses-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import type { Granularity } from "@/lib/mock-data";
 import type { KrosConnection, NormalizedExpense } from "@/lib/kros-types";
-import { readConnections } from "@/lib/kros-storage";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import { usePreference } from "@/lib/use-preference";
@@ -171,7 +171,8 @@ export default function ExpensesPage() {
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
+  // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [liveExpenses, setLiveExpenses] = useState<NormalizedExpense[]>([]);
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [, setLiveError] = useState<string | null>(null);
@@ -198,10 +199,6 @@ export default function ExpensesPage() {
     [connections, selectedCompanies]
   );
   const syncConnections = companyFilter.companies;
-
-  useEffect(() => {
-    setConnections(readConnections());
-  }, []);
 
   // Prvý render beží ešte pred pripojením k store-u, takže sa sťahovanie odkladá o tik —
   // inak by prvý fetch šiel s prázdnym filtrom a hneď za ním druhý so skutočným.
@@ -235,7 +232,7 @@ export default function ExpensesPage() {
     const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
 
     const fetchExpenses = async (body: {
-      companies: KrosConnection[];
+      companyIds: number[];
       deliveryDateFrom?: string;
       deliveryDateTo?: string;
       lastModifiedTimestamp?: string;
@@ -353,12 +350,12 @@ export default function ExpensesPage() {
           const rawExpenses = await fetchExpenses(
             step.kind === "month"
               ? {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   deliveryDateFrom: step.monthRange.from,
                   deliveryDateTo: step.monthRange.to
                 }
               : {
-                  companies: [connection],
+                  companyIds: [connection.companyId],
                   lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
                 }
           );
@@ -616,7 +613,7 @@ export default function ExpensesPage() {
       syncProgress={syncProgress}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
-      {!hasLiveMode ? <DemoDataBanner /> : null}
+      {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <ExpensesDashboard
         granularity={granularity}

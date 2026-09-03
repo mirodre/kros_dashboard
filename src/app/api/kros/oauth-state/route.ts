@@ -1,14 +1,44 @@
 import { NextResponse } from "next/server";
-import { isValidOAuthState, registerOAuthState } from "@/lib/kros-oauth-state";
 
+import { getPool } from "@/lib/db/pool";
+import { isValidOAuthState, oauthStateStore, STATE_TTL_MS } from "@/lib/kros-oauth-state";
+import { scopeFromSession } from "@/lib/preferences/scope";
+import { auth } from "@/auth";
+
+/**
+ * Vydá jednorazový `state` a ZAPÍŠE, komu patrí. Väzbu na firmu tu nemožno vynechať:
+ * callback z KROS prichádza cross-site POSTom bez session, takže `state` je jediné, podľa
+ * čoho vie, do ktorej firmy prepojenie zapísať.
+ *
+ * Do fázy 2 sa sem dal `state` zaregistrovať aj bez prihlásenia (riziko pomenované v spec-e
+ * fázy SSO) — kontrola session to zároveň zatvára.
+ */
 export async function POST(request: Request) {
   try {
+    const scope = scopeFromSession(await auth());
+    if (!scope) {
+      return NextResponse.json({ error: "Neprihlásený" }, { status: 401 });
+    }
+
     const body = (await request.json()) as { state?: string };
     if (!body.state || !isValidOAuthState(body.state)) {
       return NextResponse.json({ error: "Neplatný state parameter" }, { status: 400 });
     }
 
-    await registerOAuthState(body.state);
+    const pool = getPool();
+    if (!pool) {
+      return NextResponse.json(
+        { error: "Prepojenie s KROS vyžaduje databázu (DATABASE_URL nie je nastavená)." },
+        { status: 503 }
+      );
+    }
+
+    await oauthStateStore(pool).register(
+      body.state,
+      { tenantId: scope.tenantId, userSub: scope.userSub },
+      new Date(Date.now() + STATE_TTL_MS)
+    );
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

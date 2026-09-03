@@ -9,7 +9,9 @@ v IndexedDB každého zariadenia. Rozhodnutie z 3.9.2026: raz to príde, ale nie
 technológie s tým ráta a dátový model je postavený tak, aby sa doklady dali pridať bez
 prestavby.
 
-**Stav dokumentu:** návrh po rozhodnutiach z 3.9.2026. Implementačný plán vznikne samostatne.
+**Stav dokumentu:** **fázy 0, 1 aj 2 sú hotové (3.9.2026).** Plán fáz 0–1 je v
+`docs/superpowers/plans/2026-09-03-per-user-nastavenia-faza-0-1.md`; fáza 2 sa robila podľa
+tohto dokumentu priamo. Odchýlky sú vyznačené v texte.
 
 ---
 
@@ -251,7 +253,7 @@ rovnaký pre celý tenant a filtre sa pri tej príležitosti prekľúčujú na `
 
 ## Fáza 2 — prepojenia na tenanta
 
-### Čo sa mení
+### Čo sa zmenilo (hotové)
 
 1. **`POST /api/kros/oauth-state` si zapíše `tenant_id` aj `user_sub` zo session.** Dnes tam
    `state` zaregistruje ktokoľvek aj bez prihlásenia (riziko pomenované už v spec-e fázy SSO)
@@ -261,10 +263,22 @@ rovnaký pre celý tenant a filtre sa pri tej príležitosti prekľúčujú na `
 3. **`/api/kros/*` prestane brať tokeny z tela requestu.** Klient pošle `companyId`, server si
    token načíta podľa tenanta zo session. Kým to tak nie je, serverové úložisko je len ozdoba —
    token stále cestuje z prehliadača.
-4. **Odpojenie firmy** zmaže riadok a odvolá súhlas v KROS. Rovnako ako firemné nastavenia to
-   smie hocikto v tenante — ale na rozdiel od filtra sa to nedá vrátiť kliknutím, takže dialóg
-   musí povedať „odpojíš to všetkým vo firme a bude treba nový súhlas v KROS", nie dnešné
-   neutrálne „Firma bola odpojená".
+4. **Odpojenie firmy** zmaže riadok. Smie to hocikto v tenante — ale na rozdiel od filtra sa
+   to nedá vrátiť kliknutím, takže dialóg hovorí „odpojíš ju všetkým vo firme a späť sa dá
+   len novým súhlasom v KROS".
+
+   **Odchýlka od návrhu:** súhlas sa v KROS **neodvoláva**. `IntegrationApiGuide.md` žiadny
+   revoke endpoint nemá, takže appka vie zahodiť len token u seba; kto chce zrušiť aj súhlas
+   na strane KROS, robí to v KROS. Sľúbiť „odvolá súhlas" by bolo tvrdenie, ktoré kód
+   nesplní.
+
+5. **Jednorazový presun toho, čo ľuďom ostalo v prehliadači.** Pri prvom otvorení sa staré
+   prepojenia z `localStorage` nahrajú na server a **z prehliadača zmažú** — nikto sa nemusí
+   prepájať znova a tokeny prestanú ležať v úložisku prehliadača.
+
+6. **Databáza sa stáva podmienkou.** Vo fáze 1 bola `DATABASE_URL` voliteľná. Odkedy sú v nej
+   tokeny, bez databázy sa nedá zavolať KROS — routy vracajú 503 s vysvetlením namiesto
+   prázdnych dát, ktoré vyzerajú ako firma bez tržieb. Pribúda aj `KROS_TOKEN_KEY`.
 
 ### Prečo musí byť `state` viazaný na tenanta už pri registrácii
 
@@ -344,15 +358,16 @@ Podľa pravidla z fázy SSO — každá asercia typu „X sa stalo" sa dokazuje 
 
 ## Fázovanie
 
-**Fáza 0 (malá) — tenant v claimoch a v UI.** Držať v claimoch celý zoznam organizácií, nielen
+**Fáza 0 (hotové) — tenant v claimoch a v UI.** Držať v claimoch celý zoznam organizácií, nielen
 aktívnu, a ukázať názov firmy v hlavičke. Bez toho ľudia nevedia, ktorej firmy nastavenia menia.
 
-**Fáza 1 — Postgres + nastavenia.** Služba, migrácie, `tenant_preference` + `user_preference`,
+**Fáza 1 (hotové) — Postgres + nastavenia.** Služba, migrácie, `tenant_preference` + `user_preference`,
 `GET/PATCH /api/preferences`, `PUT /api/preferences/tenant`, register úrovní, migrácia
 z `localStorage` do osobnej úrovne, granularita sa konečne pamätá.
 
-**Fáza 2 — prepojenia na tenanta.** `kros_connection`, `kros_oauth_state` s väzbou na tenanta,
-šifrované tokeny, `/api/kros/*` berie token z DB, odpojenie za rolu `owner`.
+**Fáza 2 (hotové) — prepojenia na tenanta.** `kros_connection`, `kros_oauth_state` s väzbou na
+tenanta, šifrované tokeny, `/api/kros/*` berie token z DB podľa session, odpojenie za celú
+firmu, jednorazový presun starých prepojení z prehliadača.
 
 **Neskôr (mimo rozsahu) — doklady na serveri.** Model s tým ráta: doklady budú per
 `(tenant_id, company_id)` a prístup sa odvodí z `kros_connection`.

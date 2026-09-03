@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { resolveConnections } from "@/lib/kros-connection-handlers";
+import { krosContext } from "../context";
 import { toDateOnlyString } from "@/lib/document-date";
 
+/** Prepojenie tak, ako ho server načíta z databázy. Z prehliadača token nikdy nechodí. */
 type CompanyConnection = {
   companyId: number;
   companyName: string;
@@ -9,7 +12,8 @@ type CompanyConnection = {
 };
 
 type InvoiceRequestBody = {
-  companies: CompanyConnection[];
+  /** Filter firiem. Prázdne = všetky firmy prepojené touto firmou. */
+  companyIds?: number[];
   deliveryDateFrom?: string;
   deliveryDateTo?: string;
   lastModifiedTimestamp?: string;
@@ -150,17 +154,27 @@ async function fetchCompanyInvoices(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as InvoiceRequestBody;
-    if (!Array.isArray(body.companies) || (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo))) {
+    if (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo)) {
       return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+    }
+
+    const context = await krosContext();
+    if (context instanceof NextResponse) return context;
+
+    // Prepojenia sa načítajú zo servera podľa firmy zo session. `companyIds` z tela je len
+    // filter — token, ktorý by prišiel z prehliadača, sa už nikde nečíta.
+    const companies = await resolveConnections(context.connections, context.scope, body.companyIds);
+    if (companies.length === 0) {
+      return NextResponse.json({ error: "Žiadna firma nie je prepojená s KROS." }, { status: 400 });
     }
 
     await appendKrosLog({
       direction: "request",
       endpoint: "/api/kros/invoices",
       method: "POST",
-      message: `firmy=${body.companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
+      message: `firmy=${companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
       payload: {
-        companies: body.companies.map((company) => ({
+        companies: companies.map((company) => ({
           companyId: company.companyId,
           companyName: company.companyName
         })),
@@ -173,7 +187,7 @@ export async function POST(request: Request) {
     const allInvoices = [];
     const errors: { companyName: string; message: string }[] = [];
 
-    for (const company of body.companies) {
+    for (const company of companies) {
       try {
         const companyInvoices = await fetchCompanyInvoices(
           company,
@@ -195,7 +209,7 @@ export async function POST(request: Request) {
       endpoint: "/api/kros/invoices",
       method: "POST",
       status: 200,
-      message: `Načítané faktúry=${allInvoices.length}, chyby=${errors.length}, firmy=${body.companies.length}`,
+      message: `Načítané faktúry=${allInvoices.length}, chyby=${errors.length}, firmy=${companies.length}`,
       payload: errors.length > 0 ? { errors } : undefined
     });
     return NextResponse.json({ data: allInvoices, errors });

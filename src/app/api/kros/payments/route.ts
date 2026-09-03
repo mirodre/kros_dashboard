@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { resolveConnections } from "@/lib/kros-connection-handlers";
+import { krosContext } from "../context";
 
+/** Prepojenie tak, ako ho server načíta z databázy. Z prehliadača token nikdy nechodí. */
 type CompanyConnection = {
   companyId: number;
   companyName: string;
@@ -8,7 +11,8 @@ type CompanyConnection = {
 };
 
 type PaymentsRequestBody = {
-  companies: CompanyConnection[];
+  /** Filter firiem. Prázdne = všetky firmy prepojené touto firmou. */
+  companyIds?: number[];
   lastModifiedTimestamp?: string;
 };
 
@@ -115,14 +119,20 @@ async function fetchCompanyPayments(
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PaymentsRequestBody;
-    if (!Array.isArray(body.companies) || body.companies.length === 0) {
-      return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+    const context = await krosContext();
+    if (context instanceof NextResponse) return context;
+
+    // Prepojenia sa načítajú zo servera podľa firmy zo session. `companyIds` z tela je len
+    // filter — token, ktorý by prišiel z prehliadača, sa už nikde nečíta.
+    const companies = await resolveConnections(context.connections, context.scope, body.companyIds);
+    if (companies.length === 0) {
+      return NextResponse.json({ error: "Žiadna firma nie je prepojená s KROS." }, { status: 400 });
     }
 
     const allPayments: unknown[] = [];
     const errors: { companyName: string; message: string }[] = [];
 
-    for (const company of body.companies) {
+    for (const company of companies) {
       try {
         const companyPayments = await fetchCompanyPayments(company, body.lastModifiedTimestamp);
         allPayments.push(...companyPayments);
