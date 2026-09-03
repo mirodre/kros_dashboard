@@ -6,7 +6,7 @@ type Props = {
   progress: SyncProgress;
   /** Čo sa sťahuje, napr. „Výdavky“ — dopĺňa nadpis obrazovky sťahovania. */
   title: string;
-  /** Vysvetlenie, prečo prvé načítanie trvá; zobrazí sa pod mriežkou krokov. */
+  /** Vysvetlenie, prečo prvé načítanie trvá; zobrazí sa pod popisom kroku. */
   note?: string;
 };
 
@@ -15,47 +15,16 @@ const RING_STROKE = 10;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-type StepState = "done" | "active" | "pending";
-
-type StepGroup = {
-  name: string;
-  isActive: boolean;
-  items: { key: string; label: string; state: StepState }[];
-};
-
-/** Kroky zoskupené po firmách, v poradí sťahovania. */
-function groupSteps(progress: SyncProgress): StepGroup[] {
-  const groups: StepGroup[] = [];
-
-  progress.steps.forEach((step, index) => {
-    const state: StepState =
-      index < progress.doneCount ? "done" : index === progress.activeIndex ? "active" : "pending";
-    const item = { key: step.key, label: step.short ?? step.label, state };
-    const lastGroup = groups[groups.length - 1];
-
-    if (lastGroup && lastGroup.name === step.group) {
-      lastGroup.items.push(item);
-      lastGroup.isActive = lastGroup.isActive || state === "active";
-      return;
-    }
-    groups.push({ name: step.group, isActive: state === "active", items: [item] });
-  });
-
-  return groups;
-}
-
 /**
- * Sťahovanie dát na celú obrazovku. Prvé načítanie trvá desiatky sekúnd, preto
- * neukazujeme len percento: mriežka krokov dá prácu do kontextu (koľko mesiacov
- * a firiem ešte zostáva) a je na nej vidieť posun aj vtedy, keď percento chvíľu
- * stojí. Bez dát na obrazovke aj tak nie je čo iné zobraziť.
+ * Sťahovanie dát na celú obrazovku. Prvé načítanie trvá desiatky sekúnd a bez
+ * dát nie je na obrazovke čo iné zobraziť — dostane teda celú: kruh s podielom
+ * hotového a pod ním, kde sa sťahovanie práve nachádza.
  */
 export function SyncOverlay({ progress, title, note }: Props) {
   const fraction = getSyncFraction(progress);
   const percent = Math.min(100, Math.round(fraction * 100));
   const eta = formatSyncEta(progress.etaSeconds);
   const activeStep = progress.steps[progress.activeIndex];
-  const groups = groupSteps(progress);
   const currentStepNumber = Math.min(progress.doneCount + 1, progress.steps.length);
 
   return (
@@ -97,32 +66,10 @@ export function SyncOverlay({ progress, title, note }: Props) {
 
         <div className="sync-overlay-current">
           <strong>{activeStep?.group ?? "Pripravujem sťahovanie"}</strong>
-          <span>
-            {[activeStep?.label, progress.detail].filter(Boolean).join(" · ") || " "}
-          </span>
-        </div>
-
-        <div className="sync-overlay-steps">
-          <p className="sync-overlay-steps-head">
+          <span>{[activeStep?.label, progress.detail].filter(Boolean).join(" · ") || " "}</span>
+          <em>
             Krok {currentStepNumber} z {progress.steps.length}
-          </p>
-          <div className="sync-overlay-groups">
-            {groups.map((group) => (
-              <div
-                className={group.isActive ? "sync-overlay-group active" : "sync-overlay-group"}
-                key={`${group.name}:${group.items[0]?.key}`}
-              >
-                <span className="sync-overlay-group-name">{group.name}</span>
-                <div className="sync-overlay-chips">
-                  {group.items.map((item) => (
-                    <span key={item.key} className={`sync-overlay-chip ${item.state}`}>
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          </em>
         </div>
 
         {note ? <p className="sync-overlay-note">{note}</p> : null}

@@ -12,8 +12,6 @@ export type SyncStep = {
   key: string;
   group: string;
   label: string;
-  /** Krátky popis do mriežky krokov (napr. `aug`); inak sa použije `label`. */
-  short?: string;
 };
 
 export type SyncProgress = {
@@ -36,7 +34,6 @@ export type SyncProgress = {
 };
 
 const MONTH_LABEL_FORMAT = new Intl.DateTimeFormat("sk-SK", { month: "long", year: "numeric" });
-const MONTH_SHORT_FORMAT = new Intl.DateTimeFormat("sk-SK", { month: "short" });
 
 function parseMonthKey(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number);
@@ -47,15 +44,6 @@ function parseMonthKey(monthKey: string) {
 export function formatMonthKeyLabel(monthKey: string) {
   const date = parseMonthKey(monthKey);
   return date ? MONTH_LABEL_FORMAT.format(date) : monthKey;
-}
-
-/** `2026-08` → `aug` (mimo aktuálneho roka aj s rokom: `aug 25`). */
-export function formatMonthKeyShort(monthKey: string) {
-  const date = parseMonthKey(monthKey);
-  if (!date) return monthKey;
-  const short = MONTH_SHORT_FORMAT.format(date).replace(".", "");
-  if (date.getFullYear() === new Date().getFullYear()) return short;
-  return `${short} ${String(date.getFullYear()).slice(2)}`;
 }
 
 /** Zvyšný čas do konca sťahovania; `null`, kým sa nedá odhadnúť. */

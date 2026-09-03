@@ -33,8 +33,8 @@ const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
 
 /** Kroky sťahovania na firmu — účty sú malé, pohyby idú jedným volaním. */
 const CASHFLOW_STEP_LABELS = [
-  { long: "bankové účty", short: "účty" },
-  { long: "pohyby na účtoch", short: "pohyby" }
+  { key: "accounts", label: "bankové účty" },
+  { key: "payments", label: "pohyby na účtoch" }
 ] as const;
 
 declare global {
@@ -247,11 +247,10 @@ export default function CashflowPage() {
 
         if (abortController.signal.aborted) return;
         const syncSteps: SyncStep[] = pendingConnections.flatMap(({ connection }) =>
-          CASHFLOW_STEP_LABELS.map((label) => ({
-            key: `${connection.companyId}:${label.short}`,
+          CASHFLOW_STEP_LABELS.map((step) => ({
+            key: `${connection.companyId}:${step.key}`,
             group: connection.companyName,
-            label: label.long,
-            short: label.short
+            label: step.label
           }))
         );
         // Bez dát na obrazovke sťahujeme naplno, krátke dosynchronizovanie nad

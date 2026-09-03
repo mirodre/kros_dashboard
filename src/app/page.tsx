@@ -46,12 +46,7 @@ import {
   upsertCachedInvoices,
   writeSyncMeta
 } from "@/lib/invoice-cache";
-import {
-  formatMonthKeyLabel,
-  formatMonthKeyShort,
-  useSyncProgress,
-  type SyncStep
-} from "@/lib/use-sync-progress";
+import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 
 const TAG_FILTER_STORAGE_KEY = "kros_dashboard_selected_tags";
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_revenue_selected_companies";
@@ -79,16 +74,14 @@ function toSyncStep(step: InvoiceSyncStep): SyncStep {
     return {
       key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
       group: step.connection.companyName,
-      label: formatMonthKeyLabel(step.monthRange.monthKey),
-      short: formatMonthKeyShort(step.monthRange.monthKey)
+      label: formatMonthKeyLabel(step.monthRange.monthKey)
     };
   }
 
   return {
     key: `${step.connection.companyId}:changes`,
     group: step.connection.companyName,
-    label: "zmenené faktúry",
-    short: "zmeny"
+    label: "zmenené faktúry"
   };
 }
 

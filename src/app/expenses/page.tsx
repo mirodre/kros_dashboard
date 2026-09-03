@@ -36,12 +36,7 @@ import {
 } from "@/lib/expenses-live";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
-import {
-  formatMonthKeyLabel,
-  formatMonthKeyShort,
-  useSyncProgress,
-  type SyncStep
-} from "@/lib/use-sync-progress";
+import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 import { readNdjsonStream } from "@/lib/ndjson-stream";
 import {
   expenseCompanyMetaKey,
@@ -78,16 +73,14 @@ function toSyncStep(step: ExpenseSyncStep): SyncStep {
     return {
       key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
       group: step.connection.companyName,
-      label: formatMonthKeyLabel(step.monthRange.monthKey),
-      short: formatMonthKeyShort(step.monthRange.monthKey)
+      label: formatMonthKeyLabel(step.monthRange.monthKey)
     };
   }
 
   return {
     key: `${step.connection.companyId}:changes`,
     group: step.connection.companyName,
-    label: "zmenené doklady",
-    short: "zmeny"
+    label: "zmenené doklady"
   };
 }
 

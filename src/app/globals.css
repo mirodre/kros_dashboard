@@ -2429,76 +2429,15 @@ body {
   min-height: 1.2rem;
 }
 
-.sync-overlay-steps {
-  background: rgba(21, 27, 47, 0.72);
-  border: 1px solid rgba(43, 57, 100, 0.9);
-  border-radius: var(--radius);
-  display: grid;
-  gap: 0.7rem;
-  padding: 0.9rem 1rem;
-  width: 100%;
-}
-
-.sync-overlay-steps-head {
-  color: #8792b4;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  margin: 0;
+.sync-overlay-current em {
+  color: #7e89ab;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: 0.2rem;
   text-transform: uppercase;
-}
-
-.sync-overlay-groups {
-  display: grid;
-  gap: 0.7rem;
-  max-height: 34vh;
-  overflow-y: auto;
-}
-
-.sync-overlay-group {
-  display: grid;
-  gap: 0.35rem;
-  justify-items: start;
-  text-align: left;
-}
-
-.sync-overlay-group-name {
-  color: #8b96b8;
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.sync-overlay-group.active .sync-overlay-group-name {
-  color: #dbe4ff;
-}
-
-.sync-overlay-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-.sync-overlay-chip {
-  border: 1px solid rgba(43, 57, 100, 0.9);
-  border-radius: 9px;
-  color: #626e91;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.2rem 0.44rem;
-  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
-}
-
-.sync-overlay-chip.done {
-  background: rgba(92, 131, 255, 0.16);
-  border-color: rgba(92, 131, 255, 0.5);
-  color: #ccd8ff;
-}
-
-.sync-overlay-chip.active {
-  animation: sync-overlay-chip-pulse 1.5s ease-in-out infinite;
-  background: var(--accent);
-  border-color: #9db4ff;
-  color: #0b0f1c;
 }
 
 .sync-overlay-note {
@@ -2530,20 +2469,9 @@ body {
   }
 }
 
-@keyframes sync-overlay-chip-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(92, 131, 255, 0.55);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(92, 131, 255, 0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sync-overlay,
-  .sync-overlay-ring::after,
-  .sync-overlay-chip.active {
+  .sync-overlay-ring::after {
     animation: none;
   }
 
