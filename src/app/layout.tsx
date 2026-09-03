@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppNav } from "@/components/app-nav";
 
 import { auth } from "@/auth";
 import { PreferencesBoot } from "@/components/preferences-boot";
@@ -60,6 +61,11 @@ export default async function RootLayout({
       <body>
         <PreferencesBoot viewerSub={session?.claims?.sub ?? null}>
           {children}
+          {/*
+            Menu je v layoute, nie v stránke modulu: pri prechode medzi modulmi sa
+            neodmontuje, takže ostáva klikateľné aj počas načítavania nového modulu.
+          */}
+          <AppNav />
         </PreferencesBoot>
         <div className="orientation-lock" aria-hidden="true">
           <div>

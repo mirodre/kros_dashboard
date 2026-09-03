@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
@@ -93,7 +93,6 @@ export default function CashflowPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const handledRefreshNonceRef = useRef(0);
   const {
-    progress: syncProgress,
     beginSync,
     startStep,
     advanceStep,
@@ -228,8 +227,12 @@ export default function CashflowPage() {
         getCachedPaymentTransactions(syncCompanyIds)
       ]);
       if (!abortController.signal.aborted) {
-        setLiveAccounts(cachedAccounts);
-        setLiveTransactions(cachedTransactions);
+        // Prepočet prehľadu z pohybov je drahý. Ako transition ho React vie
+        // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
+        startTransition(() => {
+          setLiveAccounts(cachedAccounts);
+          setLiveTransactions(cachedTransactions);
+        });
       }
       return { cachedAccounts, cachedTransactions };
     };
@@ -390,7 +393,6 @@ export default function CashflowPage() {
     <DashboardShell
       title="Financie"
       isSyncing={isLoadingLiveData}
-      syncProgress={syncProgress}
       syncNote="Pohyby na účtoch ťaháme pre každú firmu naraz, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >

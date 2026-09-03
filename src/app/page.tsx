@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
@@ -165,7 +165,7 @@ export default function HomePage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
-  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
+  const { beginSync, startStep, completeStep, endSync } = useSyncProgress();
 
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
@@ -238,7 +238,9 @@ export default function HomePage() {
     const loadInvoices = async () => {
       const cachedInvoices = await getCachedInvoices(syncCompanyIds);
       if (!abortController.signal.aborted) {
-        setLiveInvoices(cachedInvoices);
+        // Prepočet dashboardu z faktúr je drahý. Ako transition ho React vie
+        // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
+        startTransition(() => setLiveInvoices(cachedInvoices));
       }
 
       setLiveError(null);
@@ -353,7 +355,7 @@ export default function HomePage() {
           completeStep();
           const nextCachedInvoices = await getCachedInvoices(syncCompanyIds);
           if (!abortController.signal.aborted) {
-            setLiveInvoices(nextCachedInvoices);
+            startTransition(() => setLiveInvoices(nextCachedInvoices));
           }
         }
 
@@ -523,7 +525,6 @@ export default function HomePage() {
   return (
     <DashboardShell
       isSyncing={isLoadingLiveData}
-      syncProgress={syncProgress}
       syncNote="Faktúry ťaháme po mesiacoch, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >

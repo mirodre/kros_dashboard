@@ -350,6 +350,22 @@ body {
   transform: translateY(1px) scale(0.985);
 }
 
+/* Kliknuté, ale ešte nenačítané — zvýraznenie preskočí hneď a jemne pulzuje. */
+.mobile-liquid-link[data-pending="true"] .mobile-liquid-label,
+.mobile-liquid-link[data-pending="true"] .mobile-liquid-icon {
+  animation: mobile-liquid-pending 900ms ease-in-out infinite;
+}
+
+@keyframes mobile-liquid-pending {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 .mobile-liquid-icon {
   align-items: center;
   display: inline-flex;
@@ -2315,8 +2331,13 @@ body {
   grid-template-rows: 1fr auto;
   inset: 0;
   justify-items: center;
-  overflow-y: auto;
-  padding: calc(2.2rem + env(safe-area-inset-top)) 1.35rem calc(2.2rem + env(safe-area-inset-bottom));
+  /*
+   * Iba oznam o priebehu — nič sa v ňom neklikne, takže kliknutia púšťame skrz.
+   * Menu je navyše mimo `.app-shell`, teda nad touto vrstvou: aj počas sťahovania
+   * sa dá prekliknúť na iný modul.
+   */
+  pointer-events: none;
+  padding: calc(2.2rem + env(safe-area-inset-top)) 1.35rem calc(7rem + env(safe-area-inset-bottom));
   position: fixed;
   row-gap: 1.6rem;
   z-index: 150;
@@ -2463,7 +2484,9 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .sync-overlay,
-  .sync-overlay-ring::after {
+  .sync-overlay-ring::after,
+  .mobile-liquid-link[data-pending="true"] .mobile-liquid-label,
+  .mobile-liquid-link[data-pending="true"] .mobile-liquid-icon {
     animation: none;
   }
 

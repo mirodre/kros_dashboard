@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
@@ -217,7 +217,6 @@ export default function ExpensesPage() {
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
   const {
-    progress: syncProgress,
     beginSync,
     startStep,
     advanceStep,
@@ -318,7 +317,9 @@ export default function ExpensesPage() {
     const loadExpenses = async () => {
       const cachedExpenses = await getCachedExpenses(syncCompanyIds);
       if (!abortController.signal.aborted) {
-        setLiveExpenses(cachedExpenses);
+        // Prepočet dashboardu z dokladov je drahý. Ako transition ho React vie
+        // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
+        startTransition(() => setLiveExpenses(cachedExpenses));
       }
 
       setLiveError(null);
@@ -433,7 +434,7 @@ export default function ExpensesPage() {
           completeStep();
           const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
           if (!abortController.signal.aborted) {
-            setLiveExpenses(nextCachedExpenses);
+            startTransition(() => setLiveExpenses(nextCachedExpenses));
           }
         }
 
@@ -653,7 +654,6 @@ export default function ExpensesPage() {
     <DashboardShell
       title="Výdavky"
       isSyncing={isLoadingLiveData}
-      syncProgress={syncProgress}
       syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
