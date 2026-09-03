@@ -177,7 +177,10 @@ describe("advanceToken", () => {
       releaseRefresh = resolve;
     });
     const refresh = vi.fn(async () => rotated);
-    const d = deps({ nowMs: NOW + 16 * 60_000, refreshTokens: singleFlight(refresh) });
+    const d = deps({
+      nowMs: NOW + 16 * 60_000,
+      refreshTokens: singleFlight(refresh, { retainMs: 60_000, nowMs: () => NOW })
+    });
 
     const both = Promise.all([advanceToken(token(), d), advanceToken(token(), d)]);
     releaseRefresh({ accessToken: "AT2", refreshToken: "RT2" });

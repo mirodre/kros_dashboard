@@ -16,6 +16,17 @@ import { advanceToken } from "@/lib/token-lifecycle";
  */
 
 /**
+ * Ako dlho sa už rotovaný pár podáva aj neskorším requestom s pôvodným refresh tokenom.
+ *
+ * Rádovo desiatky sekúnd, a to z dvoch strán: musí prekryť čas, počas ktorého prehliadač
+ * ešte posiela PÔVODNÚ cookie, pretože rotovaná `Set-Cookie` visí na odpovedi requestu,
+ * ktorý obnovu spustil — a tá odpoveď pri proxovaní na `api-economy.kros.sk` môže trvať
+ * sekundy. Zároveň musí byť hlboko pod TTL claimov (default 900 s), aby sa do jedného okna
+ * nikdy nezmestili dve rotácie tej istej session.
+ */
+const REFRESH_RETAIN_MS = 60_000;
+
+/**
  * Obnova tokenov ide cez deduplikáciu kľúčovanú PRICHÁDZAJÚCIM refresh tokenom. Session je
  * len šifrovaná cookie, takže súbežné requesty (dva efekty na `/` + `<Link>` prefetch)
  * dekódujú ten istý stav a každý by obnovoval tým istým refresh tokenom — a služba starý
@@ -23,14 +34,17 @@ import { advanceToken } from "@/lib/token-lifecycle";
  *
  * Instancia je jedna na modul (teda na runtime instanciu), pretože práve o zdieľanie medzi
  * requestami tu ide — v `advanceToken` ani v `LifecycleDeps` by taký stav žiť nemohol.
- * Dôvod, prečo je to `singleFlight` a nie cache, aj výhradu pre viac replík, pozri
- * v `src/lib/single-flight.ts`.
+ * Prečo sa úspešný výsledok ešte chvíľu drží, prečo sa odmietnutia nedržia a výhradu pre
+ * viac replík pozri v `src/lib/single-flight.ts`.
  *
  * `fetchMe` sa nededuplikuje zámerne: je to idempotentné GET s už rotovaným access tokenom,
  * jeho opakovanie nič nezneplatní a každý request tak má vlastný pokus (zdieľaný prísľub by
  * jeden náhodný 503 rozdal všetkým).
  */
-const refreshTokensOnce = singleFlight(refreshTokens);
+const refreshTokensOnce = singleFlight(refreshTokens, {
+  retainMs: REFRESH_RETAIN_MS,
+  nowMs: Date.now
+});
 
 function seconds(name: string, fallback: number): number {
   const raw = Number(process.env[name]);

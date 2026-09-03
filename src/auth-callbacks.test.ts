@@ -71,7 +71,7 @@ describe("jwtCallback", () => {
     fetchMeMock.mockResolvedValue(ME);
 
     const next = await jwtCallback({
-      token: staleToken({ degradedSince: Date.now() - 3 * 24 * 3600_000 }),
+      token: staleToken({ refreshToken: "RT-degradovany", degradedSince: Date.now() - 3 * 24 * 3600_000 }),
       account: null
     });
 
@@ -89,7 +89,7 @@ describe("jwtCallback", () => {
     fetchMeMock.mockResolvedValueOnce(ME);
 
     const healthy = await jwtCallback({
-      token: staleToken({ degradedSince: monday }),
+      token: staleToken({ refreshToken: "RT-streda", degradedSince: monday }),
       account: null
     });
 
@@ -119,19 +119,41 @@ describe("jwtCallback", () => {
     fetchMeMock.mockResolvedValue(ME);
 
     const both = Promise.all([
-      jwtCallback({ token: staleToken(), account: null }),
-      jwtCallback({ token: staleToken(), account: null })
+      jwtCallback({ token: staleToken({ refreshToken: "RT-subezne" }), account: null }),
+      jwtCallback({ token: staleToken({ refreshToken: "RT-subezne" }), account: null })
     ]);
     releaseRefresh({ accessToken: "AT2", refreshToken: "RT2" });
     const [first, second] = await both;
 
     expect(refreshTokensMock).toHaveBeenCalledTimes(1);
-    expect(refreshTokensMock).toHaveBeenCalledWith("RT");
+    expect(refreshTokensMock).toHaveBeenCalledWith("RT-subezne");
     // Obe session ziju a obe maju rotovany par.
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
     expect(first?.refreshToken).toBe("RT2");
     expect(second?.refreshToken).toBe("RT2");
+  });
+
+  it("neskory request po skonceni obnovy dostane ten isty rotovany par", async () => {
+    // Rotovana Set-Cookie odchadza az na odpovedi requestu, ktory obnovu spustil, a ta moze
+    // pri proxovani na api-economy.kros.sk visiet sekundy. Neskory request (klik, prefetch)
+    // teda pride este s POVODNOU cookie — a bez retencie by zavolal token endpoint tokenom,
+    // ktory sluzba uz revokovala, dostal invalid_grant a session by zomrela.
+    refreshTokensMock.mockResolvedValue({ accessToken: "AT2", refreshToken: "RT2" });
+    fetchMeMock.mockResolvedValue(ME);
+
+    const first = await jwtCallback({
+      token: staleToken({ refreshToken: "RT-neskory" }),
+      account: null
+    });
+    const late = await jwtCallback({
+      token: staleToken({ refreshToken: "RT-neskory" }),
+      account: null
+    });
+
+    expect(refreshTokensMock).toHaveBeenCalledTimes(1);
+    expect(first?.refreshToken).toBe("RT2");
+    expect(late?.refreshToken).toBe("RT2");
   });
 
   it("prve prihlasenie ulozi claimy z /api/me a tokeny z accountu", async () => {
@@ -153,7 +175,9 @@ describe("jwtCallback", () => {
     const { SsoAuthFailed } = await import("@/lib/auth-service");
     refreshTokensMock.mockRejectedValue(new SsoAuthFailed("invalid_grant"));
 
-    await expect(jwtCallback({ token: staleToken(), account: null })).resolves.toBeNull();
+    await expect(
+      jwtCallback({ token: staleToken({ refreshToken: "RT-zamietnuty" }), account: null })
+    ).resolves.toBeNull();
   });
 });
 
