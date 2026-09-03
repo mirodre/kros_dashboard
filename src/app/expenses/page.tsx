@@ -36,6 +36,7 @@ import {
 } from "@/lib/expenses-live";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
+import { formatMonthKeyLabel, useSyncProgress } from "@/lib/use-sync-progress";
 import {
   expenseCompanyMetaKey,
   expenseMonthMetaKey,
@@ -50,6 +51,17 @@ const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_expenses_selected_companies";
 const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
 
 type LiveDataRange = "ytd" | "history";
+
+type MonthSyncRange = { monthKey: string; from: string; to: string };
+
+/**
+ * Jeden krok sťahovania — buď chýbajúci mesiac firmy, alebo doklady zmenené od
+ * posledného syncu. Plán krokov zostavíme pred prvým fetchom, aby progress bar
+ * poznal celok a nemusel len nekonečne točiť.
+ */
+type ExpenseSyncStep =
+  | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
+  | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
@@ -80,7 +92,7 @@ function buildMonthSyncRanges(fetchFrom: string, fetchTo: string) {
   const start = new Date(fetchFrom);
   const end = new Date(fetchTo);
   const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  const ranges: { monthKey: string; from: string; to: string }[] = [];
+  const ranges: MonthSyncRange[] = [];
 
   while (cursor <= end) {
     const monthStart = new Date(cursor);
@@ -141,6 +153,7 @@ export default function ExpensesPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
   const handledRefreshNonceRef = useRef(0);
+  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
 
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
@@ -196,12 +209,14 @@ export default function ExpensesPage() {
 
     if (connections.length === 0) {
       setLiveExpenses([]);
+      endSync();
       return;
     }
 
     if (syncConnections.length === 0) {
       setLiveExpenses([]);
       setIsLoadingLiveData(false);
+      endSync();
       return;
     }
 
@@ -259,8 +274,11 @@ export default function ExpensesPage() {
           await fetch("/api/kros/logs", { method: "DELETE" });
         };
 
+        // Najprv plán: čo všetko treba stiahnuť. Počet krokov je podklad pre
+        // progress bar, preto ho zisťujeme ešte pred prvým fetchom.
+        const steps: ExpenseSyncStep[] = [];
         for (const connection of syncConnections) {
-          const missingMonthRanges = [];
+          const missingMonthRanges: MonthSyncRange[] = [];
           for (const monthRange of monthRanges) {
             const monthMeta = await readExpenseSyncMeta(
               expenseMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey)
@@ -271,86 +289,91 @@ export default function ExpensesPage() {
           }
 
           if (missingMonthRanges.length > 0) {
-            setIsLoadingLiveData(true);
             for (const monthRange of missingMonthRanges) {
-              if (abortController.signal.aborted) return;
-
-              await clearSyncLogsOnce();
-              const rawExpenses = await fetchExpenses({
-                companies: [connection],
-                deliveryDateFrom: monthRange.from,
-                deliveryDateTo: monthRange.to
-              });
-
-              const normalizedExpenses = normalizeExpenses(rawExpenses);
-              const companyExpenses = normalizedExpenses.filter(
-                (expense) =>
-                  expense.companyId === connection.companyId || expense.companyName === connection.companyName
-              );
-              const completedAt = new Date().toISOString();
-              await upsertCachedExpenses(connection.companyId, companyExpenses);
-              await writeExpenseSyncMeta({
-                key: expenseMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey),
-                companyId: connection.companyId,
-                range: liveDataRange,
-                monthKey: monthRange.monthKey,
-                completedAt
-              });
-
-              const companyMetaKey = expenseCompanyMetaKey(connection.companyId, liveDataRange);
-              const previousCompanyMeta = await readExpenseSyncMeta(companyMetaKey);
-              await writeExpenseSyncMeta({
-                key: companyMetaKey,
-                companyId: connection.companyId,
-                range: liveDataRange,
-                completedAt,
-                lastModifiedTimestamp: getMaxLastModified(
-                  companyExpenses,
-                  previousCompanyMeta?.lastModifiedTimestamp
-                )
-              });
-
-              didFetch = true;
-              const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
-              if (!abortController.signal.aborted) {
-                setLiveExpenses(nextCachedExpenses);
-              }
+              steps.push({ kind: "month", connection, monthRange });
             }
-
             continue;
           }
 
-          if (isManualRefresh) {
-            const companyMetaKey = expenseCompanyMetaKey(connection.companyId, liveDataRange);
-            const companyMeta = await readExpenseSyncMeta(companyMetaKey);
-            if (!companyMeta?.lastModifiedTimestamp) continue;
+          if (!isManualRefresh) continue;
 
-            setIsLoadingLiveData(true);
-            await clearSyncLogsOnce();
-            const rawExpenses = await fetchExpenses({
-              companies: [connection],
-              lastModifiedTimestamp: withLastModifiedOverlap(companyMeta.lastModifiedTimestamp)
-            });
+          const companyMeta = await readExpenseSyncMeta(
+            expenseCompanyMetaKey(connection.companyId, liveDataRange)
+          );
+          if (!companyMeta?.lastModifiedTimestamp) continue;
+          steps.push({
+            kind: "changes",
+            connection,
+            lastModifiedTimestamp: companyMeta.lastModifiedTimestamp
+          });
+        }
 
-            const normalizedExpenses = normalizeExpenses(rawExpenses);
-            const companyExpenses = normalizedExpenses.filter(
-              (expense) =>
-                expense.companyId === connection.companyId || expense.companyName === connection.companyName
-            );
-            const syncedAt = new Date().toISOString();
-            await upsertCachedExpenses(connection.companyId, companyExpenses);
+        if (abortController.signal.aborted) return;
+        beginSync(steps.length);
+        if (steps.length > 0) {
+          setIsLoadingLiveData(true);
+        }
+
+        for (const step of steps) {
+          if (abortController.signal.aborted) return;
+
+          const { connection } = step;
+          startStep(
+            step.kind === "month"
+              ? `${connection.companyName} · ${formatMonthKeyLabel(step.monthRange.monthKey)}`
+              : `${connection.companyName} · zmenené doklady`
+          );
+
+          await clearSyncLogsOnce();
+          const rawExpenses = await fetchExpenses(
+            step.kind === "month"
+              ? {
+                  companies: [connection],
+                  deliveryDateFrom: step.monthRange.from,
+                  deliveryDateTo: step.monthRange.to
+                }
+              : {
+                  companies: [connection],
+                  lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
+                }
+          );
+
+          const normalizedExpenses = normalizeExpenses(rawExpenses);
+          const companyExpenses = normalizedExpenses.filter(
+            (expense) =>
+              expense.companyId === connection.companyId || expense.companyName === connection.companyName
+          );
+          const completedAt = new Date().toISOString();
+          await upsertCachedExpenses(connection.companyId, companyExpenses);
+
+          if (step.kind === "month") {
             await writeExpenseSyncMeta({
-              key: companyMetaKey,
+              key: expenseMonthMetaKey(connection.companyId, liveDataRange, step.monthRange.monthKey),
               companyId: connection.companyId,
               range: liveDataRange,
-              completedAt: syncedAt,
-              lastModifiedTimestamp: getMaxLastModified(companyExpenses, companyMeta.lastModifiedTimestamp)
+              monthKey: step.monthRange.monthKey,
+              completedAt
             });
-            didFetch = true;
-            const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
-            if (!abortController.signal.aborted) {
-              setLiveExpenses(nextCachedExpenses);
-            }
+          }
+
+          const companyMetaKey = expenseCompanyMetaKey(connection.companyId, liveDataRange);
+          const previousCompanyMeta = await readExpenseSyncMeta(companyMetaKey);
+          await writeExpenseSyncMeta({
+            key: companyMetaKey,
+            companyId: connection.companyId,
+            range: liveDataRange,
+            completedAt,
+            lastModifiedTimestamp: getMaxLastModified(
+              companyExpenses,
+              previousCompanyMeta?.lastModifiedTimestamp
+            )
+          });
+
+          didFetch = true;
+          completeStep();
+          const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
+          if (!abortController.signal.aborted) {
+            setLiveExpenses(nextCachedExpenses);
           }
         }
 
@@ -365,6 +388,7 @@ export default function ExpensesPage() {
         if (!abortController.signal.aborted) {
           handledRefreshNonceRef.current = refreshNonce;
           setIsLoadingLiveData(false);
+          endSync();
         }
       }
     };
@@ -372,7 +396,17 @@ export default function ExpensesPage() {
     loadExpenses();
 
     return () => abortController.abort();
-  }, [connections, syncConnections, granularity, refreshNonce, hasLoadedPersistedFilters]);
+  }, [
+    connections,
+    syncConnections,
+    granularity,
+    refreshNonce,
+    hasLoadedPersistedFilters,
+    beginSync,
+    startStep,
+    completeStep,
+    endSync
+  ]);
 
   const hasLiveMode = connections.length > 0;
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
@@ -550,6 +584,7 @@ export default function ExpensesPage() {
     <DashboardShell
       title="Výdavky"
       isSyncing={isLoadingLiveData}
+      syncProgress={syncProgress}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {!hasLiveMode ? <DemoDataBanner /> : null}
