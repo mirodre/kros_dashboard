@@ -34,8 +34,15 @@ export async function advanceToken(token: SsoToken, deps: LifecycleDeps): Promis
       claims,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      refreshedAt: deps.nowMs
-      // `degradedSince` sa zámerne nekopíruje — úspešná obnova ruší beh grace periody.
+      refreshedAt: deps.nowMs,
+      // `degradedSince: undefined` je tu NAPÍSANÉ naschvál a nie je to to isté ako kľúč
+      // vynechať. Volajúci výsledok skladá spreadom (`{ ...token, ...next }`) a spread
+      // kopíruje len kľúče, ktoré v objekte SÚ — chýbajúci kľúč starú hodnotu nezmaže,
+      // len ju nechá prežiť. Session, ktorá raz prežila výpadok, by si tak pondelkovú
+      // značku nosila navždy a prvé neúspešné obnovenie po prekročení grace periody by
+      // ju odhlásilo, hoci medzitým sto obnov prešlo. Kľúč s hodnotou `undefined`
+      // prepíše starú hodnotu a zo serializácie do cookie (JSON) vypadne.
+      degradedSince: undefined
     };
   } catch (error) {
     if (error instanceof SsoAuthFailed) {
