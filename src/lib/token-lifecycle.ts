@@ -26,14 +26,21 @@ export async function advanceToken(token: SsoToken, deps: LifecycleDeps): Promis
     return null; // Nie je čím obnoviť.
   }
 
+  // Rotovaný pár žije MIMO `try`, aby ho zlyhanie `fetchMe` nestratilo. Len čo
+  // `refreshTokens` uspeje, služba starý refresh token revokovala — keby degradovaná vetva
+  // vrátila `token` nedotknutý, do cookie by sa uložil už zrušený token a hneď ďalšia obnova
+  // by dostala `invalid_grant`, teda `SsoAuthFailed`, a odhlásila by. Grace period by presne
+  // v tej situácii, pre ktorú existuje, nekúpila nič.
+  let rotated: { accessToken: string; refreshToken: string } | null = null;
+
   try {
-    const tokens = await deps.refreshTokens(token.refreshToken);
-    const claims = claimsFromMe(await deps.fetchMe(tokens.accessToken));
+    rotated = await deps.refreshTokens(token.refreshToken);
+    const claims = claimsFromMe(await deps.fetchMe(rotated.accessToken));
 
     return {
       claims,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      accessToken: rotated.accessToken,
+      refreshToken: rotated.refreshToken,
       refreshedAt: deps.nowMs,
       // `degradedSince: undefined` je tu NAPÍSANÉ naschvál a nie je to to isté ako kľúč
       // vynechať. Volajúci výsledok skladá spreadom (`{ ...token, ...next }`) a spread
@@ -60,6 +67,18 @@ export async function advanceToken(token: SsoToken, deps: LifecycleDeps): Promis
       return null;
     }
 
-    return { ...token, degradedSince };
+    if (rotated === null) {
+      return { ...token, degradedSince };
+    }
+
+    // Rotácia prebehla, spadlo až čítanie claimov: nové tokeny sa MUSIA uložiť, claimy
+    // ostávajú staré (nové sa nepodarilo prečítať) a `refreshedAt` sa nehýbe, takže ďalší
+    // request to skúsi znova — už novým refresh tokenom.
+    return {
+      ...token,
+      accessToken: rotated.accessToken,
+      refreshToken: rotated.refreshToken,
+      degradedSince
+    };
   }
 }

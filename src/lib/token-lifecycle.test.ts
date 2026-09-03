@@ -144,6 +144,29 @@ describe("advanceToken", () => {
     expect(next?.degradedSince).toBeUndefined();
   });
 
+  it("zlyhanie fetchMe po rotacii nestrati novy refresh token", async () => {
+    // Sluzba stary refresh token pri rotacii revokuje. Keby degradovana vetva vratila
+    // povodny token, v cookie by ostal uz zruseny token a hned dalsia obnova by dostala
+    // invalid_grant → odhlasenie. Grace period by v presne tej situacii, pre ktoru
+    // existuje, nekupila nic.
+    const d = deps({
+      nowMs: NOW + 16 * 60_000,
+      fetchMe: vi.fn(async () => {
+        throw new SsoUnavailable("503");
+      })
+    });
+
+    const next = await advanceToken(token(), d);
+
+    expect(next?.accessToken).toBe("AT2");
+    expect(next?.refreshToken).toBe("RT2");
+    // Claimy sa precitat nepodarilo, takze ostavaju stare — a znacka casu sa nehybe,
+    // aby dalsi request obnovu skusil znova.
+    expect(next?.claims.name).toBe("Miro");
+    expect(next?.refreshedAt).toBe(NOW);
+    expect(next?.degradedSince).toBe(NOW + 16 * 60_000);
+  });
+
   it("dva subezne requesty s tym istym zvetranym tokenom obnovia tokeny raz", async () => {
     // Toto je celá chyba R1 v jednom teste. Session je len cookie, takže súbežné requesty
     // dekódujú ten istý stav a bez deduplikácie by obnovu spustil každý z nich s TÝM ISTÝM
