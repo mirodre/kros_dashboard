@@ -6,6 +6,12 @@ import type { MeResponse } from "@/lib/auth-service";
  * nie ako kópia jeho dát. Rovnaká úloha, akú má `connections.organization_id` v
  * payment_connectore.
  */
+export type SsoOrganization = {
+  id: string;
+  name: string | null;
+  role: string | null;
+};
+
 export type SsoClaims = {
   sub: string;
   email: string;
@@ -15,6 +21,13 @@ export type SsoClaims = {
   organizationId: string | null;
   organizationName: string | null;
   role: string | null;
+  /**
+   * Celý zoznam firiem, nielen aktívna. Nastavenia sa kľúčujú tenantom, takže appka musí
+   * vedieť rozlíšiť „človek nemá firmu" od „aktívna firma ukazuje mimo zoznamu" — bez
+   * zoznamu sú to nerozlíšiteľné stavy a v prvom prípade patrí osobný scope, v druhom
+   * nedôvera. Zároveň je to podklad pre budúci prepínač firiem.
+   */
+  organizations: SsoOrganization[];
 };
 
 /** Tvar dát v šifrovanej cookie. Jediné miesto, ktoré ho pozná. */
@@ -33,12 +46,20 @@ function text(value: unknown): string | null {
 }
 
 /**
- * Sploští odpoveď `/api/me` na to, čo appka potrebuje. Prepínač firiem appka nemá, takže
- * z celého zoznamu si drží iba aktívnu firmu — ostatné by boli mŕtve dáta v cookie.
+ * Sploští odpoveď `/api/me` na to, čo appka potrebuje. Aktívna firma je vytiahnutá zvlášť,
+ * lebo na nej stojí kľúčovanie nastavení; zoznam ostáva vedľa nej (pozri `organizations`).
  */
 export function claimsFromMe(data: MeResponse): SsoClaims {
   const active = text(data.active_organization);
   const organization = active === null ? undefined : data.organizations?.find((o) => o.id === active);
+
+  const organizations: SsoOrganization[] = (data.organizations ?? [])
+    .map((entry) => ({
+      id: text(entry?.id) ?? "",
+      name: text(entry?.name),
+      role: text(entry?.role)
+    }))
+    .filter((entry) => entry.id !== "");
 
   return {
     sub: data.sub,
@@ -48,7 +69,8 @@ export function claimsFromMe(data: MeResponse): SsoClaims {
     avatar: text(data.avatar),
     organizationId: active,
     organizationName: text(organization?.name),
-    role: text(organization?.role)
+    role: text(organization?.role),
+    organizations
   };
 }
 
