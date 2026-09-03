@@ -11,6 +11,7 @@ import {
   normalizePaymentAccounts,
   normalizePaymentTransactions
 } from "@/lib/cashflow-live";
+import { useSyncProgress } from "@/lib/use-sync-progress";
 import {
   cashflowCompanyMetaKey,
   getCachedPaymentAccounts,
@@ -75,6 +76,7 @@ export default function CashflowPage() {
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const handledRefreshNonceRef = useRef(0);
+  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -144,6 +146,7 @@ export default function CashflowPage() {
       setLiveAccounts([]);
       setLiveTransactions([]);
       setLiveError(null);
+      endSync();
       return;
     }
 
@@ -152,6 +155,7 @@ export default function CashflowPage() {
       setLiveTransactions([]);
       setLiveError(null);
       setIsLoadingLiveData(false);
+      endSync();
       return;
     }
 
@@ -215,15 +219,35 @@ export default function CashflowPage() {
       setLiveError(null);
 
       try {
+        // Najprv plán: ktoré firmy treba stiahnuť. Každá má dva kroky (účty +
+        // pohyby), takže progress bar pozná celok pred prvým fetchom.
+        const pendingConnections: {
+          connection: KrosConnection;
+          needsFullSync: boolean;
+          lastModifiedTimestamp?: string;
+        }[] = [];
         for (const connection of syncConnections) {
+          const meta = await readCashflowSyncMeta(cashflowCompanyMetaKey(connection.companyId));
+          const needsFullSync = !meta?.completedAt;
+          if (!needsFullSync && !isManualRefresh) continue;
+          pendingConnections.push({
+            connection,
+            needsFullSync,
+            lastModifiedTimestamp: meta?.lastModifiedTimestamp
+          });
+        }
+
+        if (abortController.signal.aborted) return;
+        beginSync(pendingConnections.length * 2);
+        if (pendingConnections.length > 0) {
+          setIsLoadingLiveData(true);
+        }
+
+        for (const { connection, needsFullSync, lastModifiedTimestamp } of pendingConnections) {
           if (abortController.signal.aborted) return;
 
           const metaKey = cashflowCompanyMetaKey(connection.companyId);
-          const meta = await readCashflowSyncMeta(metaKey);
-          const needsFullSync = !meta?.completedAt;
-          if (!needsFullSync && !isManualRefresh) continue;
-
-          setIsLoadingLiveData(true);
+          startStep(`${connection.companyName} · bankové účty`);
 
           // Account list and balances are small and change over time — always fetch in full.
           const rawAccounts = await fetchAccounts([connection]);
@@ -233,9 +257,13 @@ export default function CashflowPage() {
               account.companyName === connection.companyName
           );
           await replaceCachedPaymentAccounts(connection.companyId, companyAccounts);
+          completeStep();
+
+          if (abortController.signal.aborted) return;
+          startStep(`${connection.companyName} · pohyby na účtoch`);
 
           const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
-          const previousLastModified = meta?.lastModifiedTimestamp;
+          const previousLastModified = lastModifiedTimestamp;
           const rawPayments = await fetchPayments({
             companies: [connection],
             ...(!needsFullSync && previousLastModified
@@ -254,6 +282,7 @@ export default function CashflowPage() {
             completedAt: new Date().toISOString(),
             lastModifiedTimestamp: getMaxLastModified(companyTransactions, previousLastModified)
           });
+          completeStep();
 
           await refreshFromCache();
         }
@@ -265,6 +294,7 @@ export default function CashflowPage() {
         if (!abortController.signal.aborted) {
           handledRefreshNonceRef.current = refreshNonce;
           setIsLoadingLiveData(false);
+          endSync();
         }
       }
     };
@@ -273,7 +303,16 @@ export default function CashflowPage() {
     return () => {
       abortController.abort();
     };
-  }, [connections, syncConnections, refreshNonce, hasLoadedPersistedFilters]);
+  }, [
+    connections,
+    syncConnections,
+    refreshNonce,
+    hasLoadedPersistedFilters,
+    beginSync,
+    startStep,
+    completeStep,
+    endSync
+  ]);
 
   const hasLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
   const liveOverview = useMemo(
@@ -319,6 +358,7 @@ export default function CashflowPage() {
     <DashboardShell
       title="Financie"
       isSyncing={isLoadingLiveData}
+      syncProgress={syncProgress}
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
       {shouldShowMockData ? <DemoDataBanner /> : null}

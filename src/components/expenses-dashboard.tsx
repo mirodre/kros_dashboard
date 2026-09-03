@@ -7,6 +7,7 @@ import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { parseDocumentDate } from "@/lib/document-date";
+import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow } from "./recent-expenses-section";
@@ -128,10 +129,7 @@ export function ExpensesDashboard({
     };
   }, []);
 
-  useEffect(() => {
-    if (granularity !== "week" || !chartRef.current) return;
-    chartRef.current.scrollLeft = chartRef.current.scrollWidth;
-  }, [granularity, points.length]);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
@@ -169,8 +167,8 @@ export function ExpensesDashboard({
   };
 
   const detailDocs = bucketDocs?.[detailSide] ?? [];
-  // S DPH — súčet zoznamu sedí so stĺpcom grafu aj s hodnotami v ostatných prehľadoch.
-  const detailTotal = detailDocs.reduce((sum, expense) => sum + expense.totalPriceInclVat, 0);
+  // Legislatívna suma bez DPH — súčet zoznamu sedí so stĺpcom grafu aj s ostatnými prehľadmi.
+  const detailTotal = detailDocs.reduce((sum, expense) => sum + expense.totalPrice, 0);
 
   const overdueCount = dueWatchlist.overdue.length;
   const dueSheetDocs = dueSheetTab === "overdue" ? dueWatchlist.overdue : dueWatchlist.upcoming;
@@ -466,7 +464,7 @@ export function ExpensesDashboard({
                           {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
                         </p>
                       </div>
-                      <strong>{formatCurrencyPrecise(expense.totalPriceInclVat)}</strong>
+                      <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
                     </div>
                     <div className="invoice-tags" aria-label={expense.tags.length ? "Štítky dokladu" : undefined}>
                       {expense.tags.map((tag) => (

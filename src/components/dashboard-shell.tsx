@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
+import { formatSyncEta, type SyncProgress } from "@/lib/use-sync-progress";
 
 import { signOutAction } from "@/app/actions/sign-out";
 
@@ -10,6 +11,7 @@ type Props = {
   children: React.ReactNode;
   isSyncing?: boolean;
   onRefresh?: () => void;
+  syncProgress?: SyncProgress | null;
   title?: string;
 };
 
@@ -17,6 +19,7 @@ export function DashboardShell({
   children,
   isSyncing = false,
   onRefresh,
+  syncProgress = null,
   title = "Príjmy"
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
@@ -24,6 +27,11 @@ export function DashboardShell({
   const isPullingRef = useRef(false);
   const pullThreshold = 86;
   const pathname = usePathname();
+  const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
+  const progressPct = progress
+    ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
+    : 0;
+  const progressEta = formatSyncEta(progress?.etaSeconds);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     if (!onRefresh || isSyncing || window.scrollY > 0) return;
@@ -117,6 +125,33 @@ export function DashboardShell({
           </button>
         </form>
       </header>
+
+      {progress ? (
+        <div className="sync-progress">
+          <div className="sync-progress-meta">
+            <span className="sync-progress-step">{progress.label ?? "Načítavam dáta..."}</span>
+            <span className="sync-progress-count">
+              {progressPct} %{progressEta ? ` · ${progressEta}` : ""}
+            </span>
+          </div>
+          <div
+            className="sync-progress-track"
+            role="progressbar"
+            aria-label="Priebeh načítania dát"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
+            aria-valuetext={`${progressPct} %`}
+          >
+            <div className="sync-progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div className="sync-progress-detail">
+            {[`Krok ${Math.min(progress.done + 1, progress.total)}/${progress.total}`, progress.detail]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+      ) : null}
 
       {children}
 

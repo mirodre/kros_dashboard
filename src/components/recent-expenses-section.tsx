@@ -79,8 +79,8 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
           ) : null}
         </div>
         <div className="tag-values movement-row-amount">
-          <p className={expense.totalPriceInclVat < 0 ? "movement-amount-text up" : "movement-amount-text down"}>
-            {formatCurrencyPrecise(-expense.totalPriceInclVat)}
+          <p className={expense.totalPrice < 0 ? "movement-amount-text up" : "movement-amount-text down"}>
+            {formatCurrencyPrecise(-expense.totalPrice)}
           </p>
         </div>
       </div>

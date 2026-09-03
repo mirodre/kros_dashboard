@@ -3,10 +3,12 @@ import type {
   AggregatedBreakdownPoint,
   AggregatedRevenuePoint,
   ExpensePaymentStatus,
+  ExpenseTagAllocation,
   NormalizedExpense
 } from "./kros-types";
 import { getDateRange } from "./dashboard-live";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
+import { UNCATEGORIZED_CATEGORY } from "./tag-categories";
 
 /** Podiel štítku na výdavkoch v aktuálnom období — podklad pre donut Štruktúra výdavkov. */
 export type ExpenseTagSlice = {
@@ -128,28 +130,91 @@ function normalizeTag(rawTag: unknown): string | null {
   return null;
 }
 
-function readPrices(row: Record<string, unknown>) {
-  const empty = { totalInclVat: 0, vat: 0 };
+/** Prvá nenulová hodnota — KROS niektoré cenové skupiny nechá vynulované. */
+function firstNonZeroNumber(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = getNumber(value);
+    if (parsed !== undefined && parsed !== 0) return parsed;
+  }
+  return 0;
+}
+
+/**
+ * Suma z hlavičky dokladu — legislatívna cena bez DPH. Ak je legislatívna
+ * skupina vynulovaná (KROS ju pri časti výdavkov neplní), berieme sumu bez DPH
+ * z documentPrices.
+ */
+function readHeaderTotalPrice(row: Record<string, unknown>) {
   const prices = row.prices;
-  if (!prices || typeof prices !== "object") return empty;
+  if (!prices || typeof prices !== "object") return 0;
   const pricesRow = prices as Record<string, unknown>;
 
-  const readPriceGroup = (group: unknown) => {
-    if (!group || typeof group !== "object") return null;
-    const groupRow = group as Record<string, unknown>;
-    const totalInclVat = getNumber(groupRow.totalPriceInclVat);
-    if (totalInclVat === undefined) return null;
-    return { totalInclVat, vat: getNumber(groupRow.vatTotalPrice) ?? 0 };
-  };
+  const readGroup = (group: unknown) =>
+    group && typeof group === "object" ? (group as Record<string, unknown>).totalPrice : undefined;
 
-  const legislative = readPriceGroup(pricesRow.legislativePrices);
-  const documentGroup = readPriceGroup(pricesRow.documentPrices);
+  return firstNonZeroNumber(
+    readGroup(pricesRow.legislativePrices),
+    readGroup(pricesRow.documentPrices)
+  );
+}
 
-  // KROS pri výdavkoch reálnu sumu nesie v documentPrices.totalPriceInclVat,
-  // legislativePrices býva vynulované — preferujeme skupinu s nenulovou sumou.
-  if (legislative && legislative.totalInclVat !== 0) return legislative;
-  if (documentGroup && documentGroup.totalInclVat !== 0) return documentGroup;
-  return legislative ?? documentGroup ?? empty;
+type JournalLine = { tags: string[]; amount: number };
+
+/** Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}). */
+function readJournalLines(row: Record<string, unknown>): JournalLine[] {
+  const rawItems = Array.isArray(row.journalItems) ? row.journalItems : [];
+
+  return rawItems
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      tags: (Array.isArray(item.tags) ? item.tags : [])
+        .map(normalizeTag)
+        .filter((tag): tag is string => Boolean(tag)),
+      amount: firstNonZeroNumber(item.legislativeTotalPrice, item.totalPrice)
+    }));
+}
+
+/**
+ * Rozúčtovanie výdavku na štítky. Riadky zaúčtovania majú prednosť pred
+ * hlavičkou: riadok so štítkami si ich ponechá, netagovaný riadok zdedí štítky
+ * z hlavičky. Rovnako pri sumách — súčet riadkov má prednosť pred hlavičkou.
+ */
+function readExpenseAmounts(row: Record<string, unknown>, headerTags: string[]) {
+  const headerTotal = readHeaderTotalPrice(row);
+  const lines = readJournalLines(row);
+  const linesTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  const totalPrice = lines.length > 0 && linesTotal !== 0 ? linesTotal : headerTotal;
+  const fallbackTags = headerTags.length > 0 ? headerTags : [UNCATEGORIZED_CATEGORY];
+
+  if (lines.length === 0) {
+    const allocations: ExpenseTagAllocation[] = [{ tags: fallbackTags, amount: totalPrice }];
+    return { totalPrice, allocations };
+  }
+
+  // Riadky bez súm (KROS ich vie nechať vynulované) — sumu hlavičky rozdelíme
+  // rovným dielom, nech rozúčtovanie stále sedí na celok dokladu.
+  const evenShare = linesTotal === 0 ? totalPrice / lines.length : null;
+  const allocations: ExpenseTagAllocation[] = lines.map((line) => ({
+    tags: line.tags.length > 0 ? line.tags : fallbackTags,
+    amount: evenShare ?? line.amount
+  }));
+
+  return { totalPrice, allocations };
+}
+
+/** Zjednotenie štítkov naprieč rozúčtovaniami, v poradí prvého výskytu. */
+function collectAllocationTags(allocations: ExpenseTagAllocation[]) {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const allocation of allocations) {
+    for (const tag of allocation.tags) {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tags.push(tag);
+    }
+  }
+  return tags.length > 0 ? tags : [UNCATEGORIZED_CATEGORY];
 }
 
 export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
@@ -163,19 +228,24 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
       const companyName = typeof row.__company === "string" ? row.__company : "Neznáma firma";
       const companyId = typeof row.__companyId === "number" ? row.__companyId : undefined;
       const documentType = getNumber(row.documentType) ?? 0;
-      const prices = readPrices(row);
+
+      const headerTags = (Array.isArray(row.tags) ? row.tags : [])
+        .map(normalizeTag)
+        .filter((tag): tag is string => Boolean(tag));
+      const amounts = readExpenseAmounts(row, headerTags);
+
       // Dobropis znižuje výdavky — ak API vráti kladnú sumu, otočíme znamienko.
       const sign = documentType === RECEIVED_CREDIT_NOTE ? -1 : 1;
-      const totalPriceInclVat =
-        sign < 0 ? -Math.abs(prices.totalInclVat) : prices.totalInclVat;
-      const vatTotalPrice = sign < 0 ? -Math.abs(prices.vat) : prices.vat;
+      const applySign = (value: number) => (sign < 0 ? -Math.abs(value) : value);
+      const allocations = amounts.allocations.map((allocation) => ({
+        tags: allocation.tags,
+        amount: applySign(allocation.amount)
+      }));
 
       const deliveryDateRaw = pickString(row, ["deliveryDate"]);
       const deliveryDate = deliveryDateRaw && isValidDocumentDate(deliveryDateRaw) ? deliveryDateRaw : undefined;
 
       const paymentStatusCode = getNumber(row.paymentStatus);
-      const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
-      const tags = tagsRaw.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
 
       return {
         id,
@@ -189,18 +259,45 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         dueDate: pickString(row, ["dueDate"]),
         receivedDate: pickString(row, ["receivedDate"]),
         lastModifiedTimestamp: pickString(row, ["lastModifiedTimestamp"]),
-        totalPriceInclVat,
-        vatTotalPrice,
+        totalPrice: applySign(amounts.totalPrice),
         paymentStatus:
           paymentStatusCode !== undefined
             ? EXPENSE_PAYMENT_STATUS_BY_CODE[paymentStatusCode] ?? "undefined"
             : "undefined",
         paymentType: pickString(row, ["paymentType"]),
         hasAttachments: row.hasAttachments === true,
-        tags: tags.length > 0 ? tags : ["Nedefinované"]
+        tags: collectAllocationTags(allocations),
+        allocations
       } satisfies NormalizedExpense;
     })
     .filter((expense): expense is NormalizedExpense => Boolean(expense));
+}
+
+/**
+ * Zúži sumy dokladov na rozúčtovania, ktoré nesú niektorý z aktívnych štítkov —
+ * KPI, graf aj dodávatelia tak ukazujú len časť dokladu patriacu zvolenému
+ * štítku. Bez aktívnych štítkov ostávajú doklady nezmenené.
+ */
+export function scopeExpenseAmountsToTags(
+  expenses: NormalizedExpense[],
+  tags: string[]
+): NormalizedExpense[] {
+  if (tags.length === 0) return expenses;
+  const tagSet = new Set(tags.map((tag) => tag.trim().toLowerCase()));
+
+  return expenses.map((expense) => {
+    if (expense.allocations.length < 2) return expense;
+    const matching = expense.allocations.filter((allocation) =>
+      allocation.tags.some((tag) => tagSet.has(tag.trim().toLowerCase()))
+    );
+    if (matching.length === 0 || matching.length === expense.allocations.length) return expense;
+
+    return {
+      ...expense,
+      totalPrice: matching.reduce((sum, allocation) => sum + allocation.amount, 0),
+      allocations: matching
+    };
+  });
 }
 
 type FilterInput = {
@@ -346,18 +443,18 @@ export function computeExpenseSeries({
     if (granularity === "year") {
       const currentBucket = bucketMap.get(`y-${date.getFullYear()}`);
       const previousBucket = bucketMap.get(`y-${date.getFullYear() + 1}`);
-      if (currentBucket) currentBucket.current += expense.totalPriceInclVat;
-      if (previousBucket) previousBucket.previous += expense.totalPriceInclVat;
+      if (currentBucket) currentBucket.current += expense.totalPrice;
+      if (previousBucket) previousBucket.previous += expense.totalPrice;
       continue;
     }
 
     if (date.getFullYear() === currentYear && date <= range.currentTo) {
       const bucket = bucketMap.get(toBucketKey(date, granularity));
-      if (bucket) bucket.current += expense.totalPriceInclVat;
+      if (bucket) bucket.current += expense.totalPrice;
     }
     if (date.getFullYear() === currentYear - 1 && date <= range.previousTo) {
       const bucket = bucketMap.get(toBucketKey(date, granularity));
-      if (bucket) bucket.previous += expense.totalPriceInclVat;
+      if (bucket) bucket.previous += expense.totalPrice;
     }
   }
 
@@ -433,9 +530,9 @@ export function computeComparableExpenseYtdTotals({
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
     if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      current += expense.totalPriceInclVat;
+      current += expense.totalPrice;
     } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      previous += expense.totalPriceInclVat;
+      previous += expense.totalPrice;
     }
   }
 
@@ -520,10 +617,19 @@ export function computeExpenseTagStructure(
     }
     if (!yearBucket) continue;
 
-    for (const tag of expense.tags) {
-      if (tagSet.size > 0 && !tagSet.has(tag)) continue;
+    // Sumy berieme z rozúčtovania — na štítok padá len jeho časť dokladu,
+    // nie celá suma. Doklad sa do počtu dokladov započíta raz za štítok.
+    const amountByTag = new Map<string, number>();
+    for (const allocation of expense.allocations) {
+      for (const tag of allocation.tags) {
+        if (tagSet.size > 0 && !tagSet.has(tag)) continue;
+        amountByTag.set(tag, (amountByTag.get(tag) ?? 0) + allocation.amount);
+      }
+    }
+
+    for (const [tag, amount] of amountByTag) {
       const bucket = map.get(tag) ?? { current: 0, previous: 0, documentCount: 0 };
-      bucket[yearBucket] += expense.totalPriceInclVat;
+      bucket[yearBucket] += amount;
       if (yearBucket === "current") bucket.documentCount += 1;
       map.set(tag, bucket);
     }
@@ -577,7 +683,7 @@ export function computeExpenseCompanyBreakdown(
     if (!yearBucket) continue;
 
     const bucket = map.get(expense.companyName) ?? { current: 0, previous: 0 };
-    bucket[yearBucket] += expense.totalPriceInclVat;
+    bucket[yearBucket] += expense.totalPrice;
     map.set(expense.companyName, bucket);
   }
 
@@ -614,7 +720,7 @@ export function computeExpenseVendorBreakdown(
 
     const vendor = expense.partnerName ?? "Neznámy dodávateľ";
     const bucket = map.get(vendor) ?? { current: 0, previous: 0, documentCount: 0 };
-    bucket[yearBucket] += expense.totalPriceInclVat;
+    bucket[yearBucket] += expense.totalPrice;
     if (yearBucket === "current") bucket.documentCount += 1;
     map.set(vendor, bucket);
   }
@@ -663,9 +769,9 @@ export function computeExpenseDueWatchlist(
 
   return {
     overdue,
-    overdueTotal: overdue.reduce((sum, expense) => sum + expense.totalPriceInclVat, 0),
+    overdueTotal: overdue.reduce((sum, expense) => sum + expense.totalPrice, 0),
     upcoming,
-    upcomingTotal: upcoming.reduce((sum, expense) => sum + expense.totalPriceInclVat, 0)
+    upcomingTotal: upcoming.reduce((sum, expense) => sum + expense.totalPrice, 0)
   };
 }
 

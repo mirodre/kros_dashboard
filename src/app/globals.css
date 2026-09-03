@@ -2417,3 +2417,89 @@ body {
     transform: translateY(0) scaleY(1);
   }
 }
+
+.sync-progress {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+}
+
+.sync-progress-meta {
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.74rem;
+  font-weight: 700;
+  gap: 0.7rem;
+  justify-content: space-between;
+}
+
+.sync-progress-step {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-progress-count {
+  color: #ccd8ff;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sync-progress-detail {
+  color: #8792b4;
+  display: flex;
+  font-size: 0.7rem;
+  font-weight: 600;
+  gap: 0.45rem;
+  min-height: 0.95rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sync-progress-track {
+  background: rgba(43, 57, 100, 0.6);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.sync-progress-fill {
+  background: linear-gradient(90deg, #3b57c6 0%, var(--accent) 100%);
+  border-radius: 999px;
+  height: 100%;
+  min-width: 6px;
+  overflow: hidden;
+  position: relative;
+  transition: width 260ms ease;
+}
+
+/* Beh vlnky drží najavo, že krok stále pracuje, aj keď % stoja. */
+.sync-progress-fill::after {
+  animation: sync-progress-sheen 1.3s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+@keyframes sync-progress-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-progress-fill::after {
+    animation: none;
+    opacity: 0;
+  }
+}
