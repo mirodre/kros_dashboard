@@ -22,6 +22,9 @@ prestavby.
 | filtre a nastavenia | **áno**, fáza 1 — zdieľateľné aj osobné (pozri „Dve úrovne") |
 | KROS prepojenia | **áno**, fáza 2 — na tenanta, nie na človeka |
 | doklady z KROS API | **nie teraz**; model s nimi ráta |
+| kto mení firemné nastavenia | **hocikto v tenante** — bez kontroly roly; stopou je `updated_by_sub` |
+| webhook pri odobraní z firmy | **netreba** — stačí zánik prístupu do 15 minút |
+| tlačidlo „Vymazať cache dát" | **maže len doklady z KROS API**, filtre zostávajú |
 
 **Toto ruší vetu zo spec-u fázy SSO** *„databáza, ktorá príde s filtrami… kľúčuje sa `sub`-om"*.
 Princíp za ňou platí ďalej — appka nevlastní nič o identite a `organizationId` je len
@@ -85,7 +88,9 @@ otestovať na jednom mieste.
 to je správanie, ktoré ľudí naučí filtre nemeniť. Zdieľanie je **výslovná akcia**:
 
 - *„Nastaviť ako firemné predvolené"* — skopíruje aktuálne hodnoty na úroveň tenanta.
-  Dostupné pre rolu `owner` (rola je v claimoch, kontroluje sa na serveri, nie v UI).
+  **Bez kontroly roly** (rozhodnutie z 3.9.2026): smie to hocikto v tenante. `updated_by_sub`
+  je preto stopa, nie prevencia — v UI sa oplatí ukázať „naposledy zmenil X", aby sa dalo
+  zistiť, kto firemný filter prestavil.
 - *„Vrátiť sa na firemné predvolené"* — zmaže osobné prepísanie; človek zase vidí firemné.
 
 ---
@@ -222,7 +227,7 @@ server je zdroj pravdy.
 1. Zmena ide do stavu a do `localStorage` okamžite — nikdy sa nečaká na sieť pred paintom.
 2. `PATCH /api/preferences` s debounce ~800 ms zapisuje **osobnú** úroveň.
 3. Firemnú úroveň mení len výslovná akcia „Nastaviť ako firemné predvolené"
-   (`PUT /api/preferences/tenant`), a len pre rolu `owner`, overenú zo session.
+   (`PUT /api/preferences/tenant`). Rolu nekontroluje, tenanta áno — a ten je zo session.
 4. Zlyhanie zápisu nie je chybová hláška; hodnota ostáva lokálne a odošle sa neskôr.
 
 **Konflikt** — last-write-wins per kľúč, oddelene na každej úrovni. Filtre nemajú zlučovaciu
@@ -256,19 +261,23 @@ rovnaký pre celý tenant a filtre sa pri tej príležitosti prekľúčujú na `
 3. **`/api/kros/*` prestane brať tokeny z tela requestu.** Klient pošle `companyId`, server si
    token načíta podľa tenanta zo session. Kým to tak nie je, serverové úložisko je len ozdoba —
    token stále cestuje z prehliadača.
-4. **Odpojenie firmy** zmaže riadok a odvolá súhlas v KROS. Je to akcia za celú firmu, takže
-   patrí za rolu `owner` a potvrdzovací dialóg to musí povedať.
+4. **Odpojenie firmy** zmaže riadok a odvolá súhlas v KROS. Rovnako ako firemné nastavenia to
+   smie hocikto v tenante — ale na rozdiel od filtra sa to nedá vrátiť kliknutím, takže dialóg
+   musí povedať „odpojíš to všetkým vo firme a bude treba nový súhlas v KROS", nie dnešné
+   neutrálne „Firma bola odpojená".
 
 ### Prečo musí byť `state` viazaný na tenanta už pri registrácii
 
-KROS posiela výsledok ako **cross-site POST** z `firma.kros.sk` na `/kros/callback`. Session
-cookie Auth.js je `SameSite=Lax`, a Lax cookie sa pri cross-site POST **neodošle** — callback
-teda o prihlásenom človeku nevie nič a zo session ho zistiť nedokáže. Jediná cesta je väzba
-`state → tenant_id + user_sub` zapísaná vtedy, keď `state` vzniká, teda v requeste z appky,
-ktorý session má. Vedľajší efekt: zmizne dnešná možnosť registrovať `state` anonymne.
+KROS posiela výsledok ako **cross-site POST** z `firma.kros.sk` na `/kros/callback`, a Lax
+session cookie sa pri cross-site POST neodošle — callback teda zo session nezistí nič. To už
+appka vie a rieši: `/kros/callback` je preto vo verejných cestách a autorizuje ho jednorazový
+`state` (`src/lib/public-paths.ts` to má aj vysvetlené).
 
-Je to presne ten typ detailu, ktorý sa inak zistí až pri prvom prepojení na produkcii, keď
-callback zapíše prepojenie „nikomu".
+Nové je len to, že `state` dnes nenesie **nič okrem seba** (`registerOAuthState` ukladá
+`{ state, expiresAt }`). Aby callback vedel, komu prepojenie zapísať, musí `state` vzniknúť
+s väzbou `→ tenant_id + user_sub`, a to sa dá jedine v requeste z appky, ktorý session má.
+Vedľajší efekt: zmizne dnešná možnosť registrovať `state` anonymne — riziko pomenované už
+v spec-e fázy SSO.
 
 ### Čo tým firma získa a čo tým riskuje
 
@@ -299,8 +308,9 @@ je vedome odložený. Treba to povedať dopredu, inak to po nasadení vyzerá ak
 - **`tenant_id`, `sub` aj `role` sa berú výhradne zo session claimov, nikdy z tela requestu ani
   z query.** Porušenie tohto jediného pravidla mení zdieľanie vo firme na čítanie cudzích firiem.
 - Každý dotaz filtruje `tenant_id = :tenantFromSession`. Bez výnimky, aj pri „len jednom" tenante.
-- Zápis firemnej úrovne a odpojenie firmy kontrolujú rolu **na serveri**; skrytie tlačidla v UI
-  nie je kontrola.
+- Zápis firemnej úrovne a odpojenie firmy **rolu nekontrolujú** (rozhodnutie z 3.9.2026) —
+  hranicou je tenant, nie rola. O to dôležitejšie je, aby `tenant_id` prišiel zo session:
+  je to jediná hranica, ktorá tam zostáva.
 - Nové routy sú chránené deny-by-default middlewarom (`src/middleware.ts`), ale test „bez session
   → 401" tam patrí explicitne — sú to prvé endpointy appky s per-tenant dátami.
 - **Tokeny:** AES-256-GCM, kľúč z env (`KROS_TOKEN_KEY`, `openssl rand -base64 32`), vlastné IV
@@ -320,8 +330,8 @@ Podľa pravidla z fázy SSO — každá asercia typu „X sa stalo" sa dokazuje 
   (zbalenie sekcie sa nikdy nezapíše na firemnú úroveň); zlúčenie serverového a lokálneho stavu;
   migrácia z `localStorage` ide do osobnej úrovne; prienik uloženého výberu firiem s dostupnými.
 - **route handlery:** bez session 401; `tenant_id` z tela requestu sa ignoruje; človek z tenanta
-  A nedostane nastavenia ani prepojenia tenanta B — najdôležitejší test celej úlohy; `member`
-  nezapíše firemnú úroveň ani neodpojí firmu.
+  A nedostane nastavenia ani prepojenia tenanta B — najdôležitejší test celej úlohy.
+- **vymazanie cache nezmaže filtre** ani ich neodošle na server (regresia k rozhodnutiu nižšie).
 - **callback:** `state` bez väzby na tenanta sa odmietne; spotrebovaný `state` sa nedá použiť
   druhýkrát; vypršaný `state` sa odmietne.
 - **claimy bez tenanta:** `active_organization: null` → osobný scope, zdieľanie sa neponúka,
@@ -358,15 +368,35 @@ z `localStorage` do osobnej úrovne, granularita sa konečne pamätá.
 
 ---
 
-## Otvorené otázky
+## Tlačidlo „Vymazať cache dát"
 
-1. **Kto smie meniť firemné nastavenia** — len `owner`, alebo ktokoľvek v tenante? Odporúčam
-   `owner`; ktokoľvek by znamenal, že si ľudia navzájom prestavujú dashboard bez stopy
-   (`updated_by_sub` je stopa, nie prevencia).
-2. **Odpojenie firmy je po fáze 2 akcia za celú firmu.** Potvrdzujeme, že ju smie urobiť len
-   `owner`, a že text dialógu musí povedať „odpojíš to všetkým"?
-3. **Zmazanie konta alebo odobranie z firmy** appke služba neoznámi. Stačí, že prístup zanikne
-   do 15 minút, alebo chceme webhook (a s ním aj možnosť odvolať tokeny, ktoré ten človek
-   pripojil)?
-4. **Vyčistenie cache v `/settings`** dnes maže `kros_dashboard_last_sync_at` a lokálne cache.
-   Po fáze 2: ostáva čisto lokálne (odporúčam áno), alebo má vedieť aj odpojiť firmy?
+Rozhodnuté: maže **len doklady stiahnuté z KROS API** — faktúry (Príjmy), výdavkové doklady
+a platby (Financie) — a stav synchronizácie. **Filtre ostávajú.**
+
+Dnešný `handleClearInvoiceCache` (`src/app/settings/page.tsx`) presne toto už robí: volá
+`clearInvoiceCache()`, `clearCashflowCache()`, `clearExpenseCache()` a maže
+`kros_dashboard_last_sync_at`. Filtrov sa nedotýka.
+
+Po fáze 1 je to však vec, ktorú treba **ustrážiť testom**, nie ponechať na pamäť: filtre budú
+v tom istom `localStorage` ako doteraz (ako cache nad serverom), takže ktokoľvek, kto raz
+tlačidlo „upraví, nech to vyčistí poriadne", ich zmaže spolu s dokladmi — a keďže server ostane
+zdrojom pravdy, vyzerá to ako oprava, kým sa nezistí, že sa filtre vrátili. Test „vymazanie cache
+nezmaže filtre" je preto v zozname vyššie.
+
+Tlačidlo zostáva **čisto lokálne** — nič nemaže na serveri a nedotýka sa prepojení.
+
+---
+
+## Prijaté predpoklady
+
+Zapísané, aby sa dali odmietnuť jednou vetou, ak sedia zle:
+
+1. **Odpojenie firmy smie hocikto v tenante** — odvodené z rozhodnutia „firemné nastavenia smie
+   meniť hocikto". Je to však jediná nevratná akcia v celom rozsahu (nový súhlas v KROS sa musí
+   vyklikať), preto ju kryje aspoň dialóg s jasným textom. Ak to má byť inak, je to jedna
+   podmienka v handleri.
+2. **Bez webhooku** sa firma po odchode človeka ďalej pripája na jeho súhlas, kým prepojenie
+   niekto neobnoví. Prístup do appky mu zanikne do 15 minút, token v KROS žije ďalej —
+   `connected_by_sub` je tam preto, aby sa to dalo zistiť.
+3. **Jeden tenant na človeka** je predpoklad dnešného UI. Fáza 0 preto len ukazuje názov firmy;
+   plnohodnotný prepínač je samostatná úloha.
