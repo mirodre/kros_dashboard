@@ -12,6 +12,11 @@ import {
   normalizePaymentTransactions
 } from "@/lib/cashflow-live";
 import { useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
+import { readNdjsonStream } from "@/lib/ndjson-stream";
+import {
+  estimatePaymentSyncProgress,
+  type PaymentSyncStats
+} from "@/lib/payment-sync-progress";
 import {
   cashflowCompanyMetaKey,
   getCachedPaymentAccounts,
@@ -31,11 +36,19 @@ import type { Granularity } from "@/lib/mock-data";
 
 const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
 
-/** Kroky sťahovania na firmu — účty sú malé, pohyby idú jedným volaním. */
-const CASHFLOW_STEP_LABELS = [
-  { key: "accounts", label: "bankové účty" },
-  { key: "payments", label: "pohyby na účtoch" }
-] as const;
+/** Riadky priebehu z `/api/kros/payments` (NDJSON stream). */
+type PaymentsStreamEvent =
+  | ({ type: "progress"; phase: "payments"; companyName: string } & PaymentSyncStats)
+  | PaymentsResultEvent;
+
+type PaymentsResultEvent = { type: "result"; data?: unknown[]; errors?: { message?: string }[] };
+
+/**
+ * Sťahovanie firmy je jeden krok — zoznam účtov je proti pohybom krátky, takže
+ * by ako vlastný krok zabral polovicu baru a ten by potom skočil na 50 % a
+ * zvyšok sa vliekol. Účty preto dostanú len začiatok kroku.
+ */
+const ACCOUNTS_SHARE = 0.08;
 
 declare global {
   // eslint-disable-next-line no-var -- globalThis typing requires `var`
@@ -82,7 +95,14 @@ export default function CashflowPage() {
   const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const handledRefreshNonceRef = useRef(0);
-  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
+  const {
+    progress: syncProgress,
+    beginSync,
+    startStep,
+    advanceStep,
+    completeStep,
+    endSync
+  } = useSyncProgress();
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -199,14 +219,38 @@ export default function CashflowPage() {
         body: JSON.stringify(body),
         signal: abortController.signal
       });
-      const payload = await response.json();
-      if (!response.ok) {
+
+      if (!response.ok || !response.body) {
         throw new Error("Nepodarilo sa načítať payments dáta.");
       }
-      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+
+      // Dáta prídu posledným riadkom streamu, dovtedy chodí priebeh sťahovania.
+      const collected: { result: PaymentsResultEvent | null } = { result: null };
+      let fraction = 0;
+      await readNdjsonStream(response.body, (raw) => {
+        const event = raw as PaymentsStreamEvent;
+        if (event?.type === "result") {
+          collected.result = event;
+          return;
+        }
+        if (event?.type !== "progress") return;
+
+        const estimate = estimatePaymentSyncProgress(event, { previousFraction: fraction });
+        fraction = estimate.fraction;
+        advanceStep(
+          ACCOUNTS_SHARE + (1 - ACCOUNTS_SHARE) * fraction,
+          [`pohyby ${event.loaded}`, estimate.periodLabel].filter(Boolean).join(" · ")
+        );
+      });
+
+      const payload = collected.result;
+      if (!payload) {
+        throw new Error("Nepodarilo sa načítať payments dáta — sťahovanie sa nedokončilo.");
+      }
+      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
         throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
       }
-      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
+      return Array.isArray(payload.data) ? payload.data : [];
     };
 
     const refreshFromCache = async () => {
@@ -246,13 +290,11 @@ export default function CashflowPage() {
         }
 
         if (abortController.signal.aborted) return;
-        const syncSteps: SyncStep[] = pendingConnections.flatMap(({ connection }) =>
-          CASHFLOW_STEP_LABELS.map((step) => ({
-            key: `${connection.companyId}:${step.key}`,
-            group: connection.companyName,
-            label: step.label
-          }))
-        );
+        const syncSteps: SyncStep[] = pendingConnections.map(({ connection }) => ({
+          key: `${connection.companyId}:payments`,
+          group: connection.companyName,
+          label: "bankové účty a pohyby"
+        }));
         // Bez dát na obrazovke sťahujeme naplno, krátke dosynchronizovanie nad
         // existujúcimi dátami stačí v hlavičke.
         beginSync(syncSteps, !hasCachedData);
@@ -267,7 +309,8 @@ export default function CashflowPage() {
           if (abortController.signal.aborted) return;
 
           const metaKey = cashflowCompanyMetaKey(connection.companyId);
-          startStep(index * CASHFLOW_STEP_LABELS.length);
+          startStep(index);
+          advanceStep(ACCOUNTS_SHARE / 2, "bankové účty");
 
           // Account list and balances are small and change over time — always fetch in full.
           const rawAccounts = await fetchAccounts([connection]);
@@ -277,10 +320,9 @@ export default function CashflowPage() {
               account.companyName === connection.companyName
           );
           await replaceCachedPaymentAccounts(connection.companyId, companyAccounts);
-          completeStep();
 
           if (abortController.signal.aborted) return;
-          startStep(index * CASHFLOW_STEP_LABELS.length + 1);
+          advanceStep(ACCOUNTS_SHARE, "pohyby na účtoch");
 
           const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
           const previousLastModified = lastModifiedTimestamp;
@@ -330,6 +372,7 @@ export default function CashflowPage() {
     hasLoadedPersistedFilters,
     beginSync,
     startStep,
+    advanceStep,
     completeStep,
     endSync
   ]);

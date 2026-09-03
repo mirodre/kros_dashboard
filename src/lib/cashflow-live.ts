@@ -9,6 +9,7 @@ import type {
   CashflowRecentTransaction
 } from "./cashflow-mock-data";
 import { getDocumentDateTime } from "./document-date";
+import { PAYMENT_BOOKED_AT_KEYS } from "./payment-sync-progress";
 
 /**
  * Deň zaúčtovania platby — rovnako ako pri dokladoch berieme len dátumovú
@@ -197,11 +198,7 @@ export function normalizePaymentTransactions(
       const currency =
         pickString(record, ["currency", "Currency"]) ?? linkedAccount?.currency ?? "EUR";
       const bookedAt =
-        pickString(
-          record,
-          ["bookedAt", "BookedAt", "bookedDate", "BookedDate", "date", "Date", "dateOfPayment"]
-        ) ??
-        new Date().toISOString();
+        pickString(record, [...PAYMENT_BOOKED_AT_KEYS]) ?? new Date().toISOString();
       const companyId = pickNumber(record, ["__companyId", "companyId", "CompanyId"]);
       const id = pickIdentifier(record, ["id", "paymentId", "PaymentId"]) ?? `payment-${index}`;
       const hasMatchedDocuments = hasMatchedDocumentsValue(record.matchedDocuments);

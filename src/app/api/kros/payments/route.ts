@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import {
+  readTotalCount,
+  trackPaymentDateSpan,
+  type PaymentDateSpan
+} from "@/lib/payment-sync-progress";
 
 type CompanyConnection = {
   companyId: number;
@@ -11,6 +16,26 @@ type PaymentsRequestBody = {
   companies: CompanyConnection[];
   lastModifiedTimestamp?: string;
 };
+
+/**
+ * Priebeh sťahovania pohybov jednej firmy. Pohyby idú jedným Top/Skip
+ * prechodom, takže celok dopredu nepoznáme — klientovi preto posielame, koľko
+ * ich už je a kam sa posunuli dátumy. Odhad z toho robí
+ * `estimatePaymentSyncProgress()`.
+ */
+type PaymentsProgressEvent = {
+  type: "progress";
+  phase: "payments";
+  companyName: string;
+  loaded: number;
+  /** Celkový počet, ak ho API v odpovedi uvádza. */
+  total?: number;
+  oldest?: string;
+  newest?: string;
+  frontier?: string;
+};
+
+type ProgressReporter = (event: PaymentsProgressEvent) => void;
 
 const KROS_API_BASE = process.env.KROS_API_BASE_URL ?? "https://api-economy.kros.sk";
 
@@ -36,13 +61,19 @@ async function fetchWithRetry(url: string, options: RequestInit, maxAttempts = 3
 
 async function fetchCompanyPayments(
   company: CompanyConnection,
+  onProgress: ProgressReporter,
+  signal: AbortSignal,
   lastModifiedTimestamp?: string
 ) {
   const top = 100;
   let skip = 0;
   const aggregated: unknown[] = [];
+  let span: PaymentDateSpan = {};
+  let total: number | undefined;
 
   while (true) {
+    if (signal.aborted) return [];
+
     const query = new URLSearchParams({ Top: String(top), Skip: String(skip) });
     if (lastModifiedTimestamp) {
       query.set("LastModifiedTimestamp", lastModifiedTimestamp);
@@ -100,6 +131,17 @@ async function fetchCompanyPayments(
           ? (payload as { items: unknown[] }).items
           : [];
     aggregated.push(...items);
+    total = total ?? readTotalCount(payload);
+    span = trackPaymentDateSpan(span, items);
+
+    onProgress({
+      type: "progress",
+      phase: "payments",
+      companyName: company.companyName,
+      loaded: aggregated.length,
+      total,
+      ...span
+    });
 
     if (items.length < top) break;
     skip += top;
@@ -112,44 +154,96 @@ async function fetchCompanyPayments(
   }));
 }
 
+/**
+ * Odpoveď je NDJSON stream: riadky `progress` idú klientovi počas sťahovania a
+ * dáta prídu posledným riadkom `result`. Pohybov býva veľa a bez priebehu bola
+ * obrazovka dlho zamrznutá a potom skočila na hotovo.
+ */
 export async function POST(request: Request) {
+  let body: PaymentsRequestBody;
   try {
-    const body = (await request.json()) as PaymentsRequestBody;
-    if (!Array.isArray(body.companies) || body.companies.length === 0) {
-      return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
-    }
+    body = (await request.json()) as PaymentsRequestBody;
+  } catch {
+    return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+  }
 
-    const allPayments: unknown[] = [];
-    const errors: { companyName: string; message: string }[] = [];
+  if (!Array.isArray(body.companies) || body.companies.length === 0) {
+    return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+  }
 
-    for (const company of body.companies) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let isClosed = false;
+      const send = (event: unknown) => {
+        if (isClosed) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          // Klient odišiel — ďalšie riadky už nemá kto prečítať.
+          isClosed = true;
+        }
+      };
+
       try {
-        const companyPayments = await fetchCompanyPayments(company, body.lastModifiedTimestamp);
-        allPayments.push(...companyPayments);
+        await runPaymentsSync(body, request.signal, send);
       } catch (error) {
-        errors.push({
-          companyName: company.companyName,
-          message: error instanceof Error ? error.message : "Neznáma chyba pri načítaní pohybov"
+        await appendKrosLog({
+          direction: "error",
+          endpoint: "/api/kros/payments",
+          method: "POST",
+          message: `Neočakávaná chyba načítania pohybov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
         });
+        send({
+          type: "result",
+          data: [],
+          errors: [
+            {
+              companyName: "global",
+              message: `Neočakávaná chyba načítania pohybov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
+            }
+          ]
+        });
+      } finally {
+        isClosed = true;
+        controller.close();
       }
     }
+  });
 
-    return NextResponse.json({ data: allPayments, errors });
-  } catch (error) {
-    await appendKrosLog({
-      direction: "error",
-      endpoint: "/api/kros/payments",
-      method: "POST",
-      message: `Neočakávaná chyba načítania pohybov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
-    });
-    return NextResponse.json({
-      data: [],
-      errors: [
-        {
-          companyName: "global",
-          message: `Neočakávaná chyba načítania pohybov: ${error instanceof Error ? error.message : "Neznáma chyba"}`
-        }
-      ]
-    });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no"
+    }
+  });
+}
+
+async function runPaymentsSync(
+  body: PaymentsRequestBody,
+  signal: AbortSignal,
+  send: (event: unknown) => void
+) {
+  const allPayments: unknown[] = [];
+  const errors: { companyName: string; message: string }[] = [];
+
+  for (const company of body.companies) {
+    try {
+      const companyPayments = await fetchCompanyPayments(
+        company,
+        send,
+        signal,
+        body.lastModifiedTimestamp
+      );
+      allPayments.push(...companyPayments);
+    } catch (error) {
+      errors.push({
+        companyName: company.companyName,
+        message: error instanceof Error ? error.message : "Neznáma chyba pri načítaní pohybov"
+      });
+    }
   }
+
+  send({ type: "result", data: allPayments, errors });
 }
