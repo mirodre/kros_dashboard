@@ -2,8 +2,26 @@ import NextAuth from "next-auth";
 import type { OAuth2Config } from "next-auth/providers";
 
 import { fetchMe, type MeResponse, refreshTokens, serviceUrl } from "@/lib/auth-service";
+import { singleFlight } from "@/lib/single-flight";
 import { claimsFromMe, type SsoToken } from "@/lib/sso-claims";
 import { advanceToken } from "@/lib/token-lifecycle";
+
+/**
+ * Obnova tokenov ide cez deduplikáciu kľúčovanú PRICHÁDZAJÚCIM refresh tokenom. Session je
+ * len šifrovaná cookie, takže súbežné requesty (dva efekty na `/` + `<Link>` prefetch)
+ * dekódujú ten istý stav a každý by obnovoval tým istým refresh tokenom — a služba starý
+ * token pri rotácii revokuje. Prvý by vyhral, ostatných by to odhlásilo.
+ *
+ * Instancia je jedna na modul (teda na runtime instanciu), pretože práve o zdieľanie medzi
+ * requestami tu ide — v `advanceToken` ani v `LifecycleDeps` by taký stav žiť nemohol.
+ * Dôvod, prečo to je `singleFlight` a nie cache, aj výhradu pre viac replík, pozri
+ * v `src/lib/single-flight.ts`.
+ *
+ * `fetchMe` sa nededuplikuje zámerne: je to idempotentné GET s už rotovaným access tokenom,
+ * jeho opakovanie nič nezneplatní a každý request tak má vlastný pokus (zdieľaný prísľub by
+ * jeden náhodný 503 rozdal všetkým).
+ */
+const refreshTokensOnce = singleFlight(refreshTokens);
 
 /**
  * Delegovane na fetchMe, nie hola URL: prve prihlasenie musi ist tou istou overenou cestou
@@ -86,7 +104,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
         nowMs: Date.now(),
         claimsTtlSeconds: seconds("AUTH_SERVICE_CLAIMS_TTL", 900),
         gracePeriodSeconds: seconds("AUTH_SERVICE_GRACE_PERIOD", 86400),
-        refreshTokens,
+        refreshTokens: refreshTokensOnce,
         fetchMe
       });
 

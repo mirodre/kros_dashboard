@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { SsoAuthFailed, SsoUnavailable } from "@/lib/auth-service";
+import { singleFlight } from "@/lib/single-flight";
 import type { SsoToken } from "@/lib/sso-claims";
 import { advanceToken, type LifecycleDeps } from "@/lib/token-lifecycle";
 
@@ -141,6 +142,33 @@ describe("advanceToken", () => {
     const next = await advanceToken(token({ degradedSince: NOW }), d);
 
     expect(next?.degradedSince).toBeUndefined();
+  });
+
+  it("dva subezne requesty s tym istym zvetranym tokenom obnovia tokeny raz", async () => {
+    // Toto je celá chyba R1 v jednom teste. Session je len cookie, takže súbežné requesty
+    // dekódujú ten istý stav a bez deduplikácie by obnovu spustil každý z nich s TÝM ISTÝM
+    // refresh tokenom. Passport ho pri rotácii revokuje, takže druhé použitie skončí
+    // `SsoAuthFailed` a človeka to odhlási.
+    let releaseRefresh!: (tokens: { accessToken: string; refreshToken: string }) => void;
+    const rotated = new Promise<{ accessToken: string; refreshToken: string }>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const refresh = vi.fn(async () => rotated);
+    const d = deps({ nowMs: NOW + 16 * 60_000, refreshTokens: singleFlight(refresh) });
+
+    const both = Promise.all([advanceToken(token(), d), advanceToken(token(), d)]);
+    releaseRefresh({ accessToken: "AT2", refreshToken: "RT2" });
+    const [first, second] = await both;
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    // Obe session žijú a obe majú rotovaný pár — ani jedna nedostala `null`.
+    expect(first?.refreshToken).toBe("RT2");
+    expect(second?.refreshToken).toBe("RT2");
+    expect(first?.accessToken).toBe("AT2");
+    expect(second?.accessToken).toBe("AT2");
+    // `fetchMe` sa ZÁMERNE nededuplikuje: je to idempotentné GET s rotovaným access
+    // tokenom, opakovanie nič nerotuje a každý request tak má vlastný pokus.
+    expect(d.fetchMe).toHaveBeenCalledTimes(2);
   });
 
   it("bez refresh tokenu odhlasi", async () => {
