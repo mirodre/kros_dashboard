@@ -720,20 +720,14 @@ export function computeExpenseTagStructure(
 }
 
 /**
- * Výseky donutu zo spočítanej štruktúry štítkov. Focusnutý štítok sa medzi výsekmi
- * neukazuje — dáta sú už zúžené na jeho doklady, takže by zabral takmer celý graf;
- * namiesto neho je vidno, ako sa jeho výdavky delia podľa ostatných štítkov.
- * Podiely sa vždy prepočítajú na súčet toho, čo v grafe naozaj ostalo.
+ * Podiely prepočítané na súčet výsekov, ktoré v grafe naozaj sú. `computeExpenseTagStructure`
+ * počíta `share` z celku pred odfiltrovaním štítkov mimo Filtra štítkov, takže po ňom by
+ * podiely nedávali 100 %. Záporné sumy (dobropisy) do celku nejdú.
  */
-export function excludeFocusedTagSlices(
-  slices: ExpenseTagSlice[],
-  focusedTags: string[]
-): ExpenseTagSlice[] {
-  const focused = new Set(focusedTags);
-  const kept = slices.filter((slice) => !focused.has(slice.name));
-  const total = kept.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
+export function withNormalizedTagShares(slices: ExpenseTagSlice[]): ExpenseTagSlice[] {
+  const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
 
-  return kept.map((slice) => ({
+  return slices.map((slice) => ({
     ...slice,
     share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
   }));

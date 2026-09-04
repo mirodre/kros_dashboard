@@ -32,11 +32,17 @@ import {
   computeExpenseTagBreakdown,
   computeExpenseTagStructure,
   computeExpenseVendorBreakdown,
-  excludeFocusedTagSlices,
   getFilteredRecentExpenses,
   normalizeExpenses,
-  scopeExpenseAmountsToTagFilters
+  scopeExpenseAmountsToTagFilters,
+  withNormalizedTagShares
 } from "@/lib/expenses-live";
+import {
+  focusOutsideDonut,
+  focusedTagNames,
+  reconcileFocusedTags,
+  type FocusedTag
+} from "@/lib/tag-focus";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
 import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
@@ -198,7 +204,7 @@ function scopeExpensesToTags(
   tagCategoryIndex: TagCategoryIndex
 ) {
   const matching = expenses.filter((expense) =>
-    documentMatchesTagFilters(expense.tags, filters, focusedTags)
+    documentMatchesTagFilters(expense.tags, filters, focusedTags, tagCategoryIndex)
   );
   return scopeExpenseAmountsToTagFilters(matching, filters, focusedTags, tagCategoryIndex);
 }
@@ -207,8 +213,9 @@ export default function ExpensesPage() {
   // Nastavenia sú v spoločnom store (server + `localStorage` ako cache), nie v stave stránky.
   const [granularity, setGranularity] = usePreference("ui.granularity");
   const [categoryFilters, setCategoryFilters] = usePreference("expenses.tagFilters");
-  // Focus drží viac štítkov naraz — dáta sa zúžia na doklady, ktoré nesú všetky.
-  const [focusedTags, setFocusedTags] = useState<string[]>([]);
+  // Focus drží viac štítkov naraz — dáta sa zúžia na doklady, ktoré nesú všetky. Ku každému
+  // štítku si pamätá aj sekciu, v ktorej klik vznikol: tá sa vlastným focusom nezužuje.
+  const [focusedTags, setFocusedTags] = useState<FocusedTag[]>([]);
   const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
@@ -499,10 +506,14 @@ export default function ExpensesPage() {
     return next;
   }, [categoryFilters, availableTagSet]);
 
-  const effectiveFocusedTags = useMemo(
-    () => focusedTags.filter((tag) => availableTagSet.has(tag)),
+  const effectiveFocus = useMemo(
+    () => focusedTags.filter((focused) => availableTagSet.has(focused.tag)),
     [focusedTags, availableTagSet]
   );
+  // Grafy, KPI, dodávatelia aj doklady sa zužujú celým focusom…
+  const effectiveFocusedTags = useMemo(() => focusedTagNames(effectiveFocus), [effectiveFocus]);
+  // …donut ale len tým, čo v ňom nevzniklo — vlastným klikom sa nezužuje.
+  const donutFocusedTags = useMemo(() => focusOutsideDonut(effectiveFocus), [effectiveFocus]);
 
   // Zoznamy štítkov ostávajú na Filtri štítkov — bez zužovania súm, aby sa v sekcii
   // dalo preklikať na iný štítok s rovnakými číslami ako pred kliknutím.
@@ -548,20 +559,27 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
-  // Donut ide z rovnakých dokladov ako stĺpcový graf — rozkliknutý štítok teda zúži aj jeho.
-  // Samotný focusnutý štítok sa medzi výsekmi neukazuje: graf ukáže, ako sa jeho výdavky
-  // delia podľa ostatných štítkov, a kliknutím do neho sa dá zavŕtať ešte hlbšie.
+  // Donut je sekcia filtra ako každá iná: focus z ostatných sekcií mu zúži čísla, vlastný
+  // klik nie — inak by po kliknutí ostal jediný výsek a nedalo by sa preklikať inam.
+  // Výseky preto neodpadávajú, focusnuté sa v grafe len zvýraznia.
   const tagStructure = useMemo(() => {
     const scopedExpenses =
-      effectiveFocusedTags.length === 0 ? filterScopedExpenses : tagScopedExpenses;
+      donutFocusedTags.length === 0
+        ? filterScopedExpenses
+        : scopeExpensesToTags(
+            expenses,
+            sanitizedCategoryFilters,
+            donutFocusedTags,
+            tagCategoryIndex
+          );
     const slices = computeExpenseTagStructure(scopedExpenses, [], effectiveCompanies).filter(
       (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
     );
-    return excludeFocusedTagSlices(slices, effectiveFocusedTags);
+    return withNormalizedTagShares(slices);
   }, [
+    expenses,
     filterScopedExpenses,
-    tagScopedExpenses,
-    effectiveFocusedTags,
+    donutFocusedTags,
     sanitizedCategoryFilters,
     effectiveCompanies,
     tagCategoryIndex
@@ -647,9 +665,16 @@ export default function ExpensesPage() {
     setCategoryFilters(next);
     // Focus je drill-down vo filtri — štítok, ktorý filter už nepustí, z focusu vypadne.
     setFocusedTags((previous) =>
-      previous.filter((tag) => isTagAllowedByFilters(tag, next, tagCategoryIndex))
+      previous.filter((focused) => isTagAllowedByFilters(focused.tag, next, tagCategoryIndex))
     );
   };
+
+  // Odkiaľ klik prišiel, rozhoduje, ktorá sekcia sa ním NEZUŽUJE — preto dva handlery.
+  const handleDonutFocusChange = (nextTags: string[]) =>
+    setFocusedTags((previous) => reconcileFocusedTags(previous, nextTags, true));
+
+  const handleSectionFocusChange = (nextTags: string[]) =>
+    setFocusedTags((previous) => reconcileFocusedTags(previous, nextTags, false));
 
   const updateSelectionWithFocusedGuard = (
     nextSelection: string[],
@@ -686,7 +711,7 @@ export default function ExpensesPage() {
         activeTagLabels={effectiveFocusedTags}
         activeCompanyLabel={focusedCompany ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
-        onFocusTagsChange={setFocusedTags}
+        onFocusTagsChange={handleDonutFocusChange}
         isMockData={!hasLiveMode}
       />
       <CategorizedTagsDashboard
@@ -698,7 +723,7 @@ export default function ExpensesPage() {
         categoryFilters={sanitizedCategoryFilters}
         focusedTags={effectiveFocusedTags}
         onCategoryFiltersChange={handleCategoryFiltersChange}
-        onFocusedTagsChange={setFocusedTags}
+        onFocusedTagsChange={handleSectionFocusChange}
         invertDeltaColor
       />
       <ExpenseVendorsSection vendors={vendors} />

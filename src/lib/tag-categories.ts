@@ -92,28 +92,40 @@ export function isTagAllowedByFilters(
 }
 
 /**
- * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND).
- * V rámci kategórie stačí jeden zo zvolených štítkov (OR).
- * Focusnuté štítky musia byť na doklade všetky — dva rozkliknuté štítky teda dáta
- * zúžia na doklady, ktoré nesú oba — a zároveň platia všetky filtre kategórií.
+ * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND). V rámci kategórie stačí
+ * jeden zo zvolených štítkov (OR).
+ *
+ * Rozkliknuté štítky sú samostatné podmienky, ale s tou istou logikou: focus na dvoch
+ * štítkoch JEDNEJ kategórie výber ROZŠÍRI (Apartmán 1 alebo Apartmán 2), focus v dvoch
+ * rôznych kategóriách ho zúži (Apartmán 1 a zároveň Náklady 2). Predtým sa focus vyhodnocoval
+ * ako čisté AND, čo pri dvoch štítkoch tej istej kategórie nemohlo vyjsť nikdy — doklad nesie
+ * v jednej dimenzii spravidla jediný štítok, takže prehľad zostal prázdny.
+ *
+ * `index` je nepovinný: bez skutočných kategórií žijú všetky štítky v jednej spoločnej
+ * sekcii, takže sa focus vyhodnotí ako jedno OR — presne ako pri jedinej kategórii.
  */
 export function documentMatchesTagFilters(
   documentTags: string[],
   filters: TagCategoryFilters,
-  focusedTags: string[] = []
+  focusedTags: string[] = [],
+  index: TagCategoryIndex = EMPTY_TAG_CATEGORY_INDEX
 ): boolean {
   const documentTagSet = new Set(documentTags.map((tag) => tag.trim().toLowerCase()));
-  if (focusedTags.some((tag) => !documentTagSet.has(tag.trim().toLowerCase()))) {
-    return false;
-  }
 
   const constraints = Object.values(filters).filter((selected) => selected.length > 0);
+
+  const focusByCategory = new Map<string, string[]>();
+  for (const tag of focusedTags) {
+    const category = tagFilterKey(index, tag);
+    focusByCategory.set(category, [...(focusByCategory.get(category) ?? []), tag]);
+  }
+  constraints.push(...focusByCategory.values());
+
   if (constraints.length === 0) return true;
 
-  return constraints.every((selected) => {
-    const selectedSet = new Set(selected.map((tag) => tag.trim().toLowerCase()));
-    return documentTags.some((tag) => selectedSet.has(tag.trim().toLowerCase()));
-  });
+  return constraints.every((selected) =>
+    selected.some((tag) => documentTagSet.has(tag.trim().toLowerCase()))
+  );
 }
 
 /** Nastaví / zruší filter jednej kategórie. Prázdny výber = všetky štítky (bez filtra). */

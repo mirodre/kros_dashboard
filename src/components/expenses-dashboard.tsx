@@ -113,11 +113,14 @@ export function ExpensesDashboard({
     [donutCategoryFilter, availableDonutCategories]
   );
 
+  // Zámerne NEZÁVISÍ na `showCategoryFilter`: to je len o tom, či má zmysel ukázať tlačidlo.
+  // Keby filter dát viselo na ňom, stačilo by, aby dáta na chvíľu mali jedinú kategóriu, a
+  // uložený výber by potichu prestal platiť — v grafe by naskočili štítky z iných kategórií.
   const visibleTagStructure = useMemo(() => {
-    if (!showCategoryFilter || activeDonutCategories.length === 0) return tagStructure;
+    if (activeDonutCategories.length === 0) return tagStructure;
     const allowed = new Set(activeDonutCategories);
     return tagStructure.filter((slice) => allowed.has(categoryBySliceName.get(slice.name) ?? ""));
-  }, [tagStructure, showCategoryFilter, activeDonutCategories, categoryBySliceName]);
+  }, [tagStructure, activeDonutCategories, categoryBySliceName]);
 
   const donutData = useMemo(() => {
     // Largest slices get rank 0,1,… — rovnaká paleta a rozostup ako donut v module Peniaze.
@@ -158,14 +161,13 @@ export function ExpensesDashboard({
     () => donutData.reduce((sum, slice) => sum + slice.documentCount, 0),
     [donutData]
   );
-  // Pri focuse sú dáta donutu už zúžené na rozkliknuté štítky a ich vlastné výseky v ňom
-  // nie sú — graf tak ukazuje členenie tých výdavkov podľa ostatných štítkov.
-  const hasTagFocus = activeTagLabels.length > 0;
-  const emptyDonutNote = hasTagFocus
-    ? "Rozkliknuté štítky nemajú v tomto období členenie podľa ďalších štítkov."
-    : activeDonutCategories.length > 0
-      ? "Vybrané kategórie nemajú v tomto období žiadne výdavky."
-      : null;
+  // Focusnuté štítky, ktoré v donute naozaj majú výsek — donut sa vlastným klikom nezužuje,
+  // len zvýrazňuje, a keď je zvýraznený práve jeden, stred píše jeho sumu namiesto celku.
+  const focusedSlices = useMemo(
+    () => donutData.filter((slice) => activeTagLabels.includes(slice.name)),
+    [donutData, activeTagLabels]
+  );
+  const activeSlice = focusedSlices.length === 1 ? focusedSlices[0] : null;
 
   useEffect(() => {
     setIsPieAnimated(false);
@@ -365,7 +367,8 @@ export function ExpensesDashboard({
           <div className="cashflow-donut-card">
               <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Výdavky podľa štítkov">
                 {donutData.map((slice, sliceIndex) => {
-                  const outerRadius = 126;
+                  const isActive = activeTagLabels.includes(slice.name);
+                  const outerRadius = isActive ? 136 : 126;
                   const innerRadius = 90;
                   const center = 160;
                   // Math.sin/cos sa líšia v poslednom bite medzi Node a prehliadačom —
@@ -387,11 +390,14 @@ export function ExpensesDashboard({
                     `A ${innerRadius} ${innerRadius} 0 ${isLargeArc} 0 ${startInnerX} ${startInnerY}`,
                     "Z"
                   ].join(" ");
+                  // Zvýraznenie má zmysel len vtedy, keď focusnutý štítok v donute naozaj je —
+                  // pri focuse z inej kategórie by inak zosvetleli všetky výseky.
+                  const isDimmed = focusedSlices.length > 0 && !isActive;
                   return (
                     <path
                       key={slice.name}
                       d={path}
-                      className={`cashflow-donut-slice ${isPieAnimated ? "is-animated" : ""}`}
+                      className={`cashflow-donut-slice ${isPieAnimated ? "is-animated" : ""} ${isActive ? "is-active" : ""} ${isDimmed ? "is-dimmed" : ""}`}
                       style={
                         {
                           fill: slice.color,
@@ -410,11 +416,13 @@ export function ExpensesDashboard({
                 />
               </svg>
             <div className="cashflow-donut-center">
-              <p className="cashflow-donut-title">
-                {hasTagFocus ? "Podľa ďalších štítkov" : "Výdavky tento rok"}
-              </p>
-              <strong>{formatCurrency(donutTotal)}</strong>
-              <span>{donutDocumentCount} dokladov</span>
+              <p className="cashflow-donut-title">{activeSlice ? activeSlice.name : "Výdavky tento rok"}</p>
+              <strong>{formatCurrency(activeSlice ? activeSlice.amount : donutTotal)}</strong>
+              <span>
+                {activeSlice
+                  ? `${(activeSlice.share * 100).toFixed(1)} % • ${activeSlice.documentCount} dokladov`
+                  : `${donutDocumentCount} dokladov`}
+              </span>
             </div>
           </div>
 
@@ -425,7 +433,11 @@ export function ExpensesDashboard({
                   <li key={slice.name}>
                     <button
                       type="button"
-                      className="cashflow-legend-item"
+                      className={
+                        activeTagLabels.includes(slice.name)
+                          ? "cashflow-legend-item active"
+                          : "cashflow-legend-item"
+                      }
                       style={{ "--legend-accent": slice.color } as React.CSSProperties}
                       onClick={() => handleSliceClick(slice.name)}
                     >
@@ -441,7 +453,9 @@ export function ExpensesDashboard({
               })}
             </ul>
         </div>
-        {donutData.length === 0 && emptyDonutNote ? <p className="tag-sub">{emptyDonutNote}</p> : null}
+        {donutData.length === 0 && activeDonutCategories.length > 0 ? (
+          <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>
+        ) : null}
       </article>
 
       {isCategoryFilterOpen ? (
