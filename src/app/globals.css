@@ -207,24 +207,27 @@ body {
   gap: 0.5rem;
 }
 
+/*
+ * Bez krúžku: ikony v hlavičke sú pomocné akcie a rámik okolo nich len pridával šum.
+ * Rozmer 36 px ostáva — je to plocha na dotyk, nie dekorácia.
+ */
 .header-icon-btn {
   align-items: center;
   background: transparent;
-  border: 1px solid #2b3558;
+  border: 0;
   border-radius: 999px;
-  color: #d5defe;
+  color: #96a3cd;
   cursor: pointer;
   display: inline-flex;
   flex: 0 0 auto;
   height: 36px;
   justify-content: center;
   padding: 0;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
   width: 36px;
 }
 
 .header-icon-btn:hover:not(:disabled) {
-  border-color: #4f67b5;
   color: #f2f5ff;
 }
 
@@ -2617,10 +2620,9 @@ body {
   }
 }
 
-/* Prepínač zobrazených kategórií v hlavičke modulu. */
+/* Prepínač zobrazenia v hlavičke modulu — aktívny stav len farbou, žiadny rámik. */
 .header-icon-btn.is-active {
-  border-color: #4f67b5;
-  color: #f2f5ff;
+  color: #c3d0ff;
 }
 
 /* Skrytá kategória s aktívnym filtrom — bodka je jediný signál, že prehľad niečo zužuje. */
@@ -2630,14 +2632,13 @@ body {
 
 .header-icon-btn.has-hidden-filters::after {
   background: #ffb163;
-  border: 1px solid #101a33;
   border-radius: 999px;
   content: "";
-  height: 9px;
+  height: 7px;
   position: absolute;
-  right: 4px;
-  top: 4px;
-  width: 9px;
+  right: 5px;
+  top: 5px;
+  width: 7px;
 }
 
 .category-visibility-options {
@@ -2648,7 +2649,7 @@ body {
 
 /* Skupiny sa scrollujú spolu, aby dlhý zoznam kategórií nezatlačil tlačidlá zo sheetu. */
 .category-visibility-scroll {
-  margin: 0.2rem 0 0.9rem;
+  margin: 0.85rem 0 0.9rem;
   max-height: min(52vh, 400px);
   overflow-y: auto;
 }
@@ -2811,4 +2812,17 @@ body {
   letter-spacing: 0.04em;
   margin: 0 0 0.3rem;
   text-transform: uppercase;
+}
+
+/* Akcie panela pod textom — v hlavičke sa dlhé názvy tlačidiel lámali. */
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.panel-actions .secondary-button {
+  flex: 1 1 auto;
+  min-width: 0;
 }

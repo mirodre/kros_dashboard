@@ -752,7 +752,9 @@ export default function ExpensesPage() {
         categoryOptions,
         sectionOptions,
         hiddenIds: hiddenSections,
-        onHiddenIdsChange: setHiddenSections
+        onHiddenIdsChange: setHiddenSections,
+        granularity,
+        onGranularityChange: setGranularity
       }}
     >
       {isPreparingModule ? <ModuleSkeleton label="Načítavam výdavky…" /> : null}
@@ -762,7 +764,6 @@ export default function ExpensesPage() {
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <ExpensesDashboard
         granularity={granularity}
-        onGranularityChange={setGranularity}
         kpis={kpis}
         points={points}
         expenses={tagScopedExpenses}

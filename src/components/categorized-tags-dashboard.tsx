@@ -96,7 +96,6 @@ export function CategorizedTagsDashboard({
         title={baseTitle}
         filterLabel="Filter štítkov"
         dialogTitle="Filter štítkov"
-        dialogHelp="Vyber štítky, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky."
         ariaLabelPrefix={ariaLabelPrefix}
         items={tags}
         availableItemNames={dialogSource.map((point) => point.name)}
@@ -130,7 +129,6 @@ export function CategorizedTagsDashboard({
             title={availableGroup.category}
             filterLabel="Filter štítkov"
             dialogTitle={`Filter štítkov – ${availableGroup.category}`}
-            dialogHelp="Vyber štítky z tejto kategórie, ktoré chceš vidieť. Ak nevyberieš nič, zobrazia sa všetky. Odfiltrované štítky sa nepremietnu do grafu ani ostatných sekcií."
             ariaLabelPrefix={ariaLabelPrefix}
             items={displayGroup?.points ?? []}
             availableItemNames={availableNamesByCategory.get(availableGroup.category) ?? []}

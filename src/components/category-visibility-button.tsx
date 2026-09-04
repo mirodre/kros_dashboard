@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { Granularity } from "@/lib/mock-data";
+import { GranularityToggle } from "./granularity-toggle";
 import { SheetOverlay } from "./sheet-overlay";
 
 export type VisibilityOption = {
@@ -22,6 +24,12 @@ export type CategoryVisibilitySettings = {
   sectionOptions: VisibilityOption[];
   hiddenIds: string[];
   onHiddenIdsChange: (hidden: string[]) => void;
+  /**
+   * Obdobie grafu. Je tu, a nie nad grafom, aby hlavička modulu ostala čistá — týždeň /
+   * mesiac / rok človek prepína zriedka, na prvý pohľad ho tam mať netreba.
+   */
+  granularity?: Granularity;
+  onGranularityChange?: (value: Granularity) => void;
 };
 
 type Props = CategoryVisibilitySettings & {
@@ -39,6 +47,8 @@ export function CategoryVisibilityButton({
   sectionOptions,
   hiddenIds,
   onHiddenIdsChange,
+  granularity,
+  onGranularityChange,
   moduleTitle
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
@@ -59,8 +69,8 @@ export function CategoryVisibilityButton({
   };
 
   const label = hasHiddenFilters
-    ? "Zobrazené sekcie — skrytá sekcia má aktívny filter"
-    : "Zobrazené sekcie";
+    ? "Zobrazenie — skrytá sekcia má aktívny filter"
+    : "Zobrazenie";
 
   const renderOptions = (options: VisibilityOption[], groupLabel: string) => {
     if (options.length === 0) return null;
@@ -151,29 +161,31 @@ export function CategoryVisibilityButton({
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={`Zobrazené sekcie – ${moduleTitle}`}
+            aria-label={`Zobrazenie – ${moduleTitle}`}
           >
             <header className="tag-filter-head">
-              <h4>Zobrazené sekcie</h4>
+              <h4>Zobrazenie</h4>
               <button type="button" className="filter-close" onClick={() => setIsOpen(false)}>
                 Zavrieť
               </button>
             </header>
 
-            <p className="tag-filter-help">
-              Vyklikaj, čo chceš mať pod hlavným grafom. Vypnutá sekcia sa iba skryje — jej
-              štítky ostávajú v grafe aj v číslach a jej filter platí ďalej. Sekcie s aktívnym
-              filtrom sú označené lievikom.
-            </p>
-
-            {allOptions.length === 0 ? (
-              <p className="tag-sub">Tento prehľad zatiaľ žiadne sekcie na skrytie nemá.</p>
-            ) : (
-              <div className="category-visibility-scroll">
-                {renderOptions(categoryOptions, "Kategórie štítkov")}
-                {renderOptions(sectionOptions, "Ostatné sekcie")}
-              </div>
-            )}
+            <div className="category-visibility-scroll">
+              {granularity && onGranularityChange ? (
+                <div className="category-visibility-group">
+                  <p className="category-visibility-group-label">Obdobie</p>
+                  <GranularityToggle value={granularity} onChange={onGranularityChange} />
+                </div>
+              ) : null}
+              {allOptions.length === 0 ? (
+                <p className="tag-sub">Tento prehľad zatiaľ žiadne sekcie na skrytie nemá.</p>
+              ) : (
+                <>
+                  {renderOptions(categoryOptions, "Kategórie štítkov")}
+                  {renderOptions(sectionOptions, "Ostatné sekcie")}
+                </>
+              )}
+            </div>
 
             <footer className="tag-filter-actions">
               <button

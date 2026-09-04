@@ -32,6 +32,7 @@ function memoryRepository(): PreferenceRepository {
   const tenant = new Map<string, Record<string, unknown>>();
   const tenantMeta = new Map<string, { updatedBySub: string; updatedAt: string }>();
   const user = new Map<string, Record<string, unknown>>();
+  const members = new Map<string, Set<string>>();
 
   return {
     async read(scope) {
@@ -54,13 +55,19 @@ function memoryRepository(): PreferenceRepository {
       const current = { ...(user.get(key) ?? {}) };
       for (const entry of keys) delete current[entry];
       user.set(key, current);
+    },
+    async touchMember(scope) {
+      const seen = members.get(scope.tenantId) ?? new Set<string>();
+      seen.add(scope.userSub);
+      members.set(scope.tenantId, seen);
+      return seen.size;
     }
   };
 }
 
 function brokenRepository(): PreferenceRepository {
   const fail = () => Promise.reject(new Error("databaza nedostupna"));
-  return { read: fail, writeUser: fail, writeTenant: fail, deleteUser: fail };
+  return { read: fail, writeUser: fail, writeTenant: fail, deleteUser: fail, touchMember: fail };
 }
 
 describe("izolacia tenantov", () => {

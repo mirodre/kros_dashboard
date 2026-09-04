@@ -7,13 +7,11 @@ import { parseDocumentDate } from "@/lib/document-date";
 import { getInvoiceAnalyticsDate, getRevenueBucketInvoices } from "@/lib/dashboard-live";
 import type { NormalizedInvoice } from "@/lib/kros-types";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
-import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
-  onGranularityChange: (value: Granularity) => void;
   kpis: KpiCard[];
   points: RevenuePoint[];
   invoices?: NormalizedInvoice[];
@@ -27,7 +25,6 @@ type Props = {
 
 export function RevenueDashboard({
   granularity,
-  onGranularityChange,
   kpis,
   points,
   invoices = [],
@@ -102,7 +99,6 @@ export function RevenueDashboard({
     <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
-          <GranularityToggle value={granularity} onChange={onGranularityChange} />
           {activeTagLabel ? (
             <button type="button" className="active-tag-badge" onClick={onClearTagFilter}>
               <span>{activeTagLabel}</span>

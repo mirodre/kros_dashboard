@@ -15,7 +15,6 @@ type Props = {
   title: string;
   filterLabel: string;
   dialogTitle: string;
-  dialogHelp: string;
   ariaLabelPrefix: string;
   items: BreakdownItem[];
   selectedItems: string[];
@@ -36,7 +35,6 @@ export function FilterableBreakdownSection({
   title,
   filterLabel,
   dialogTitle,
-  dialogHelp,
   ariaLabelPrefix,
   items,
   selectedItems,
@@ -196,8 +194,6 @@ export function FilterableBreakdownSection({
                 Zavrieť
               </button>
             </header>
-
-            <p className="tag-filter-help">{dialogHelp}</p>
 
             <div className="tag-filter-options">
               {availableNames.map((itemName) => {

@@ -28,6 +28,11 @@ export type PreferenceSnapshot = {
   isLoaded: boolean;
   /** Človek bez firmy — zdieľanie sa neponúka. */
   isPersonalFallback: boolean;
+  /**
+   * Koľko ľudí z firmy appku otvorilo. `null` = server neodpovedal alebo firmu nemáme,
+   * a vtedy sa zdieľanie filtrov radšej neponúka.
+   */
+  memberCount: number | null;
 };
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
@@ -46,6 +51,7 @@ type ServerResponse = {
   storedKeys?: string[];
   tenantMeta?: TenantMeta | null;
   isPersonalFallback?: boolean;
+  memberCount?: number | null;
 };
 
 function knownKeys(keys: readonly string[] | undefined): PreferenceKey[] {
@@ -81,7 +87,8 @@ export function createPreferenceStore(deps: StoreDeps) {
     personalKeys: [],
     tenantMeta: null,
     isLoaded: false,
-    isPersonalFallback: false
+    isPersonalFallback: false,
+    memberCount: null
   };
 
   let pending: Record<string, unknown> = {};
@@ -226,6 +233,7 @@ export function createPreferenceStore(deps: StoreDeps) {
       values: withDefaults(merged),
       personalKeys: knownKeys(payload.personalKeys),
       tenantMeta: payload.tenantMeta ?? null,
+      memberCount: typeof payload.memberCount === "number" ? payload.memberCount : null,
       isLoaded: true,
       isPersonalFallback: payload.isPersonalFallback === true
     });
@@ -284,7 +292,8 @@ export const SERVER_SNAPSHOT: PreferenceSnapshot = {
   personalKeys: [],
   tenantMeta: null,
   isLoaded: false,
-  isPersonalFallback: false
+  isPersonalFallback: false,
+  memberCount: null
 };
 
 export { defaultValue };

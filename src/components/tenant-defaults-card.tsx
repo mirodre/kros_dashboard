@@ -23,13 +23,18 @@ function formatMoment(iso: string): string {
  * dôležité aspoň ukázať, kto to naposledy urobil.
  */
 export function TenantDefaultsCard() {
-  const { personalKeys, tenantMeta, isLoaded, isPersonalFallback } = usePreferences();
+  const { personalKeys, tenantMeta, isLoaded, isPersonalFallback, memberCount } = usePreferences();
   const viewerSub = useViewerSub();
   const [status, setStatus] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   // Bez firmy nie je s kým zdieľať — nastavenia si aj tak žijú len pre tohto človeka.
   if (isPersonalFallback) return null;
+
+  // Vo firme, kde appku otvoril len jeden človek, je zdieľanie prázdne gesto: nastavoval by
+  // filtre sám sebe. `null` (server neodpovedal) berieme ako „nevieme“ a kartu tiež
+  // neponúkame — radšej nič než ovládanie, ktoré nemá komu pomôcť.
+  if ((memberCount ?? 1) < 2) return null;
 
   const overridden = personalKeys.filter((key) => isTenantKey(key));
 
@@ -46,16 +51,6 @@ export function TenantDefaultsCard() {
       <article className="panel">
         <header className="panel-head">
           <h3>Firemné filtre</h3>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={isBusy || !isLoaded}
-            onClick={() =>
-              run(() => preferenceStore().shareWithTenant(SHAREABLE_KEYS), "Filtre platia pre celú firmu.")
-            }
-          >
-            Nastaviť pre celú firmu
-          </button>
         </header>
 
         <p className="tag-sub">
@@ -73,22 +68,36 @@ export function TenantDefaultsCard() {
           <p className="tag-sub">Firma zatiaľ nemá vlastné predvolené filtre.</p>
         )}
 
-        {overridden.length > 0 ? (
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={isBusy}
-            onClick={() => run(() => preferenceStore().resetToTenant(overridden), "Zobrazujú sa firemné filtre.")}
-          >
-            Vrátiť sa na firemné filtre
-          </button>
-        ) : null}
-
         {!isLoaded ? (
           <p className="tag-sub">Nastavenia sa práve nedajú načítať zo servera — platí, čo máš v tomto prehliadači.</p>
         ) : null}
 
         {status ? <p className="tag-sub">{status}</p> : null}
+
+        {/* Akcie sú pod textom v jednom rade: v hlavičke sa dlhý názov tlačidla lámal a
+            druhé tlačidlo predtým viselo samo v tele panela bez akéhokoľvek odsadenia. */}
+        <div className="panel-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={isBusy || !isLoaded}
+            onClick={() =>
+              run(() => preferenceStore().shareWithTenant(SHAREABLE_KEYS), "Filtre platia pre celú firmu.")
+            }
+          >
+            Nastaviť pre celú firmu
+          </button>
+          {overridden.length > 0 ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isBusy}
+              onClick={() => run(() => preferenceStore().resetToTenant(overridden), "Zobrazujú sa firemné filtre.")}
+            >
+              Vrátiť sa na firemné
+            </button>
+          ) : null}
+        </div>
       </article>
     </section>
   );

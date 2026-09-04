@@ -55,5 +55,22 @@ export const MIGRATIONS: readonly Migration[] = [
         expires_at timestamptz not null
       );
     `
+  },
+  {
+    /**
+     * Kto z firmy appku naozaj otvoril. Slúži na jedinú otázku: je vo firme viac ľudí?
+     * Bez toho sa nedá povedať, či má zmysel ponúkať zdieľanie filtrov firme — SSO nám
+     * zoznam členov nedáva a `user_preference` má riadok až po prvej zmene nastavenia.
+     */
+    name: "003_tenant_members",
+    sql: `
+      create table if not exists tenant_member (
+        tenant_id     text        not null,
+        user_sub      text        not null,
+        first_seen_at timestamptz not null default now(),
+        last_seen_at  timestamptz not null default now(),
+        primary key (tenant_id, user_sub)
+      );
+    `
   }
 ];

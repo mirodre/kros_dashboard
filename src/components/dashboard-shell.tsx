@@ -95,7 +95,8 @@ export function DashboardShell({
         </div>
         <div className="header-actions">
           {categoryVisibility &&
-          categoryVisibility.categoryOptions.length + categoryVisibility.sectionOptions.length > 0 ? (
+          (categoryVisibility.categoryOptions.length + categoryVisibility.sectionOptions.length > 0 ||
+            categoryVisibility.granularity) ? (
             <CategoryVisibilityButton {...categoryVisibility} moduleTitle={title} />
           ) : null}
           {onRefresh ? (

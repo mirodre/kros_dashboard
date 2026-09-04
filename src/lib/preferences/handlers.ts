@@ -68,6 +68,24 @@ function unavailable(error: unknown): HandlerResult {
   return { status: 503, body: { error: "Nastavenia sa práve nedajú načítať zo servera." } };
 }
 
+/**
+ * Počet ľudí, ktorí firmu v appke otvorili. Zlyhanie zapíšeme a vrátime `null`: nastavenia
+ * sa musia načítať aj vtedy, keď sa evidencia členov nepodarí — je to len podklad pre to,
+ * či ponúknuť zdieľanie filtrov.
+ */
+async function countMembers(
+  repository: PreferenceRepository,
+  scope: PreferenceScope
+): Promise<number | null> {
+  if (scope.isPersonalFallback) return null;
+  try {
+    return await repository.touchMember(scope);
+  } catch (error) {
+    console.error("Nastavenia: evidencia členov firmy zlyhala:", error);
+    return null;
+  }
+}
+
 export async function getPreferences(
   repository: PreferenceRepository,
   scope: PreferenceScope
@@ -83,7 +101,8 @@ export async function getPreferences(
         personalKeys: resolved.personalKeys,
         storedKeys: resolved.storedKeys,
         tenantMeta: levels.tenantMeta,
-        isPersonalFallback: scope.isPersonalFallback
+        isPersonalFallback: scope.isPersonalFallback,
+        memberCount: await countMembers(repository, scope)
       }
     };
   } catch (error) {

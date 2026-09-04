@@ -18,14 +18,12 @@ import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { DonutLegend } from "./donut-legend";
 import { FilterIconButton } from "./filter-icon-button";
-import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow, ExpenseScopeNote } from "./recent-expenses-section";
 import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
-  onGranularityChange: (value: Granularity) => void;
   kpis: KpiCard[];
   points: RevenuePoint[];
   expenses: NormalizedExpense[];
@@ -48,7 +46,6 @@ type Props = {
 
 export function ExpensesDashboard({
   granularity,
-  onGranularityChange,
   kpis,
   points,
   expenses,
@@ -260,7 +257,6 @@ export function ExpensesDashboard({
     <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
-          <GranularityToggle value={granularity} onChange={onGranularityChange} />
           {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
           {activeTagLabels.map((tag) => (
             <button
@@ -489,11 +485,6 @@ export function ExpensesDashboard({
                 Zavrieť
               </button>
             </header>
-
-            <p className="tag-filter-help">
-              Vyber kategórie, ktorých štítky chceš vidieť v grafe. Ak nevyberieš nič, zobrazia sa
-              všetky. Filter platí len pre tento graf — ostatné prehľady neovplyvní.
-            </p>
 
             <div className="tag-filter-options">
               {availableDonutCategories.map((category) => (

@@ -582,7 +582,9 @@ export default function HomePage() {
         categoryOptions,
         sectionOptions,
         hiddenIds: hiddenSections,
-        onHiddenIdsChange: setHiddenSections
+        onHiddenIdsChange: setHiddenSections,
+        granularity,
+        onGranularityChange: setGranularity
       }}
     >
       {isPreparingModule ? <ModuleSkeleton label="Načítavam tržby…" /> : null}
@@ -592,7 +594,6 @@ export default function HomePage() {
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <RevenueDashboard
         granularity={granularity}
-        onGranularityChange={setGranularity}
         kpis={kpis}
         points={revenueData}
         invoices={tagScopedInvoices}

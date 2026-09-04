@@ -23,6 +23,11 @@ export type PreferenceRepository = {
   writeUser(scope: PreferenceScope, entries: Record<string, unknown>): Promise<void>;
   writeTenant(scope: PreferenceScope, entries: Record<string, unknown>): Promise<void>;
   deleteUser(scope: PreferenceScope, keys: string[]): Promise<void>;
+  /**
+   * Zapíše, že tento človek firmu práve otvoril, a vráti počet ľudí, ktorí ju otvorili
+   * doteraz. Appka z toho vie jediné: či má vo firme zmysel ponúkať zdieľanie filtrov.
+   */
+  touchMember(scope: PreferenceScope): Promise<number>;
 };
 
 function toValues(rows: Array<{ key: string; value: unknown }>): StoredValues {
@@ -112,6 +117,21 @@ export function postgresRepository(pool: Pool): PreferenceRepository {
         "delete from user_preference where user_sub = $1 and tenant_id = $2 and key = any($3::text[])",
         [scope.userSub, scope.tenantId, keys]
       );
+    },
+
+    async touchMember(scope) {
+      await pool.query(
+        `insert into tenant_member (tenant_id, user_sub)
+         values ($1, $2)
+         on conflict (tenant_id, user_sub)
+         do update set last_seen_at = now()`,
+        [scope.tenantId, scope.userSub]
+      );
+      const result = await pool.query<{ count: string }>(
+        "select count(*)::text as count from tenant_member where tenant_id = $1",
+        [scope.tenantId]
+      );
+      return Number(result.rows[0]?.count ?? "1");
     }
   };
 }

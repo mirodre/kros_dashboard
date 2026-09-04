@@ -88,14 +88,16 @@ export default function SettingsPage() {
 
   return (
     <DashboardShell title="Nastavenia">
-      <TenantDefaultsCard />
-
       <KrosConnectionCard
         connections={connections}
         statusMessage={connectionsError ?? (isLoadingConnections ? "Načítavam prepojenia..." : statusMessage)}
         onConnectClick={handleConnectClick}
         onDisconnectCompany={handleDisconnectCompany}
       />
+
+      {/* Až za prepojením: bez firiem v KROSe nie je čo filtrovať, a karta sa navyše
+          ukáže len vo firme, kde appku otvorilo viac ľudí. */}
+      <TenantDefaultsCard />
 
       <section className="dashboard-body">
         <article className="panel">
