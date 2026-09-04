@@ -1501,7 +1501,12 @@ body {
   display: block;
 }
 
-.invoice-list .invoice-tags {
+/*
+ * Štítky dokladu nikdy nepretekajú kartu — dlhý alebo početný zoznam sa
+ * scrolluje vodorovne, a to bez viditeľného scroll baru (riadok tak nemení
+ * výšku ani vzhľad podľa počtu štítkov).
+ */
+.invoice-tags {
   align-items: center;
   box-sizing: border-box;
   display: flex;
@@ -1510,23 +1515,21 @@ body {
   gap: 0.28rem;
   height: 1.75rem;
   margin-top: 0;
-  max-width: none;
+  max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   width: 100%;
 }
 
 .invoice-tags::-webkit-scrollbar {
-  height: 4px;
-}
-
-.invoice-tags::-webkit-scrollbar-thumb {
-  background: rgba(100, 126, 210, 0.45);
-  border-radius: 999px;
+  height: 0;
+  width: 0;
+  display: none;
 }
 
 .invoice-tags span {
