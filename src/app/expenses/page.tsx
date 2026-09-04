@@ -32,6 +32,7 @@ import {
   computeExpenseTagBreakdown,
   computeExpenseTagStructure,
   computeExpenseVendorBreakdown,
+  excludeFocusedTagSlices,
   getFilteredRecentExpenses,
   normalizeExpenses,
   scopeExpenseAmountsToTags
@@ -545,19 +546,24 @@ export default function ExpensesPage() {
     [points, ytdTotals, dueWatchlist]
   );
 
-  // Donut drží celý obraz podľa Filtra štítkov — focus doň nezasahuje. Rozkliknutý štítok
-  // sa v ňom len zvýrazní (ostatné výseky zosvetlia), rovnako ako účet v module Peniaze:
-  // podiely na celku tak ostanú čitateľné a z grafu sa dá klikať ďalej.
+  // Donut ide z rovnakých dokladov ako stĺpcový graf — rozkliknutý štítok teda zúži aj jeho.
+  // Samotný focusnutý štítok sa medzi výsekmi neukazuje: graf ukáže, ako sa jeho výdavky
+  // delia podľa ostatných štítkov, a kliknutím do neho sa dá zavŕtať ešte hlbšie.
   const tagStructure = useMemo(() => {
-    const slices = computeExpenseTagStructure(filterScopedExpenses, [], effectiveCompanies).filter(
+    const scopedExpenses =
+      effectiveFocusedTags.length === 0 ? filterScopedExpenses : tagScopedExpenses;
+    const slices = computeExpenseTagStructure(scopedExpenses, [], effectiveCompanies).filter(
       (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
     );
-    const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
-    return slices.map((slice) => ({
-      ...slice,
-      share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
-    }));
-  }, [filterScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
+    return excludeFocusedTagSlices(slices, effectiveFocusedTags);
+  }, [
+    filterScopedExpenses,
+    tagScopedExpenses,
+    effectiveFocusedTags,
+    sanitizedCategoryFilters,
+    effectiveCompanies,
+    tagCategoryIndex
+  ]);
 
   const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),
