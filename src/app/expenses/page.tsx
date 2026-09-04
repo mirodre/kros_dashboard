@@ -48,7 +48,7 @@ import {
   reconcileFocusedTags,
   type FocusedTag
 } from "@/lib/tag-focus";
-import { getDateRange } from "@/lib/dashboard-live";
+import { getDateRange, getBucketPeriodWindow } from "@/lib/period-buckets";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
 import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
 import { readNdjsonStream } from "@/lib/ndjson-stream";
@@ -234,6 +234,9 @@ export default function ExpensesPage() {
   const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
   const [hiddenSections, setHiddenSections] = usePreference("ui.expensesHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
+  // Stĺpec grafu, na ktorý sa kliklo. Drill-down ako focus štítku či firmy, preto tiež
+  // nie je uložený filter — po návrate do modulu má byť vidieť celý rok, nie jeden mesiac.
+  const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [liveExpenses, setLiveExpenses] = useState<NormalizedExpense[]>([]);
@@ -508,6 +511,18 @@ export default function ExpensesPage() {
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
   const mockExpenses = useMemo(() => (hasLiveMode ? [] : getMockExpenses()), [hasLiveMode]);
   const expenses = hasLiveMode ? liveExpenses : mockExpenses;
+  // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca: tento rok ten stĺpec, vlani
+  // to isté obdobie. Bez focusu ostáva pôvodné okno „tento rok vs. vlani" (YTD).
+  const periodWindow = useMemo(
+    () => (focusedPeriod ? getBucketPeriodWindow(granularity, focusedPeriod) : null),
+    [focusedPeriod, granularity]
+  );
+
+  // Po prepnutí obdobia (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa
+  // nemá čoho držať, patrí zahodiť, nie ho ticho nechať visieť na odznaku.
+  useEffect(() => {
+    if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
+  }, [focusedPeriod, periodWindow]);
 
   useEffect(() => {
     const migrated = migrateFlatFiltersToCategories(categoryFilters, tagCategoryIndex);
@@ -596,9 +611,12 @@ export default function ExpensesPage() {
             donutFocusedTags,
             tagCategoryIndex
           );
-    const slices = computeExpenseTagStructure(scopedExpenses, [], effectiveCompanies).filter(
-      (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
-    );
+    const slices = computeExpenseTagStructure(
+      scopedExpenses,
+      [],
+      effectiveCompanies,
+      periodWindow ?? undefined
+    ).filter((slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex));
     return withNormalizedTagShares(slices);
   }, [
     expenses,
@@ -606,7 +624,8 @@ export default function ExpensesPage() {
     donutFocusedTags,
     sanitizedCategoryFilters,
     effectiveCompanies,
-    tagCategoryIndex
+    tagCategoryIndex,
+    periodWindow
   ]);
 
   const availableTagsData = useMemo(
@@ -645,9 +664,11 @@ export default function ExpensesPage() {
   const isSectionHidden = (id: string) => hiddenSections.includes(id);
 
   const tagsData = useMemo(() => {
-    const filterPoints = computeExpenseTagBreakdown(filterScopedExpenses, effectiveCompanies).filter(
-      (point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
-    );
+    const filterPoints = computeExpenseTagBreakdown(
+      filterScopedExpenses,
+      effectiveCompanies,
+      periodWindow ?? undefined
+    ).filter((point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex));
     if (effectiveFocusedTags.length === 0) {
       return filterPoints;
     }
@@ -672,7 +693,11 @@ export default function ExpensesPage() {
               focusOutsideCategory,
               tagCategoryIndex
             );
-      const points = computeExpenseTagBreakdown(scopedExpenses, effectiveCompanies);
+      const points = computeExpenseTagBreakdown(
+        scopedExpenses,
+        effectiveCompanies,
+        periodWindow ?? undefined
+      );
       const byName = new Map(points.map((point) => [point.name, point]));
       breakdownByCategory.set(category, byName);
       return byName;
@@ -690,18 +715,32 @@ export default function ExpensesPage() {
     effectiveCompanies,
     sanitizedCategoryFilters,
     tagCategoryIndex,
-    effectiveFocusedTags
+    effectiveFocusedTags,
+    periodWindow
   ]);
 
   const vendors = useMemo(
-    () => computeExpenseVendorBreakdown(tagScopedExpenses, [], effectiveCompanies),
-    [tagScopedExpenses, effectiveCompanies]
+    () =>
+      computeExpenseVendorBreakdown(
+        tagScopedExpenses,
+        [],
+        effectiveCompanies,
+        undefined,
+        periodWindow ?? undefined
+      ),
+    [tagScopedExpenses, effectiveCompanies, periodWindow]
   );
 
   const companiesData = useMemo(
     // Zoznam firiem sa nezužuje focusom — rovnako ako štítky v kategórii.
-    () => computeExpenseCompanyBreakdown(tagScopedExpenses, [], selectedCompanies),
-    [tagScopedExpenses, selectedCompanies]
+    () =>
+      computeExpenseCompanyBreakdown(
+        tagScopedExpenses,
+        [],
+        selectedCompanies,
+        periodWindow ?? undefined
+      ),
+    [tagScopedExpenses, selectedCompanies, periodWindow]
   );
 
   const recentExpenses = useMemo(
@@ -710,9 +749,10 @@ export default function ExpensesPage() {
         granularity,
         selectedTags: [],
         selectedCompanies: effectiveCompanies,
-        limit: 10
+        limit: 10,
+        period: periodWindow ?? undefined
       }),
-    [tagScopedExpenses, granularity, effectiveCompanies]
+    [tagScopedExpenses, granularity, effectiveCompanies, periodWindow]
   );
 
   const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
@@ -776,6 +816,8 @@ export default function ExpensesPage() {
         activeCompanyLabel={focusedCompany ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
         onFocusTagsChange={handleDonutFocusChange}
+        focusedPeriod={focusedPeriod}
+        onFocusedPeriodChange={setFocusedPeriod}
         isMockData={!hasLiveMode}
       />
       <CategorizedTagsDashboard

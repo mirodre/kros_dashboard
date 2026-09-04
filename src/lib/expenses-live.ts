@@ -6,7 +6,15 @@ import type {
   ExpenseTagAllocation,
   NormalizedExpense
 } from "./kros-types";
-import { getDateRange } from "./dashboard-live";
+import {
+  buildBuckets,
+  classifyPeriod,
+  formatPeriodLabel,
+  getBucketRange,
+  getDateRange,
+  toBucketKey,
+  type PeriodWindow
+} from "./period-buckets";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
 import {
   EMPTY_TAG_CATEGORY_INDEX,
@@ -395,90 +403,6 @@ function buildExpenseFilter({ selectedTags, selectedCompanies }: FilterInput) {
   };
 }
 
-function getWeekOfYear(date: Date) {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  normalized.setDate(normalized.getDate() + 3 - ((normalized.getDay() + 6) % 7));
-  const firstThursday = new Date(normalized.getFullYear(), 0, 4);
-  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
-  return (
-    1 +
-    Math.round((normalized.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000))
-  );
-}
-
-type BucketDef = { key: string; label: string };
-
-function buildBuckets(granularity: Granularity, now: Date): BucketDef[] {
-  const currentYear = now.getFullYear();
-
-  if (granularity === "month") {
-    return Array.from({ length: now.getMonth() + 1 }, (_, idx) => ({
-      key: `m-${idx + 1}`,
-      label: new Date(currentYear, idx, 1).toLocaleString("sk-SK", { month: "short" })
-    }));
-  }
-
-  if (granularity === "week") {
-    const currentWeek = getWeekOfYear(now);
-    return Array.from({ length: currentWeek }, (_, idx) => ({
-      key: `w-${idx + 1}`,
-      label: `T${idx + 1}`
-    }));
-  }
-
-  return Array.from({ length: 5 }, (_, idx) => {
-    const year = currentYear - 4 + idx;
-    return { key: `y-${year}`, label: String(year) };
-  });
-}
-
-function toBucketKey(date: Date, granularity: Granularity) {
-  if (granularity === "month") return `m-${date.getMonth() + 1}`;
-  if (granularity === "week") return `w-${getWeekOfYear(date)}`;
-  return `y-${date.getFullYear()}`;
-}
-
-function getIsoWeekStart(year: number, week: number) {
-  const simple = new Date(year, 0, 4 + (week - 1) * 7);
-  const day = (simple.getDay() + 6) % 7;
-  simple.setDate(simple.getDate() - day);
-  simple.setHours(0, 0, 0, 0);
-  return simple;
-}
-
-function getBucketRange(key: string, granularity: Granularity, year: number, maxTo: Date) {
-  if (granularity === "week") {
-    const week = Number(key.replace("w-", ""));
-    const from = getIsoWeekStart(year, week);
-    const to = new Date(from);
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  if (granularity === "month") {
-    const month = Number(key.replace("m-", "")) - 1;
-    const from = new Date(year, month, 1);
-    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  const bucketYear = Number(key.replace("y-", ""));
-  const from = new Date(bucketYear, 0, 1);
-  const to = new Date(bucketYear, 11, 31, 23, 59, 59, 999);
-  return { from, to: to > maxTo ? maxTo : to };
-}
-
-function formatPeriodLabel(from: Date, to: Date) {
-  const formatter = new Intl.DateTimeFormat("sk-SK", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric"
-  });
-  return `${formatter.format(from)} - ${formatter.format(to)}`;
-}
-
 type ComputeInput = FilterInput & {
   expenses: NormalizedExpense[];
   granularity: Granularity;
@@ -667,11 +591,12 @@ export function computeExpenseKpis(
 export function computeExpenseTagStructure(
   expenses: NormalizedExpense[],
   selectedTags: string[],
-  selectedCompanies: string[]
+  selectedCompanies: string[],
+  period?: PeriodWindow
 ): ExpenseTagSlice[] {
   const tagSet = new Set(selectedTags);
   const companySet = new Set(selectedCompanies);
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
   const map = new Map<string, { current: number; previous: number; documentCount: number }>();
 
   for (const expense of expenses) {
@@ -680,12 +605,7 @@ export function computeExpenseTagStructure(
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     // Sumy berieme z rozúčtovania — na štítok padá len jeho časť dokladu,
@@ -735,10 +655,11 @@ export function withNormalizedTagShares(slices: ExpenseTagSlice[]): ExpenseTagSl
 
 export function computeExpenseTagBreakdown(
   expenses: NormalizedExpense[],
-  selectedCompanies: string[]
+  selectedCompanies: string[],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   // Zoznam vo Filtri štítkov musí ukazovať všetky štítky, preto sem filter neposielame.
-  return computeExpenseTagStructure(expenses, [], selectedCompanies).map((slice) => ({
+  return computeExpenseTagStructure(expenses, [], selectedCompanies, period).map((slice) => ({
     name: slice.name,
     amount: slice.amount,
     previousAmount: slice.previousAmount
@@ -748,23 +669,19 @@ export function computeExpenseTagBreakdown(
 export function computeExpenseCompanyBreakdown(
   expenses: NormalizedExpense[],
   selectedTags: string[],
-  selectedCompanies: string[] = []
+  selectedCompanies: string[] = [],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   const filterPass = buildExpenseFilter({ selectedTags, selectedCompanies });
   const map = new Map<string, { current: number; previous: number }>();
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
 
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     const bucket = map.get(expense.companyName) ?? { current: 0, previous: 0 };
@@ -784,10 +701,11 @@ export function computeExpenseVendorBreakdown(
   expenses: NormalizedExpense[],
   selectedTags: string[],
   selectedCompanies: string[],
-  limit = 8
+  limit = 8,
+  period?: PeriodWindow
 ): ExpenseVendorPoint[] {
   const filterPass = buildExpenseFilter({ selectedTags, selectedCompanies });
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
   const map = new Map<string, { current: number; previous: number; documentCount: number }>();
 
   for (const expense of expenses) {
@@ -795,12 +713,7 @@ export function computeExpenseVendorBreakdown(
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     const vendor = expense.partnerName ?? "Neznámy dodávateľ";
@@ -868,6 +781,8 @@ export function getFilteredRecentExpenses(
     selectedTags: string[];
     selectedCompanies: string[];
     limit?: number;
+    /** Focus stĺpca grafu: zoznam sa zúži na doklady z toho obdobia (nie aj vlaňajšie). */
+    period?: PeriodWindow;
   }
 ): NormalizedExpense[] {
   const range = getDateRange(options.granularity);
@@ -879,7 +794,17 @@ export function getFilteredRecentExpenses(
       const expenseDate = parseDocumentDate(expense.issueDate);
       if (!expenseDate) return false;
       const inWindow = expenseDate >= range.previousFrom && expenseDate <= range.currentTo;
-      return inWindow && filterPass(expense);
+      // Obdobie sa meria dátumom, ktorým doklad padá do stĺpca grafu (DUZP), aby v zozname
+      // boli tie isté doklady, aké sa v stĺpci sčítali — zoradenie ostáva podľa vystavenia.
+      const analyticsDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+      const periodPass =
+        !options.period ||
+        Boolean(
+          analyticsDate &&
+            analyticsDate >= options.period.currentFrom &&
+            analyticsDate <= options.period.currentTo
+        );
+      return inWindow && periodPass && filterPass(expense);
     })
     .slice()
     .sort((a, b) => {

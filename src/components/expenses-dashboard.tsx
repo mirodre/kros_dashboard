@@ -12,6 +12,7 @@ import {
   type TagCategoryIndex
 } from "@/lib/tag-categories";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
+import { formatPeriodFocusLabel } from "@/lib/period-buckets";
 import { parseDocumentDate } from "@/lib/document-date";
 import { useDonutEntrance } from "@/lib/use-donut-entrance";
 import { usePreference } from "@/lib/use-preference";
@@ -41,6 +42,13 @@ type Props = {
   activeCompanyLabel?: string;
   onFocusTagsChange?: (tags: string[]) => void;
   onClearCompanyFilter?: () => void;
+  /**
+   * Štítok stĺpca, na ktorý sa kliklo. Sekcie pod grafom (donut, štítky, dodávatelia,
+   * doklady, firmy) sú podľa neho odfiltrované, samotný graf nie — inak by po kliknutí
+   * ostal jediný stĺpec a nedalo by sa preklikať inam.
+   */
+  focusedPeriod?: string | null;
+  onFocusedPeriodChange?: (label: string | null) => void;
   isMockData?: boolean;
 };
 
@@ -58,6 +66,8 @@ export function ExpensesDashboard({
   activeCompanyLabel,
   onFocusTagsChange,
   onClearCompanyFilter,
+  focusedPeriod = null,
+  onFocusedPeriodChange,
   isMockData = false
 }: Props) {
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
@@ -214,6 +224,17 @@ export function ExpensesDashboard({
     }, 3000);
   };
 
+  // Klik na stĺpec zúži sekcie pod grafom; opätovný klik na ten istý stĺpec filter zruší.
+  const togglePeriodFocus = (point: RevenuePoint) => {
+    if (!onFocusedPeriodChange) return;
+    onFocusedPeriodChange(focusedPeriod === point.label ? null : point.label);
+  };
+
+  const activatePoint = (point: RevenuePoint) => {
+    showTemporaryTooltip(point);
+    togglePeriodFocus(point);
+  };
+
   const openDocDetails = (point: RevenuePoint, side: "current" | "previous") => {
     if (tooltipTimeoutRef.current) {
       window.clearTimeout(tooltipTimeoutRef.current);
@@ -275,6 +296,16 @@ export function ExpensesDashboard({
               <span className="badge-close">×</span>
             </button>
           ) : null}
+          {focusedPeriod ? (
+            <button
+              type="button"
+              className="active-tag-badge"
+              onClick={() => onFocusedPeriodChange?.(null)}
+            >
+              <span>{formatPeriodFocusLabel(granularity, focusedPeriod)}</span>
+              <span className="badge-close">×</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -299,7 +330,11 @@ export function ExpensesDashboard({
       <KpiCarousel items={kpis} invertDeltaColor />
 
       <article className="panel">
-        <div className="bar-chart" ref={chartRef} onMouseLeave={() => setActivePoint(null)}>
+        <div
+          className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
+          ref={chartRef}
+          onMouseLeave={() => setActivePoint(null)}
+        >
           {points.map((point, index) => {
             const tooltipEdgeClass =
               index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
@@ -309,17 +344,18 @@ export function ExpensesDashboard({
               <div
                 role="button"
                 tabIndex={0}
-                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}`}
+                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}${focusedPeriod === point.label ? " is-period-focused" : ""}`}
                 key={point.label}
                 style={{ "--bar-index": index } as React.CSSProperties}
+                aria-pressed={onFocusedPeriodChange ? focusedPeriod === point.label : undefined}
                 onMouseEnter={() => setActivePoint(point)}
                 onFocus={() => setActivePoint(point)}
                 onTouchStart={() => showTemporaryTooltip(point)}
-                onClick={() => showTemporaryTooltip(point)}
+                onClick={() => activatePoint(point)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    showTemporaryTooltip(point);
+                    activatePoint(point);
                   }
                 }}
               >
@@ -424,7 +460,13 @@ export function ExpensesDashboard({
                 />
               </svg>
             <div className="cashflow-donut-center">
-              <p className="cashflow-donut-title">{activeSlice ? activeSlice.name : "Výdavky tento rok"}</p>
+              <p className="cashflow-donut-title">
+                {activeSlice
+                  ? activeSlice.name
+                  : focusedPeriod
+                    ? `Výdavky ${formatPeriodFocusLabel(granularity, focusedPeriod)}`
+                    : "Výdavky tento rok"}
+              </p>
               <strong>{formatCurrency(activeSlice ? activeSlice.amount : donutTotal)}</strong>
               <span>
                 {activeSlice

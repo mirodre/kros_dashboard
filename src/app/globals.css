@@ -949,6 +949,30 @@ body {
   box-shadow: 0 0 0 2px rgba(220, 115, 140, 0.48), 0 5px 16px rgba(120, 45, 65, 0.34);
 }
 
+/*
+ * Klik na stĺpec zúži sekcie pod grafom. V grafe to musí byť vidieť aj po tom, ako
+ * zmizne bublina s číslami — vybraný stĺpec dostane svetlý prstenec, ostatné potichu
+ * zosvetlia (rovnaký jazyk ako `is-dimmed` výseky v donute).
+ *
+ * Zosvetlenie ide na vnútro stĺpca, nie na `.bar-item`: ten má kvôli
+ * `animation-fill-mode: both` natrvalo `opacity: 1` z poslednej snímky vstupnej
+ * animácie a tá by beh normálnej deklarácie prebila.
+ */
+.bar-chart.has-period-focus .bar-item:not(.is-period-focused) .bar-stack,
+.bar-chart.has-period-focus .bar-item:not(.is-period-focused) p {
+  opacity: 0.45;
+  transition: opacity 140ms ease;
+}
+
+.bar-chart .bar-item.is-period-focused .bar.current {
+  box-shadow: 0 0 0 2px rgba(226, 233, 255, 0.9);
+}
+
+.bar-item.is-period-focused p {
+  color: #eff2ff;
+  font-weight: 700;
+}
+
 .bar.previous {
   background: linear-gradient(180deg, #4d5679 0%, #3f4767 100%);
   opacity: 0.58;

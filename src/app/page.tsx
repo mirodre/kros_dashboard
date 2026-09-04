@@ -20,13 +20,13 @@ import {
 import {
   computeCompanyBreakdown,
   computeComparableYtdTotals,
-  getDateRange,
   computeKpis,
   computeRevenueSeries,
   computeTagBreakdown,
   getFilteredRecentInvoices,
   normalizeInvoices
 } from "@/lib/dashboard-live";
+import { getBucketPeriodWindow, getDateRange } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
@@ -171,6 +171,9 @@ export default function HomePage() {
   const [selectedCompanies, setSelectedCompanies] = usePreference("revenue.companies");
   const [hiddenSections, setHiddenSections] = usePreference("ui.revenueHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
+  // Stĺpec grafu, na ktorý sa kliklo. Drill-down ako focus štítku či firmy, preto tiež
+  // nie je uložený filter — po návrate do modulu má byť vidieť celý rok, nie jeden mesiac.
+  const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [liveInvoices, setLiveInvoices] = useState<NormalizedInvoice[]>([]);
@@ -411,6 +414,19 @@ export default function HomePage() {
   ]);
 
   const hasLiveMode = connections.length > 0;
+  // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca: tento rok ten stĺpec, vlani
+  // to isté obdobie. Bez focusu ostáva pôvodné okno „tento rok vs. vlani" (YTD).
+  const periodWindow = useMemo(
+    () => (focusedPeriod ? getBucketPeriodWindow(granularity, focusedPeriod) : null),
+    [focusedPeriod, granularity]
+  );
+
+  // Po prepnutí obdobia (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa
+  // nemá čoho držať, patrí zahodiť, nie ho ticho nechať visieť na odznaku.
+  useEffect(() => {
+    if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
+  }, [focusedPeriod, periodWindow]);
+
   // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
   const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
@@ -500,10 +516,10 @@ export default function HomePage() {
 
   const tagsData = useMemo(() => {
     const filterPoints = hasLiveMode
-      ? computeTagBreakdown(filterScopedInvoices, effectiveCompanies)
+      ? computeTagBreakdown(filterScopedInvoices, effectiveCompanies, periodWindow ?? undefined)
       : getTagsBreakdown(granularity);
     const focusPoints = hasLiveMode
-      ? computeTagBreakdown(tagScopedInvoices, effectiveCompanies)
+      ? computeTagBreakdown(tagScopedInvoices, effectiveCompanies, periodWindow ?? undefined)
       : filterPoints;
 
     const allowedFilter = filterPoints.filter((point) =>
@@ -532,17 +548,25 @@ export default function HomePage() {
     granularity,
     categoryFilters,
     tagCategoryIndex,
-    focusedTag
+    focusedTag,
+    periodWindow
   ]);
 
   const companiesData = useMemo(() => {
     // Zoznam firiem sa nezužuje focusom — rovnako ako štítky v kategórii.
     // Focus ovplyvní graf/KPI cez effectiveCompanies.
-    if (hasLiveMode) return computeCompanyBreakdown(tagScopedInvoices, [], selectedCompanies);
+    if (hasLiveMode) {
+      return computeCompanyBreakdown(
+        tagScopedInvoices,
+        [],
+        selectedCompanies,
+        periodWindow ?? undefined
+      );
+    }
     const all = getCompaniesBreakdown(granularity);
     if (selectedCompanies.length === 0) return all;
     return all.filter((company) => selectedCompanies.includes(company.name));
-  }, [hasLiveMode, tagScopedInvoices, selectedCompanies, granularity]);
+  }, [hasLiveMode, tagScopedInvoices, selectedCompanies, granularity, periodWindow]);
 
   const recentInvoices = useMemo(() => {
     const source = hasLiveMode ? tagScopedInvoices : getMockRecentInvoices();
@@ -550,9 +574,10 @@ export default function HomePage() {
       granularity,
       selectedTags: [],
       selectedCompanies: effectiveCompanies,
-      limit: 10
+      limit: 10,
+      period: periodWindow ?? undefined
     });
-  }, [hasLiveMode, tagScopedInvoices, granularity, effectiveCompanies]);
+  }, [hasLiveMode, tagScopedInvoices, granularity, effectiveCompanies, periodWindow]);
 
   const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
     setCategoryFilters(next);
@@ -603,6 +628,10 @@ export default function HomePage() {
         activeTagLabel={focusedTag ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
         activeCompanyLabel={focusedCompany ?? undefined}
+        // Demo breakdowny sú hotové súčty bez dokladov, filter obdobia by v nich nemal
+        // čo prepočítať — v demo režime preto klik na stĺpec sekcie nezužuje.
+        focusedPeriod={hasLiveMode ? focusedPeriod : null}
+        onFocusedPeriodChange={hasLiveMode ? setFocusedPeriod : undefined}
       />
       <CategorizedTagsDashboard
         tags={tagsData}

@@ -1,90 +1,16 @@
 import type { Granularity, KpiCard } from "./mock-data";
 import type { AggregatedBreakdownPoint, AggregatedRevenuePoint, NormalizedInvoice } from "./kros-types";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
-
-function startOfDayIso(date: Date) {
-  const local = new Date(date);
-  local.setHours(0, 0, 0, 0);
-  return local.toISOString();
-}
-
-function endOfDayIso(date: Date) {
-  const local = new Date(date);
-  local.setHours(23, 59, 59, 999);
-  return local.toISOString();
-}
-
-export function getDateRange(granularity: Granularity) {
-  const now = new Date();
-  const currentFrom = new Date(now);
-  const currentTo = new Date(now);
-  currentFrom.setHours(0, 0, 0, 0);
-  currentTo.setHours(23, 59, 59, 999);
-
-  if (granularity === "week" || granularity === "month") {
-    currentFrom.setMonth(0, 1);
-  } else {
-    currentFrom.setFullYear(now.getFullYear() - 4, 0, 1);
-  }
-
-  const previousFrom = new Date(currentFrom);
-  previousFrom.setFullYear(previousFrom.getFullYear() - 1);
-  const previousTo = new Date(currentTo);
-  previousTo.setFullYear(previousTo.getFullYear() - 1);
-
-  return {
-    fetchFrom: startOfDayIso(previousFrom),
-    fetchTo: endOfDayIso(currentTo),
-    currentFrom,
-    currentTo,
-    previousFrom,
-    previousTo
-  };
-}
-
-function getWeekOfYear(date: Date) {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  normalized.setDate(normalized.getDate() + 3 - ((normalized.getDay() + 6) % 7));
-  const firstThursday = new Date(normalized.getFullYear(), 0, 4);
-  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
-  return (
-    1 +
-    Math.round((normalized.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000))
-  );
-}
-
-type BucketDef = { key: string; label: string };
-
-function buildBuckets(granularity: Granularity, now: Date): BucketDef[] {
-  const currentYear = now.getFullYear();
-
-  if (granularity === "month") {
-    return Array.from({ length: now.getMonth() + 1 }, (_, idx) => ({
-      key: `m-${idx + 1}`,
-      label: new Date(currentYear, idx, 1).toLocaleString("sk-SK", { month: "short" })
-    }));
-  }
-
-  if (granularity === "week") {
-    const currentWeek = getWeekOfYear(now);
-    return Array.from({ length: currentWeek }, (_, idx) => ({
-      key: `w-${idx + 1}`,
-      label: `T${idx + 1}`
-    }));
-  }
-
-  return Array.from({ length: 5 }, (_, idx) => {
-    const year = currentYear - 4 + idx;
-    return { key: `y-${year}`, label: String(year) };
-  });
-}
-
-function toBucketKey(date: Date, granularity: Granularity) {
-  if (granularity === "month") return `m-${date.getMonth() + 1}`;
-  if (granularity === "week") return `w-${getWeekOfYear(date)}`;
-  return `y-${date.getFullYear()}`;
-}
+import {
+  buildBuckets,
+  classifyPeriod,
+  formatPeriodLabel,
+  getBucketRange,
+  getDateRange,
+  getWeekOfYear,
+  toBucketKey,
+  type PeriodWindow
+} from "./period-buckets";
 
 function toComparableBucketKey(date: Date, granularity: Granularity, _periodStart: Date) {
   if (granularity === "week") {
@@ -92,46 +18,6 @@ function toComparableBucketKey(date: Date, granularity: Granularity, _periodStar
   }
 
   return toBucketKey(date, granularity);
-}
-
-function getIsoWeekStart(year: number, week: number) {
-  const simple = new Date(year, 0, 4 + (week - 1) * 7);
-  const day = (simple.getDay() + 6) % 7;
-  simple.setDate(simple.getDate() - day);
-  simple.setHours(0, 0, 0, 0);
-  return simple;
-}
-
-function getBucketRange(key: string, granularity: Granularity, year: number, maxTo: Date) {
-  if (granularity === "week") {
-    const week = Number(key.replace("w-", ""));
-    const from = getIsoWeekStart(year, week);
-    const to = new Date(from);
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  if (granularity === "month") {
-    const month = Number(key.replace("m-", "")) - 1;
-    const from = new Date(year, month, 1);
-    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  const bucketYear = Number(key.replace("y-", ""));
-  const from = new Date(bucketYear, 0, 1);
-  const to = new Date(bucketYear, 11, 31, 23, 59, 59, 999);
-  return { from, to: to > maxTo ? maxTo : to };
-}
-
-function formatPeriodLabel(from: Date, to: Date) {
-  const formatter = new Intl.DateTimeFormat("sk-SK", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric"
-  });
-  return `${formatter.format(from)} - ${formatter.format(to)}`;
 }
 
 function normalizeTag(rawTag: unknown): string | null {
@@ -418,25 +304,19 @@ export function computeComparableYtdTotals({
 
 export function computeTagBreakdown(
   invoices: NormalizedInvoice[],
-  selectedCompanies: string[]
+  selectedCompanies: string[],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   const companySet = new Set(selectedCompanies);
   const map = new Map<string, { current: number; previous: number }>();
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
 
   for (const invoice of invoices) {
     if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
 
     const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
     if (!invoiceDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-
-    if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (invoiceDate >= range.previousFrom && invoiceDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
-
+    const yearBucket = classifyPeriod(invoiceDate, range);
     if (!yearBucket) continue;
 
     for (const tag of invoice.tags) {
@@ -456,12 +336,13 @@ export function computeTagBreakdown(
 export function computeCompanyBreakdown(
   invoices: NormalizedInvoice[],
   selectedTags: string[],
-  selectedCompanies: string[] = []
+  selectedCompanies: string[] = [],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   const tagSet = new Set(selectedTags);
   const companySet = new Set(selectedCompanies);
   const map = new Map<string, { current: number; previous: number }>();
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
 
   for (const invoice of invoices) {
     if (companySet.size > 0 && !companySet.has(invoice.companyName)) continue;
@@ -471,14 +352,7 @@ export function computeCompanyBreakdown(
 
     const invoiceDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
     if (!invoiceDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-
-    if (invoiceDate >= range.currentFrom && invoiceDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (invoiceDate >= range.previousFrom && invoiceDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
-
+    const yearBucket = classifyPeriod(invoiceDate, range);
     if (!yearBucket) continue;
 
     const bucket = map.get(invoice.companyName) ?? { current: 0, previous: 0 };
@@ -501,6 +375,8 @@ export function getFilteredRecentInvoices(
     selectedTags: string[];
     selectedCompanies: string[];
     limit?: number;
+    /** Focus stĺpca grafu: zoznam sa zúži na doklady z toho obdobia (nie aj vlaňajšie). */
+    period?: PeriodWindow;
   }
 ): NormalizedInvoice[] {
   const range = getDateRange(options.granularity);
@@ -512,11 +388,21 @@ export function getFilteredRecentInvoices(
     const invoiceDate = parseDocumentDate(invoice.issueDate);
     if (!invoiceDate) return false;
     const inWindow = invoiceDate >= range.previousFrom && invoiceDate <= range.currentTo;
+    // Obdobie sa meria dátumom, ktorým doklad padá do stĺpca grafu (DUZP), aby v zozname
+    // boli tie isté doklady, aké sa v stĺpci sčítali — zoradenie ostáva podľa vystavenia.
+    const analyticsDate = parseDocumentDate(getInvoiceAnalyticsDate(invoice));
+    const periodPass =
+      !options.period ||
+      Boolean(
+        analyticsDate &&
+          analyticsDate >= options.period.currentFrom &&
+          analyticsDate <= options.period.currentTo
+      );
     const companyPass =
       selectedCompanySet.size === 0 || selectedCompanySet.has(invoice.companyName);
     const tagPass =
       selectedTagSet.size === 0 || invoice.tags.some((tag) => selectedTagSet.has(tag));
-    return inWindow && companyPass && tagPass;
+    return inWindow && periodPass && companyPass && tagPass;
   });
 
   return filtered
