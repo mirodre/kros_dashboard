@@ -476,7 +476,10 @@ export default function HomePage() {
     });
   }, [hasLiveMode, tagScopedInvoices, effectiveCompanies]);
 
-  const kpis = useMemo(() => computeKpis(revenueData, ytdTotals), [revenueData, ytdTotals]);
+  const kpis = useMemo(
+    () => computeKpis(revenueData, ytdTotals, hasLiveMode ? focusedPeriod : null),
+    [revenueData, ytdTotals, hasLiveMode, focusedPeriod]
+  );
 
   const availableTagsData = useMemo(() => {
     const points = hasLiveMode

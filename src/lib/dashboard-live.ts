@@ -229,9 +229,15 @@ export function getRevenueBucketInvoices({
 
 export function computeKpis(
   points: AggregatedRevenuePoint[],
-  ytdTotals?: { current: number; previous: number }
+  ytdTotals?: { current: number; previous: number },
+  focusedPeriod?: string | null
 ): KpiCard[] {
-  const currentBucket = points.length > 0 ? points[points.length - 1] : null;
+  // Klik do grafu prepne prvé KPI na vybraný stĺpec — inak by číslo nad grafom
+  // ukazovalo posledné obdobie, kým graf aj sekcie pod ním to focusnuté.
+  const focusedBucket = focusedPeriod
+    ? points.find((point) => point.label === focusedPeriod) ?? null
+    : null;
+  const currentBucket = focusedBucket ?? (points.length > 0 ? points[points.length - 1] : null);
   const currentPeriodCurrent = currentBucket?.current ?? 0;
   const currentPeriodPrevious = currentBucket?.previous ?? 0;
 
@@ -248,7 +254,7 @@ export function computeKpis(
 
   return [
     {
-      title: "Tržby v aktuálnom období",
+      title: focusedBucket ? "Tržby vo vybranom období" : "Tržby v aktuálnom období",
       currentValue: Math.round(currentPeriodCurrent),
       previousValue: Math.round(currentPeriodPrevious),
       deltaPct: delta(currentPeriodCurrent, currentPeriodPrevious)

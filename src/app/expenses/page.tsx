@@ -594,8 +594,8 @@ export default function ExpensesPage() {
   );
 
   const kpis = useMemo(
-    () => computeExpenseKpis(points, ytdTotals, dueWatchlist),
-    [points, ytdTotals, dueWatchlist]
+    () => computeExpenseKpis(points, ytdTotals, dueWatchlist, focusedPeriod),
+    [points, ytdTotals, dueWatchlist, focusedPeriod]
   );
 
   // Donut je sekcia filtra ako každá iná: focus z ostatných sekcií mu zúži čísla, vlastný

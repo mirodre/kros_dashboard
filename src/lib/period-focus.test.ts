@@ -4,8 +4,17 @@ import {
   formatPeriodFocusLabel,
   getBucketPeriodWindow
 } from "./period-buckets";
-import { computeCompanyBreakdown, computeTagBreakdown, getFilteredRecentInvoices } from "./dashboard-live";
-import { computeExpenseTagBreakdown, computeExpenseVendorBreakdown } from "./expenses-live";
+import {
+  computeCompanyBreakdown,
+  computeKpis,
+  computeTagBreakdown,
+  getFilteredRecentInvoices
+} from "./dashboard-live";
+import {
+  computeExpenseKpis,
+  computeExpenseTagBreakdown,
+  computeExpenseVendorBreakdown
+} from "./expenses-live";
 import type { NormalizedExpense, NormalizedInvoice } from "./kros-types";
 
 /**
@@ -175,5 +184,54 @@ describe("formatPeriodFocusLabel", () => {
     expect(formatPeriodFocusLabel("month", "sep")).toBe(`sep ${CURRENT_YEAR}`);
     expect(formatPeriodFocusLabel("week", "T5")).toBe(`T5 ${CURRENT_YEAR}`);
     expect(formatPeriodFocusLabel("year", "2024")).toBe("2024");
+  });
+});
+
+/**
+ * Hlavné KPI ide za klikom do grafu: bez focusu ukazuje posledný stĺpec („aktuálne
+ * obdobie"), s focusom ten, na ktorý sa kliklo — inak by číslo nad grafom tvrdilo
+ * niečo iné ako zvýraznený stĺpec a sekcie pod ním.
+ */
+describe("hlavné KPI pri focuse obdobia", () => {
+  const points = [
+    { label: "jan", current: 100, previous: 40 },
+    { label: "feb", current: 200, previous: 50 },
+    { label: "mar", current: 300, previous: 150 }
+  ];
+  const emptyWatchlist = { overdue: [], overdueTotal: 0, upcoming: [], upcomingTotal: 0 };
+
+  it("bez focusu drží tržby posledného stĺpca", () => {
+    expect(computeKpis(points)[0]).toMatchObject({
+      title: "Tržby v aktuálnom období",
+      currentValue: 300,
+      previousValue: 150
+    });
+  });
+
+  it("focus prepne tržby na vybraný stĺpec", () => {
+    expect(computeKpis(points, undefined, "feb")[0]).toMatchObject({
+      title: "Tržby vo vybranom období",
+      currentValue: 200,
+      previousValue: 50
+    });
+  });
+
+  it("focus prepne aj výdavky na vybraný stĺpec", () => {
+    const kpis = computeExpenseKpis(points, { current: 600, previous: 240 }, emptyWatchlist, "jan");
+
+    expect(kpis[0]).toMatchObject({
+      title: "Výdavky vo vybranom období",
+      currentValue: 100,
+      previousValue: 40
+    });
+    // Kumulované číslo je celoročné, focus stĺpca ho nezužuje.
+    expect(kpis[1]).toMatchObject({ title: "Kumulované výdavky tento rok", currentValue: 600 });
+  });
+
+  it("stĺpec, ktorý v sérii nie je, KPI nezmení", () => {
+    expect(computeKpis(points, undefined, "dec")[0]).toMatchObject({
+      title: "Tržby v aktuálnom období",
+      currentValue: 300
+    });
   });
 });

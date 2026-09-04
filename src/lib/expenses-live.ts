@@ -540,9 +540,15 @@ export function computeComparableExpenseYtdTotals({
 export function computeExpenseKpis(
   points: AggregatedRevenuePoint[],
   ytdTotals: { current: number; previous: number },
-  dueWatchlist: ExpenseDueWatchlist
+  dueWatchlist: ExpenseDueWatchlist,
+  focusedPeriod?: string | null
 ): KpiCard[] {
-  const currentBucket = points.length > 0 ? points[points.length - 1] : null;
+  // Klik do grafu prepne prvé KPI na vybraný stĺpec — inak by číslo nad grafom
+  // ukazovalo posledné obdobie, kým graf aj sekcie pod ním to focusnuté.
+  const focusedBucket = focusedPeriod
+    ? points.find((point) => point.label === focusedPeriod) ?? null
+    : null;
+  const currentBucket = focusedBucket ?? (points.length > 0 ? points[points.length - 1] : null);
   const currentPeriodCurrent = currentBucket?.current ?? 0;
   const currentPeriodPrevious = currentBucket?.previous ?? 0;
 
@@ -556,7 +562,7 @@ export function computeExpenseKpis(
 
   return [
     {
-      title: "Výdavky v aktuálnom období",
+      title: focusedBucket ? "Výdavky vo vybranom období" : "Výdavky v aktuálnom období",
       currentValue: Math.round(currentPeriodCurrent),
       previousValue: Math.round(currentPeriodPrevious),
       deltaPct: delta(currentPeriodCurrent, currentPeriodPrevious)
