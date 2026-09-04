@@ -5,6 +5,7 @@ import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ModuleSkeleton } from "@/components/module-skeleton";
+import type { VisibilityOption } from "@/components/category-visibility-button";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { CASHFLOW_MOCK_COMPANIES, getCashflowOverview } from "@/lib/cashflow-mock-data";
@@ -78,11 +79,17 @@ function withLastModifiedOverlap(value: string) {
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
 }
 
+/** Id pevných sekcií pre prepínač zobrazenia — prefix `section:` ako v ostatných moduloch. */
+const CASHFLOW_SECTIONS = {
+  companies: "section:companies"
+} as const;
+
 export default function CashflowPage() {
   // Granularitu Financie len čítajú (vlastný prepínač nemajú), ale je to to isté osobné
   // nastavenie ako na ostatných prehľadoch — teraz už prežije aj reload.
   const [granularity] = usePreference("ui.granularity");
   const [selectedCompanies, setSelectedCompanies] = usePreference("cashflow.companies");
+  const [hiddenSections, setHiddenSections] = usePreference("ui.cashflowHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
@@ -123,6 +130,22 @@ export default function CashflowPage() {
     if (focusedCompany && preferredCompanySet.has(focusedCompany)) return [focusedCompany];
     return normalizedSelectedCompanies;
   }, [focusedCompany, normalizedSelectedCompanies, preferredCompanySet]);
+
+  /**
+   * Id-čka len ZVOLENÝCH firiem, nie všetkého, čo sa stiahlo.
+   *
+   * `selectedCompanyIds` je záložné párovanie k výberu podľa mena — keď sa firma v KROSe
+   * premenuje, výber podľa mena by ju nenašiel. Kým sme tam posielali všetky
+   * synchronizované firmy, tá podmienka prepustila každý účet a rozkliknutá firma prehľad
+   * nezúžila: filter fungoval len preto, že sám zúžil zoznam sťahovaných firiem.
+   */
+  const selectedCompanyIds = useMemo(() => {
+    if (effectiveCompanies.length === 0) return [];
+    const selected = new Set(effectiveCompanies);
+    return connections
+      .filter((connection) => selected.has(connection.companyName))
+      .map((connection) => connection.companyId);
+  }, [effectiveCompanies, connections]);
 
   // Prázdny výber = všetky prepojené firmy; inak prienik. Neprázdny výber bez prieniku
   // nesťahuje nič a povie to hláškou — nespadne späť na sťahovanie všetkých firiem.
@@ -365,10 +388,10 @@ export default function CashflowPage() {
             transactions: liveTransactions,
             granularity,
             selectedCompanies: effectiveCompanies,
-            allowedCompanyIds: syncConnections.map((connection) => connection.companyId)
+            selectedCompanyIds
           })
         : null,
-    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies, syncConnections]
+    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies, selectedCompanyIds]
   );
 
   const mockOverview = useMemo(
@@ -398,12 +421,31 @@ export default function CashflowPage() {
   // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
   const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
 
+  const sectionOptions = useMemo<VisibilityOption[]>(
+    () => [
+      {
+        id: CASHFLOW_SECTIONS.companies,
+        label: "Financie podľa firiem",
+        filterCount: selectedCompanies.length
+      }
+    ],
+    [selectedCompanies]
+  );
+
+  const isSectionHidden = (id: string) => hiddenSections.includes(id);
+
   return (
     <DashboardShell
       title="Financie"
       isSyncing={isLoadingLiveData}
       syncNote="Pohyby na účtoch ťaháme pre každú firmu naraz, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      categoryVisibility={{
+        categoryOptions: [],
+        sectionOptions,
+        hiddenIds: hiddenSections,
+        onHiddenIdsChange: setHiddenSections
+      }}
     >
       {isPreparingModule ? <ModuleSkeleton label="Načítavam financie…" /> : null}
       {isPreparingModule ? null : (
@@ -425,6 +467,7 @@ export default function CashflowPage() {
           setFocusedCompany(null);
         }}
       />
+      {isSectionHidden(CASHFLOW_SECTIONS.companies) ? null : (
       <CompaniesDashboard
         title="Financie podľa firiem"
         companies={filteredCompanies}
@@ -434,6 +477,7 @@ export default function CashflowPage() {
         onSelectionChange={updateSelectionWithFocusedGuard}
         onFocusedCompanyChange={setFocusedCompany}
       />
+      )}
         </>
       )}
     </DashboardShell>

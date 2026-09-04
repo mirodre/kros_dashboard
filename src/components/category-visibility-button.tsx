@@ -3,17 +3,25 @@
 import { useState } from "react";
 import { SheetOverlay } from "./sheet-overlay";
 
-export type CategoryVisibilitySettings = {
-  /** Všetky kategórie, ktoré prehľad v dátach má — v poradí sekcií. */
-  categories: string[];
-  /** Skryté kategórie. Čo tu nie je, je zobrazené — nová kategória teda príde viditeľná. */
-  hiddenCategories: string[];
+export type VisibilityOption = {
+  /** Kategórie štítkov majú `id` rovné svojmu názvu, pevné sekcie prefix `section:`. */
+  id: string;
+  label: string;
   /**
-   * Počet zvolených štítkov na kategóriu. Skrytie kategórie jej filter NERUŠÍ, takže to
-   * treba pri prepínači vidieť — inak by čísla v prehľade zúžil filter, ktorý nikde nie je.
+   * Počet zvolených položiek, ak na sekcii visí filter. Skrytie sekcie filter NERUŠÍ,
+   * takže to treba pri prepínači vidieť — inak by čísla v prehľade zúžil filter, ktorý
+   * nikde nie je.
    */
-  activeFilterCounts?: Record<string, number>;
-  onHiddenCategoriesChange: (hidden: string[]) => void;
+  filterCount?: number;
+};
+
+export type CategoryVisibilitySettings = {
+  /** Kategórie štítkov v poradí sekcií. */
+  categoryOptions: VisibilityOption[];
+  /** Pevné sekcie modulu (dodávatelia, doklady, firmy). */
+  sectionOptions: VisibilityOption[];
+  hiddenIds: string[];
+  onHiddenIdsChange: (hidden: string[]) => void;
 };
 
 type Props = CategoryVisibilitySettings & {
@@ -22,30 +30,88 @@ type Props = CategoryVisibilitySettings & {
 };
 
 /**
- * Ikona v hlavičke modulu, ktorá vysunie zoznam kategórií a dá ich vypnúť. Kategórií býva
- * veľa a nie každý ich chce mať pod hlavným grafom všetky — výber je osobný, drží ho
- * `ui.*HiddenCategories`.
+ * Ikona v hlavičke modulu, ktorá vysunie zoznam sekcií pod hlavným grafom a dá ich vypnúť.
+ * Kategórií štítkov býva veľa a nie každý ich chce mať všetky — výber je osobný, drží ho
+ * `ui.*HiddenSections`.
  */
 export function CategoryVisibilityButton({
-  categories,
-  hiddenCategories,
-  activeFilterCounts = {},
-  onHiddenCategoriesChange,
+  categoryOptions,
+  sectionOptions,
+  hiddenIds,
+  onHiddenIdsChange,
   moduleTitle
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const hiddenSet = new Set(hiddenCategories);
-  const visibleCount = categories.filter((category) => !hiddenSet.has(category)).length;
-  // Skrytá kategória s filtrom potichu zužuje celý prehľad — bodka na ikone je jediné
+  const allOptions = [...categoryOptions, ...sectionOptions];
+  const hiddenSet = new Set(hiddenIds);
+  const visibleCount = allOptions.filter((option) => !hiddenSet.has(option.id)).length;
+  // Skrytá sekcia s filtrom potichu zužuje celý prehľad — bodka na ikone je jediné
   // miesto, kde sa to v hlavičke dá zaregistrovať.
-  const hasHiddenFilters = hiddenCategories.some((category) => (activeFilterCounts[category] ?? 0) > 0);
+  const hasHiddenFilters = allOptions.some(
+    (option) => hiddenSet.has(option.id) && (option.filterCount ?? 0) > 0
+  );
 
-  const toggleCategory = (category: string) => {
-    onHiddenCategoriesChange(
-      hiddenSet.has(category)
-        ? hiddenCategories.filter((name) => name !== category)
-        : [...hiddenCategories, category]
+  const toggleOption = (id: string) => {
+    onHiddenIdsChange(
+      hiddenSet.has(id) ? hiddenIds.filter((hidden) => hidden !== id) : [...hiddenIds, id]
+    );
+  };
+
+  const label = hasHiddenFilters
+    ? "Zobrazené sekcie — skrytá sekcia má aktívny filter"
+    : "Zobrazené sekcie";
+
+  const renderOptions = (options: VisibilityOption[], groupLabel: string) => {
+    if (options.length === 0) return null;
+
+    return (
+      <div className="category-visibility-group">
+        <p className="category-visibility-group-label">{groupLabel}</p>
+        <div className="category-visibility-options">
+          {options.map((option) => {
+            const isVisible = !hiddenSet.has(option.id);
+            const filterCount = option.filterCount ?? 0;
+
+            return (
+              <button
+                type="button"
+                key={option.id}
+                className="category-visibility-row"
+                onClick={() => toggleOption(option.id)}
+                aria-pressed={isVisible}
+              >
+                <span className="category-visibility-name">
+                  {option.label}
+                  {filterCount > 0 ? (
+                    <span
+                      className="category-filter-hint"
+                      title={`Aktívny filter: ${filterCount}`}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                        <path
+                          d="M4 5.5h16l-6.4 7.6v5.2l-3.2-1.8v-3.4L4 5.5z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      {filterCount}
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  className={isVisible ? "category-switch is-on" : "category-switch"}
+                  aria-hidden="true"
+                >
+                  <span className="category-switch-knob" />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     );
   };
 
@@ -55,22 +121,15 @@ export function CategoryVisibilityButton({
         type="button"
         className={[
           "header-icon-btn",
-          hiddenCategories.length > 0 ? "is-active" : "",
+          "category-visibility-trigger",
+          hiddenIds.length > 0 ? "is-active" : "",
           hasHiddenFilters ? "has-hidden-filters" : ""
         ]
           .filter(Boolean)
           .join(" ")}
         onClick={() => setIsOpen(true)}
-        aria-label={
-          hasHiddenFilters
-            ? "Zobrazené kategórie — skrytá kategória má aktívny filter"
-            : "Zobrazené kategórie"
-        }
-        title={
-          hasHiddenFilters
-            ? "Zobrazené kategórie — skrytá kategória má aktívny filter"
-            : "Zobrazené kategórie"
-        }
+        aria-label={label}
+        title={label}
       >
         <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 7h9" />
@@ -92,64 +151,27 @@ export function CategoryVisibilityButton({
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={`Zobrazené kategórie – ${moduleTitle}`}
+            aria-label={`Zobrazené sekcie – ${moduleTitle}`}
           >
             <header className="tag-filter-head">
-              <h4>Zobrazené kategórie</h4>
+              <h4>Zobrazené sekcie</h4>
               <button type="button" className="filter-close" onClick={() => setIsOpen(false)}>
                 Zavrieť
               </button>
             </header>
 
             <p className="tag-filter-help">
-              Vyklikaj kategórie, ktoré chceš mať pod hlavným grafom. Vypnutá kategória sa iba
-              skryje — jej štítky ostávajú v grafe aj v číslach a jej filter platí ďalej.
-              Kategórie s aktívnym filtrom sú označené lievikom.
+              Vyklikaj, čo chceš mať pod hlavným grafom. Vypnutá sekcia sa iba skryje — jej
+              štítky ostávajú v grafe aj v číslach a jej filter platí ďalej. Sekcie s aktívnym
+              filtrom sú označené lievikom.
             </p>
 
-            {categories.length === 0 ? (
-              <p className="tag-sub">Tento prehľad zatiaľ žiadne kategórie štítkov nemá.</p>
+            {allOptions.length === 0 ? (
+              <p className="tag-sub">Tento prehľad zatiaľ žiadne sekcie na skrytie nemá.</p>
             ) : (
-              <div className="category-visibility-options">
-                {categories.map((category) => {
-                  const isVisible = !hiddenSet.has(category);
-                  const filterCount = activeFilterCounts[category] ?? 0;
-                  return (
-                    <button
-                      type="button"
-                      key={category}
-                      className="category-visibility-row"
-                      onClick={() => toggleCategory(category)}
-                      aria-pressed={isVisible}
-                    >
-                      <span className="category-visibility-name">
-                        {category}
-                        {filterCount > 0 ? (
-                          <span
-                            className="category-filter-hint"
-                            title={`Aktívny filter: ${filterCount} ${
-                              filterCount === 1 ? "štítok" : filterCount < 5 ? "štítky" : "štítkov"
-                            }`}
-                          >
-                            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                              <path
-                                d="M3.4 4.6h13.2a.75.75 0 0 1 .58 1.23l-4.83 5.79v4.03a.75.75 0 0 1-1.12.65l-2.6-1.5a.75.75 0 0 1-.37-.65v-2.53L2.82 5.83A.75.75 0 0 1 3.4 4.6z"
-                                fill="currentColor"
-                              />
-                            </svg>
-                            {filterCount}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span
-                        className={isVisible ? "category-switch is-on" : "category-switch"}
-                        aria-hidden="true"
-                      >
-                        <span className="category-switch-knob" />
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="category-visibility-scroll">
+                {renderOptions(categoryOptions, "Kategórie štítkov")}
+                {renderOptions(sectionOptions, "Ostatné sekcie")}
               </div>
             )}
 
@@ -157,13 +179,13 @@ export function CategoryVisibilityButton({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => onHiddenCategoriesChange([])}
-                disabled={hiddenCategories.length === 0}
+                onClick={() => onHiddenIdsChange([])}
+                disabled={hiddenIds.length === 0}
               >
                 Zobraziť všetky
               </button>
               <button type="button" className="sync-button" onClick={() => setIsOpen(false)}>
-                Hotovo ({visibleCount} z {categories.length})
+                Hotovo ({visibleCount} z {allOptions.length})
               </button>
             </footer>
           </div>

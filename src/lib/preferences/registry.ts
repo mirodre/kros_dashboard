@@ -24,11 +24,13 @@ export type PreferenceValueMap = {
   /** Kategórie štítkov zobrazené v donute Výdavkov — lupa na graf, nie firemný filter. */
   "ui.expensesDonutCategories": string[];
   /**
-   * SKRYTÉ kategórie sekcií pod hlavným grafom. Zámerne skryté, nie zobrazené: nová
-   * kategória tak príde v KROSe rovno viditeľná a netreba ju v appke zapínať.
+   * SKRYTÉ sekcie pod hlavným grafom — kategórie štítkov (id = názov kategórie) aj pevné
+   * sekcie (id s prefixom `section:`). Zámerne skryté, nie zobrazené: nová kategória tak
+   * príde z KROSu rovno viditeľná a netreba ju v appke zapínať.
    */
-  "ui.revenueHiddenCategories": string[];
-  "ui.expensesHiddenCategories": string[];
+  "ui.revenueHiddenSections": string[];
+  "ui.expensesHiddenSections": string[];
+  "ui.cashflowHiddenSections": string[];
   "ui.collapsed.companies": boolean;
   "ui.collapsed.expensesCompanies": boolean;
   "ui.collapsed.recentInvoices": boolean;
@@ -139,15 +141,21 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
     default: [],
     isValid: isStringArray
   },
-  "ui.revenueHiddenCategories": {
+  "ui.revenueHiddenSections": {
     level: "user",
-    storageKey: "kros_dashboard_revenue_hidden_categories",
+    storageKey: "kros_dashboard_revenue_hidden_sections",
     default: [],
     isValid: isStringArray
   },
-  "ui.expensesHiddenCategories": {
+  "ui.expensesHiddenSections": {
     level: "user",
-    storageKey: "kros_dashboard_expenses_hidden_categories",
+    storageKey: "kros_dashboard_expenses_hidden_sections",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.cashflowHiddenSections": {
+    level: "user",
+    storageKey: "kros_dashboard_cashflow_hidden_sections",
     default: [],
     isValid: isStringArray
   },

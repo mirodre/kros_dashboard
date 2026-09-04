@@ -24,10 +24,14 @@ export function FilterIconButton({ label, activeCount = 0, onClick }: Props) {
       aria-label={title}
       title={title}
     >
-      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      {/* Nevyplnený lievik: filter je pomocná akcia, nemá v hlavičke ťahať oko na seba. */}
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
         <path
-          d="M3.4 4.6h13.2a.75.75 0 0 1 .58 1.23l-4.83 5.79v4.03a.75.75 0 0 1-1.12.65l-2.6-1.5a.75.75 0 0 1-.37-.65v-2.53L2.82 5.83A.75.75 0 0 1 3.4 4.6z"
-          fill="currentColor"
+          d="M4 5.5h16l-6.4 7.6v5.2l-3.2-1.8v-3.4L4 5.5z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
       </svg>
       {isActive ? <span className="filter-icon-badge">{activeCount}</span> : null}

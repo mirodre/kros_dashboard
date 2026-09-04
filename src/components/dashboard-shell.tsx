@@ -17,8 +17,8 @@ type Props = {
   /** Vysvetlenie dlhého prvého načítania pre obrazovku sťahovania. */
   syncNote?: string;
   title?: string;
-  /** Keď modul má kategórie štítkov, v hlavičke pribudne prepínač ich zobrazenia. */
-  categoryVisibility?: CategoryVisibilitySettings & { activeFilterCounts?: Record<string, number> };
+  /** Keď má modul čo skrývať, v hlavičke pribudne prepínač zobrazených sekcií. */
+  categoryVisibility?: CategoryVisibilitySettings;
 };
 
 export function DashboardShell({
@@ -94,7 +94,8 @@ export function DashboardShell({
           <h1>{title}</h1>
         </div>
         <div className="header-actions">
-          {categoryVisibility && categoryVisibility.categories.length > 0 ? (
+          {categoryVisibility &&
+          categoryVisibility.categoryOptions.length + categoryVisibility.sectionOptions.length > 0 ? (
             <CategoryVisibilityButton {...categoryVisibility} moduleTitle={title} />
           ) : null}
           {onRefresh ? (

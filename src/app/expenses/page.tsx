@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ModuleSkeleton } from "@/components/module-skeleton";
+import type { VisibilityOption } from "@/components/category-visibility-button";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ExpensesDashboard } from "@/components/expenses-dashboard";
@@ -213,6 +214,16 @@ function scopeExpensesToTags(
   return scopeExpenseAmountsToTagFilters(matching, filters, focusedTags, tagCategoryIndex);
 }
 
+/**
+ * Id pevných sekcií pre prepínač zobrazenia. Prefix `section:` ich odlišuje od kategórií
+ * štítkov, ktoré v tom istom zozname vystupujú pod svojím názvom.
+ */
+const EXPENSE_SECTIONS = {
+  vendors: "section:vendors",
+  recentExpenses: "section:recentExpenses",
+  companies: "section:companies"
+} as const;
+
 export default function ExpensesPage() {
   // Nastavenia sú v spoločnom store (server + `localStorage` ako cache), nie v stave stránky.
   const [granularity, setGranularity] = usePreference("ui.granularity");
@@ -221,7 +232,7 @@ export default function ExpensesPage() {
   // štítku si pamätá aj sekciu, v ktorej klik vznikol: tá sa vlastným focusom nezužuje.
   const [focusedTags, setFocusedTags] = useState<FocusedTag[]>([]);
   const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
-  const [hiddenCategories, setHiddenCategories] = usePreference("ui.expensesHiddenCategories");
+  const [hiddenSections, setHiddenSections] = usePreference("ui.expensesHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
@@ -604,23 +615,34 @@ export default function ExpensesPage() {
   );
 
   // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
-  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť.
-  const availableCategories = useMemo(() => {
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť. Skrytie
+  // kategórie jej filter nezruší, takže prepínač zároveň ukazuje, kde filter visí.
+  const categoryOptions = useMemo<VisibilityOption[]>(() => {
     if (!hasRealCategories(tagCategoryIndex)) return [];
     const categories = new Set(
       availableTagsData.map((point) => categoryForTag(tagCategoryIndex, point.name))
     );
-    return sortTagCategories(Array.from(categories));
-  }, [availableTagsData, tagCategoryIndex]);
+    return sortTagCategories(Array.from(categories)).map((category) => ({
+      id: category,
+      label: category,
+      filterCount: sanitizedCategoryFilters[category]?.length ?? 0
+    }));
+  }, [availableTagsData, tagCategoryIndex, sanitizedCategoryFilters]);
 
-  // Skrytie kategórie jej filter nezruší, takže prepínač musí vedieť, kde filter visí.
-  const categoryFilterCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const [category, tags] of Object.entries(sanitizedCategoryFilters)) {
-      if (tags.length > 0) counts[category] = tags.length;
-    }
-    return counts;
-  }, [sanitizedCategoryFilters]);
+  const sectionOptions = useMemo<VisibilityOption[]>(
+    () => [
+      { id: EXPENSE_SECTIONS.vendors, label: "Top dodávatelia" },
+      { id: EXPENSE_SECTIONS.recentExpenses, label: "Posledné výdavky" },
+      {
+        id: EXPENSE_SECTIONS.companies,
+        label: "Výdavky podľa firiem",
+        filterCount: selectedCompanies.length
+      }
+    ],
+    [selectedCompanies]
+  );
+
+  const isSectionHidden = (id: string) => hiddenSections.includes(id);
 
   const tagsData = useMemo(() => {
     const filterPoints = computeExpenseTagBreakdown(filterScopedExpenses, effectiveCompanies).filter(
@@ -727,10 +749,10 @@ export default function ExpensesPage() {
       syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
       categoryVisibility={{
-        categories: availableCategories,
-        hiddenCategories,
-        activeFilterCounts: categoryFilterCounts,
-        onHiddenCategoriesChange: setHiddenCategories
+        categoryOptions,
+        sectionOptions,
+        hiddenIds: hiddenSections,
+        onHiddenIdsChange: setHiddenSections
       }}
     >
       {isPreparingModule ? <ModuleSkeleton label="Načítavam výdavky…" /> : null}
@@ -763,13 +785,16 @@ export default function ExpensesPage() {
         ariaLabelPrefix="Filtrovať výdavky podľa štítku"
         categoryFilters={sanitizedCategoryFilters}
         focusedTags={effectiveFocusedTags}
-        hiddenCategories={hiddenCategories}
+        hiddenCategories={hiddenSections}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         onFocusedTagsChange={handleSectionFocusChange}
         invertDeltaColor
       />
-      <ExpenseVendorsSection vendors={vendors} />
-      <RecentExpensesSection expenses={recentExpenses} />
+      {isSectionHidden(EXPENSE_SECTIONS.vendors) ? null : <ExpenseVendorsSection vendors={vendors} />}
+      {isSectionHidden(EXPENSE_SECTIONS.recentExpenses) ? null : (
+        <RecentExpensesSection expenses={recentExpenses} />
+      )}
+      {isSectionHidden(EXPENSE_SECTIONS.companies) ? null : (
       <CompaniesDashboard
         title="Výdavky podľa firiem"
         companies={companiesData}
@@ -790,6 +815,7 @@ export default function ExpensesPage() {
         }
         onFocusedCompanyChange={setFocusedCompany}
       />
+      )}
         </>
       )}
     </DashboardShell>

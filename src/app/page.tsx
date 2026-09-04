@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ModuleSkeleton } from "@/components/module-skeleton";
+import type { VisibilityOption } from "@/components/category-visibility-button";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
@@ -152,6 +153,15 @@ function withLastModifiedOverlap(value: string) {
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
 }
 
+/**
+ * Id pevných sekcií pre prepínač zobrazenia. Prefix `section:` ich odlišuje od kategórií
+ * štítkov, ktoré v tom istom zozname vystupujú pod svojím názvom.
+ */
+const REVENUE_SECTIONS = {
+  recentInvoices: "section:recentInvoices",
+  companies: "section:companies"
+} as const;
+
 export default function HomePage() {
   // Nastavenia žijú v spoločnom store (server + `localStorage` ako cache), nie v stave
   // stránky: to je celý zmysel tejto fázy — filtre nasledujú človeka na iné zariadenie.
@@ -159,7 +169,7 @@ export default function HomePage() {
   const [categoryFilters, setCategoryFilters] = usePreference("revenue.tagFilters");
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = usePreference("revenue.companies");
-  const [hiddenCategories, setHiddenCategories] = usePreference("ui.revenueHiddenCategories");
+  const [hiddenSections, setHiddenSections] = usePreference("ui.revenueHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
@@ -460,23 +470,33 @@ export default function HomePage() {
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
 
   // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
-  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť.
-  const availableCategories = useMemo(() => {
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť. Skrytie
+  // kategórie jej filter nezruší, takže prepínač zároveň ukazuje, kde filter visí.
+  const categoryOptions = useMemo<VisibilityOption[]>(() => {
     if (!hasRealCategories(tagCategoryIndex)) return [];
     const categories = new Set(
       availableTagsData.map((point) => categoryForTag(tagCategoryIndex, point.name))
     );
-    return sortTagCategories(Array.from(categories));
-  }, [availableTagsData, tagCategoryIndex]);
+    return sortTagCategories(Array.from(categories)).map((category) => ({
+      id: category,
+      label: category,
+      filterCount: categoryFilters[category]?.length ?? 0
+    }));
+  }, [availableTagsData, tagCategoryIndex, categoryFilters]);
 
-  // Skrytie kategórie jej filter nezruší, takže prepínač musí vedieť, kde filter visí.
-  const categoryFilterCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const [category, tags] of Object.entries(categoryFilters)) {
-      if (tags.length > 0) counts[category] = tags.length;
-    }
-    return counts;
-  }, [categoryFilters]);
+  const sectionOptions = useMemo<VisibilityOption[]>(
+    () => [
+      { id: REVENUE_SECTIONS.recentInvoices, label: "Posledné faktúry" },
+      {
+        id: REVENUE_SECTIONS.companies,
+        label: "Tržby podľa firiem",
+        filterCount: selectedCompanies.length
+      }
+    ],
+    [selectedCompanies]
+  );
+
+  const isSectionHidden = (id: string) => hiddenSections.includes(id);
 
   const tagsData = useMemo(() => {
     const filterPoints = hasLiveMode
@@ -559,10 +579,10 @@ export default function HomePage() {
       syncNote="Faktúry ťaháme po mesiacoch, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
       categoryVisibility={{
-        categories: availableCategories,
-        hiddenCategories,
-        activeFilterCounts: categoryFilterCounts,
-        onHiddenCategoriesChange: setHiddenCategories
+        categoryOptions,
+        sectionOptions,
+        hiddenIds: hiddenSections,
+        onHiddenIdsChange: setHiddenSections
       }}
     >
       {isPreparingModule ? <ModuleSkeleton label="Načítavam tržby…" /> : null}
@@ -588,13 +608,16 @@ export default function HomePage() {
         availableTags={availableTagsData}
         categoryIndex={tagCategoryIndex}
         categoryFilters={categoryFilters}
-        hiddenCategories={hiddenCategories}
+        hiddenCategories={hiddenSections}
         focusedTags={focusedTag ? [focusedTag] : []}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         // Tržby ostávajú na jednom focusnutom štítku — z klikov berieme ten posledný.
         onFocusedTagsChange={(tags) => setFocusedTag(tags[tags.length - 1] ?? null)}
       />
-      <RecentInvoicesSection invoices={recentInvoices} />
+      {isSectionHidden(REVENUE_SECTIONS.recentInvoices) ? null : (
+        <RecentInvoicesSection invoices={recentInvoices} />
+      )}
+      {isSectionHidden(REVENUE_SECTIONS.companies) ? null : (
       <CompaniesDashboard
         companies={companiesData}
         selectedCompanies={selectedCompanies}
@@ -610,6 +633,7 @@ export default function HomePage() {
         }
         onFocusedCompanyChange={setFocusedCompany}
       />
+      )}
         </>
       )}
     </DashboardShell>

@@ -2050,7 +2050,12 @@ body {
     display: none;
   }
 
-  .header-actions {
+  /*
+   * Hlavička na mobile nemá odhlásenie (je v Nastaveniach) ani obnovenie (rieši ho
+   * potiahnutie prstom) — schovávame preto jednotlivé akcie, nie celú skupinu. Prepínač
+   * zobrazených kategórií tu ostáva, na mobile je potrebný najviac.
+   */
+  .header-actions > *:not(.category-visibility-trigger) {
     display: none;
   }
 
@@ -2520,56 +2525,48 @@ body {
   }
 }
 
-/* Filter v hlavičke sekcie: ikona namiesto textového tlačidla, aby hlavička nekričala. */
+/*
+ * Filter v hlavičke sekcie: len nevyplnená ikona, bez krúžku a podkladu. Textové tlačidlo
+ * („Filter štítkov (5)“) aj krúžok okolo ikony brali v hlavičke priveľa pozornosti — filter
+ * je pomocná akcia, nadpis sekcie má ostať tým najvýraznejším prvkom.
+ */
 .filter-icon-button {
   align-items: center;
-  background: linear-gradient(180deg, #212d4f 0%, #1a2340 100%);
-  border: 1px solid #3b4d85;
-  border-radius: 999px;
-  color: #b9c6ef;
+  background: transparent;
+  border: 0;
+  color: #7f8cb4;
   cursor: pointer;
   display: inline-flex;
   flex: 0 0 auto;
-  height: 34px;
+  height: 30px;
   justify-content: center;
   padding: 0;
   position: relative;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-  width: 34px;
+  transition: color 160ms ease;
+  width: 30px;
 }
 
 .filter-icon-button svg {
-  height: 17px;
-  width: 17px;
+  height: 19px;
+  width: 19px;
 }
 
 .filter-icon-button:hover {
-  border-color: #5a76cb;
-  color: #f2f5ff;
+  color: #dbe4ff;
 }
 
 .filter-icon-button.is-active {
-  border-color: rgba(162, 187, 255, 0.85);
-  color: #f2f5ff;
+  color: #b8c8ff;
 }
 
 .filter-icon-badge {
-  align-items: center;
-  background: #6d8cf5;
-  border: 1px solid #0f1730;
-  border-radius: 999px;
-  color: #0d1226;
-  display: flex;
-  font-size: 0.62rem;
-  font-weight: 800;
-  height: 16px;
-  justify-content: center;
+  color: #93a9f2;
+  font-size: 0.64rem;
+  font-weight: 700;
   line-height: 1;
-  min-width: 16px;
-  padding: 0 0.18rem;
   position: absolute;
-  right: -3px;
-  top: -3px;
+  right: -1px;
+  top: 0;
 }
 
 /* Šípky legendy donutu — na desktope je to jediný spôsob, ako sa dostať ku kartám za hranou. */
@@ -2646,8 +2643,13 @@ body {
 .category-visibility-options {
   display: grid;
   gap: 0.4rem;
+  margin: 0.2rem 0 0.6rem;
+}
+
+/* Skupiny sa scrollujú spolu, aby dlhý zoznam kategórií nezatlačil tlačidlá zo sheetu. */
+.category-visibility-scroll {
   margin: 0.2rem 0 0.9rem;
-  max-height: min(52vh, 380px);
+  max-height: min(52vh, 400px);
   overflow-y: auto;
 }
 
@@ -2797,4 +2799,16 @@ body {
   .skeleton-bar {
     animation: none;
   }
+}
+
+.category-visibility-group + .category-visibility-group {
+  margin-top: 0.7rem;
+}
+
+.category-visibility-group-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
 }

@@ -236,22 +236,29 @@ export function computeCashflowOverviewFromLiveData({
   transactions,
   granularity,
   selectedCompanies,
-  allowedCompanyIds
+  selectedCompanyIds
 }: {
   accounts: NormalizedPaymentAccount[];
   transactions: NormalizedPaymentTransaction[];
   granularity: Granularity;
   selectedCompanies: string[];
-  /** When set (e.g. from filtered KROS connections), match accounts by `companyId` in addition to `companyName`. */
-  allowedCompanyIds?: number[];
+  /**
+   * Id-čka ZVOLENÝCH firiem — záložné párovanie k `selectedCompanies` pre prípad, že sa
+   * firma v KROSe premenovala a podľa mena by sa nenašla.
+   *
+   * Meno a id sú v OR, takže tu smú byť len id-čka zvolených firiem. Kým sa sem posielali
+   * všetky synchronizované firmy (parameter sa vtedy volal `allowedCompanyIds`), podmienka
+   * prepustila každý účet a rozkliknutá firma prehľad nezúžila.
+   */
+  selectedCompanyIds?: number[];
 }): CashflowOverview {
   const selectedCompanySet = new Set(selectedCompanies);
-  const allowedIdSet =
-    allowedCompanyIds && allowedCompanyIds.length > 0 ? new Set(allowedCompanyIds) : null;
+  const selectedIdSet =
+    selectedCompanyIds && selectedCompanyIds.length > 0 ? new Set(selectedCompanyIds) : null;
 
   const accountScope = accounts.filter((account) => {
     if (selectedCompanySet.size === 0) return true;
-    if (allowedIdSet && account.companyId != null && allowedIdSet.has(account.companyId)) return true;
+    if (selectedIdSet && account.companyId != null && selectedIdSet.has(account.companyId)) return true;
     return selectedCompanySet.has(account.companyName);
   });
   const accountIdScope = new Set(accountScope.map((account) => account.id));
