@@ -13,8 +13,11 @@ import {
 } from "@/lib/tag-categories";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { parseDocumentDate } from "@/lib/document-date";
+import { useDonutEntrance } from "@/lib/use-donut-entrance";
 import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
+import { DonutLegend } from "./donut-legend";
+import { FilterIconButton } from "./filter-icon-button";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow, ExpenseScopeNote } from "./recent-expenses-section";
@@ -65,7 +68,6 @@ export function ExpensesDashboard({
   const [detailSide, setDetailSide] = useState<"current" | "previous">("current");
   const [isDueSheetOpen, setIsDueSheetOpen] = useState(false);
   const [dueSheetTab, setDueSheetTab] = useState<"overdue" | "upcoming">("overdue");
-  const [isPieAnimated, setIsPieAnimated] = useState(false);
   // Lupa na graf je osobné nastavenie, preto ide cez `usePreference`, nie cez vlastný
   // zápis do localStorage — server aj lokálna cache tak držia jeden tvar.
   const [donutCategoryFilter, setDonutCategoryFilter] = usePreference("ui.expensesDonutCategories");
@@ -153,6 +155,11 @@ export function ExpensesDashboard({
     });
   }, [visibleTagStructure]);
 
+  // Pri jednej zvolenej kategórii graf ukazuje práve ju, tak ju rovno aj pomenuje —
+  // pri viacerých alebo žiadnej ostáva všeobecný názov.
+  const donutTitle =
+    activeDonutCategories.length === 1 ? activeDonutCategories[0] : "Štruktúra výdavkov";
+
   const donutTotal = useMemo(
     () => donutData.reduce((sum, slice) => sum + slice.amount, 0),
     [donutData]
@@ -169,11 +176,15 @@ export function ExpensesDashboard({
   );
   const activeSlice = focusedSlices.length === 1 ? focusedSlices[0] : null;
 
-  useEffect(() => {
-    setIsPieAnimated(false);
-    const timeout = window.setTimeout(() => setIsPieAnimated(true), 70);
-    return () => window.clearTimeout(timeout);
-  }, [donutData]);
+  // Podpis geometrie donutu. Klik na štítok v donute prepočíta `donutData` na nové pole
+  // s tými istými výsekmi — animáciu preto viažeme na obsah, nie na identitu poľa. Inak
+  // by sa graf rozbehol odznova pri každom kliknutí, aj keď sa v ňom nič nemení.
+  const donutShapeKey = useMemo(
+    () => donutData.map((slice) => `${slice.name}:${slice.amount}`).join("|"),
+    [donutData]
+  );
+
+  const isPieAnimated = useDonutEntrance(donutShapeKey);
 
   useEffect(() => {
     return () => {
@@ -355,12 +366,13 @@ export function ExpensesDashboard({
 
       <article className="panel">
         <header className="panel-head">
-          <h3>Štruktúra výdavkov podľa štítkov</h3>
+          <h3>{donutTitle}</h3>
           {showCategoryFilter ? (
-            <button type="button" className="secondary-button" onClick={openCategoryFilter}>
-              Filter kategórií
-              {activeDonutCategories.length > 0 ? ` (${activeDonutCategories.length})` : ""}
-            </button>
+            <FilterIconButton
+              label="Filter kategórií"
+              activeCount={activeDonutCategories.length}
+              onClick={openCategoryFilter}
+            />
           ) : null}
         </header>
         <div className="cashflow-donut-wrap">
@@ -426,7 +438,7 @@ export function ExpensesDashboard({
             </div>
           </div>
 
-            <ul className="cashflow-donut-legend">
+            <DonutLegend ariaLabel="Štítky v grafe štruktúry výdavkov">
               {donutData.map((slice) => {
                 const deltaValue = slice.amount - slice.previousAmount;
                 return (
@@ -451,7 +463,7 @@ export function ExpensesDashboard({
                   </li>
                 );
               })}
-            </ul>
+            </DonutLegend>
         </div>
         {donutData.length === 0 && activeDonutCategories.length > 0 ? (
           <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>

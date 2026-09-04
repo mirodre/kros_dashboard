@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { KpiCard } from "@/lib/mock-data";
 import type {
   CashflowAccountPoint,
@@ -9,6 +9,8 @@ import type {
 } from "@/lib/cashflow-mock-data";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
 import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
+import { useDonutEntrance } from "@/lib/use-donut-entrance";
+import { DonutLegend } from "./donut-legend";
 import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
@@ -36,17 +38,7 @@ export function CashflowDashboard({
   onClearCompanyFilter,
   onResetCompanyFilter
 }: Props) {
-  const legendRef = useRef<HTMLUListElement | null>(null);
-  const lastLegendDragEndedAtRef = useRef(0);
-  const dragStateRef = useRef<{ isPointerDown: boolean; isDragging: boolean; startX: number; startScrollLeft: number }>({
-    isPointerDown: false,
-    isDragging: false,
-    startX: 0,
-    startScrollLeft: 0
-  });
-  const [isLegendDragging, setIsLegendDragging] = useState(false);
   const [activeSliceId, setActiveSliceId] = useState<string | "all">("all");
-  const [isPieAnimated, setIsPieAnimated] = useState(false);
   const [activeFlowLabel, setActiveFlowLabel] = useState<string | null>(null);
   const [isUnsettledSheetOpen, setIsUnsettledSheetOpen] = useState(false);
 
@@ -115,51 +107,14 @@ export function CashflowDashboard({
     setActiveSliceId("all");
   }, [accounts]);
 
-  useEffect(() => {
-    setIsPieAnimated(false);
-    const timeout = window.setTimeout(() => setIsPieAnimated(true), 70);
-    return () => window.clearTimeout(timeout);
-  }, [chartData]);
+  // Podpis výsekov, nie identita poľa: prekreslenie s tými istými zostatkami (klik na
+  // výsek, dorovnané nastavenia po štarte) vstupnú animáciu nespustí.
+  const donutShapeKey = useMemo(
+    () => chartData.map((slice) => `${slice.id}:${slice.amount}`).join("|"),
+    [chartData]
+  );
 
-  const handleLegendPointerDown = (event: React.PointerEvent<HTMLUListElement>) => {
-    const container = legendRef.current;
-    if (!container) return;
-    dragStateRef.current = {
-      isPointerDown: true,
-      isDragging: false,
-      startX: event.clientX,
-      startScrollLeft: container.scrollLeft
-    };
-  };
-
-  const handleLegendPointerMove = (event: React.PointerEvent<HTMLUListElement>) => {
-    const container = legendRef.current;
-    const dragState = dragStateRef.current;
-    if (!container || !dragState.isPointerDown) return;
-    const deltaX = event.clientX - dragState.startX;
-    if (!dragState.isDragging && Math.abs(deltaX) > 6) {
-      dragState.isDragging = true;
-      setIsLegendDragging(true);
-    }
-    if (!dragState.isDragging) return;
-    container.scrollLeft = dragState.startScrollLeft - deltaX;
-  };
-
-  const stopLegendDragging = () => {
-    if (dragStateRef.current.isDragging) {
-      lastLegendDragEndedAtRef.current = Date.now();
-    }
-    dragStateRef.current.isPointerDown = false;
-    dragStateRef.current.isDragging = false;
-    setIsLegendDragging(false);
-  };
-
-  const handleLegendClickCapture = (event: React.MouseEvent<HTMLUListElement>) => {
-    // Ignore only the immediate ghost click right after drag end.
-    if (Date.now() - lastLegendDragEndedAtRef.current > 90) return;
-    event.preventDefault();
-    event.stopPropagation();
-  };
+  const isPieAnimated = useDonutEntrance(donutShapeKey);
 
   const filteredPoints =
     activeSliceId === "all" ? points : (accountPointsById[activeSliceId] ?? points);
@@ -285,16 +240,7 @@ export function CashflowDashboard({
             </div>
           </div>
 
-            <ul
-              ref={legendRef}
-              className={isLegendDragging ? "cashflow-donut-legend is-dragging" : "cashflow-donut-legend"}
-              onPointerDown={handleLegendPointerDown}
-              onPointerMove={handleLegendPointerMove}
-              onPointerUp={stopLegendDragging}
-              onPointerCancel={stopLegendDragging}
-              onPointerLeave={() => stopLegendDragging()}
-              onClickCapture={handleLegendClickCapture}
-            >
+            <DonutLegend ariaLabel="Účty v grafe zostatkov">
               {chartData.map((slice) => (
                 <li key={slice.id}>
                   <button
@@ -317,7 +263,7 @@ export function CashflowDashboard({
                   </button>
                 </li>
               ))}
-            </ul>
+            </DonutLegend>
         </div>
       </article>
 

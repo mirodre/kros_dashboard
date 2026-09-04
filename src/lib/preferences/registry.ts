@@ -23,6 +23,12 @@ export type PreferenceValueMap = {
   "ui.collapsed.tagCategories": string[];
   /** Kategórie štítkov zobrazené v donute Výdavkov — lupa na graf, nie firemný filter. */
   "ui.expensesDonutCategories": string[];
+  /**
+   * SKRYTÉ kategórie sekcií pod hlavným grafom. Zámerne skryté, nie zobrazené: nová
+   * kategória tak príde v KROSe rovno viditeľná a netreba ju v appke zapínať.
+   */
+  "ui.revenueHiddenCategories": string[];
+  "ui.expensesHiddenCategories": string[];
   "ui.collapsed.companies": boolean;
   "ui.collapsed.expensesCompanies": boolean;
   "ui.collapsed.recentInvoices": boolean;
@@ -130,6 +136,18 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
   "ui.expensesDonutCategories": {
     level: "user",
     storageKey: "kros_dashboard_expenses_donut_categories",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.revenueHiddenCategories": {
+    level: "user",
+    storageKey: "kros_dashboard_revenue_hidden_categories",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.expensesHiddenCategories": {
+    level: "user",
+    storageKey: "kros_dashboard_expenses_hidden_categories",
     default: [],
     isValid: isStringArray
   },

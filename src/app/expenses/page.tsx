@@ -2,6 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ModuleSkeleton } from "@/components/module-skeleton";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ExpensesDashboard } from "@/components/expenses-dashboard";
@@ -16,9 +17,12 @@ import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import { usePreference } from "@/lib/use-preference";
 import {
+  categoryForTag,
   documentMatchesTagFilters,
+  hasRealCategories,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
+  sortTagCategories,
   tagFilterKey,
   type TagCategoryFilters,
   type TagCategoryIndex
@@ -217,6 +221,7 @@ export default function ExpensesPage() {
   // štítku si pamätá aj sekciu, v ktorej klik vznikol: tá sa vlastným focusom nezužuje.
   const [focusedTags, setFocusedTags] = useState<FocusedTag[]>([]);
   const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
+  const [hiddenCategories, setHiddenCategories] = usePreference("ui.expensesHiddenCategories");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
@@ -225,6 +230,9 @@ export default function ExpensesPage() {
   const [, setLiveError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
+  // Kým nevieme, či ide o live alebo demo režim (a kým z cache neprídu prvé doklady),
+  // nekreslíme čísla — inak na obrazovke blikne demo suma a hneď ju prepíše skutočná.
+  const [hasResolvedFirstData, setHasResolvedFirstData] = useState(false);
   const handledRefreshNonceRef = useRef(0);
   const {
     beginSync,
@@ -257,6 +265,7 @@ export default function ExpensesPage() {
 
     if (connections.length === 0) {
       setLiveExpenses([]);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -264,6 +273,7 @@ export default function ExpensesPage() {
     if (syncConnections.length === 0) {
       setLiveExpenses([]);
       setIsLoadingLiveData(false);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -330,6 +340,7 @@ export default function ExpensesPage() {
         // Prepočet dashboardu z dokladov je drahý. Ako transition ho React vie
         // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
         startTransition(() => setLiveExpenses(cachedExpenses));
+        setHasResolvedFirstData(true);
       }
 
       setLiveError(null);
@@ -481,6 +492,8 @@ export default function ExpensesPage() {
   ]);
 
   const hasLiveMode = connections.length > 0;
+  // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
+  const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
   const mockExpenses = useMemo(() => (hasLiveMode ? [] : getMockExpenses()), [hasLiveMode]);
   const expenses = hasLiveMode ? liveExpenses : mockExpenses;
@@ -590,6 +603,25 @@ export default function ExpensesPage() {
     [expenses, effectiveCompanies]
   );
 
+  // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť.
+  const availableCategories = useMemo(() => {
+    if (!hasRealCategories(tagCategoryIndex)) return [];
+    const categories = new Set(
+      availableTagsData.map((point) => categoryForTag(tagCategoryIndex, point.name))
+    );
+    return sortTagCategories(Array.from(categories));
+  }, [availableTagsData, tagCategoryIndex]);
+
+  // Skrytie kategórie jej filter nezruší, takže prepínač musí vedieť, kde filter visí.
+  const categoryFilterCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [category, tags] of Object.entries(sanitizedCategoryFilters)) {
+      if (tags.length > 0) counts[category] = tags.length;
+    }
+    return counts;
+  }, [sanitizedCategoryFilters]);
+
   const tagsData = useMemo(() => {
     const filterPoints = computeExpenseTagBreakdown(filterScopedExpenses, effectiveCompanies).filter(
       (point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
@@ -694,7 +726,16 @@ export default function ExpensesPage() {
       isSyncing={isLoadingLiveData}
       syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      categoryVisibility={{
+        categories: availableCategories,
+        hiddenCategories,
+        activeFilterCounts: categoryFilterCounts,
+        onHiddenCategoriesChange: setHiddenCategories
+      }}
     >
+      {isPreparingModule ? <ModuleSkeleton label="Načítavam výdavky…" /> : null}
+      {isPreparingModule ? null : (
+        <>
       {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <ExpensesDashboard
@@ -722,6 +763,7 @@ export default function ExpensesPage() {
         ariaLabelPrefix="Filtrovať výdavky podľa štítku"
         categoryFilters={sanitizedCategoryFilters}
         focusedTags={effectiveFocusedTags}
+        hiddenCategories={hiddenCategories}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         onFocusedTagsChange={handleSectionFocusChange}
         invertDeltaColor
@@ -748,6 +790,8 @@ export default function ExpensesPage() {
         }
         onFocusedCompanyChange={setFocusedCompany}
       />
+        </>
+      )}
     </DashboardShell>
   );
 }

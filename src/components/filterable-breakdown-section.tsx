@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatCurrency, formatDelta, getDeltaPct } from "@/lib/format";
+import { FilterIconButton } from "./filter-icon-button";
 import { SheetOverlay } from "./sheet-overlay";
 
 type BreakdownItem = {
@@ -125,10 +126,11 @@ export function FilterableBreakdownSection({
           ) : (
             <h3>{title}</h3>
           )}
-          <button type="button" className="secondary-button" onClick={openFilter}>
-            {filterLabel}
-            {selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}
-          </button>
+          <FilterIconButton
+            label={filterLabel}
+            activeCount={selectedItems.length}
+            onClick={openFilter}
+          />
         </header>
 
         {!collapsed ? (

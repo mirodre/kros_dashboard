@@ -21,6 +21,11 @@ type Props = {
   availableTags?: AggregatedBreakdownPoint[];
   categoryIndex: TagCategoryIndex;
   categoryFilters: TagCategoryFilters;
+  /**
+   * Kategórie, ktoré si človek v hlavičke vypol. Sekcia sa len nevykreslí — filter
+   * kategórie ostáva v platnosti, takže čísla v prehľade sa skrytím nezmenia.
+   */
+  hiddenCategories?: string[];
   /** Focusnuté štítky naprieč kategóriami v poradí klikov. */
   focusedTags: string[];
   onCategoryFiltersChange: (filters: TagCategoryFilters) => void;
@@ -35,6 +40,7 @@ export function CategorizedTagsDashboard({
   availableTags,
   categoryIndex,
   categoryFilters = {},
+  hiddenCategories = [],
   focusedTags,
   onCategoryFiltersChange,
   onFocusedTagsChange,
@@ -75,6 +81,12 @@ export function CategorizedTagsDashboard({
     return map;
   }, [availableGroups]);
 
+  const hiddenSet = new Set(hiddenCategories);
+  const visibleGroups =
+    hiddenCategories.length === 0
+      ? availableGroups
+      : availableGroups.filter((group) => !hiddenSet.has(group.category));
+
   const showCategories = hasRealCategories(categoryIndex) && availableGroups.length > 0;
 
   if (!showCategories) {
@@ -103,7 +115,7 @@ export function CategorizedTagsDashboard({
   // keď sú všetky jej štítky dočasne mimo scoped breakdownu.
   return (
     <>
-      {availableGroups.map((availableGroup) => {
+      {visibleGroups.map((availableGroup) => {
         const displayGroup = groups.find((group) => group.category === availableGroup.category);
         const selectedForCategory = filters[availableGroup.category] ?? [];
         // Sekcia vidí len focus svojej kategórie; pri zmene ho vrátime k focusu

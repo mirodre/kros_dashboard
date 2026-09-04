@@ -2,6 +2,10 @@
 
 import { useRef, useState } from "react";
 import { formatSyncEta, getSyncFraction, useSyncProgressValue } from "@/lib/use-sync-progress";
+import {
+  CategoryVisibilityButton,
+  type CategoryVisibilitySettings
+} from "@/components/category-visibility-button";
 import { SyncOverlay } from "@/components/sync-overlay";
 
 import { signOutAction } from "@/app/actions/sign-out";
@@ -13,6 +17,8 @@ type Props = {
   /** Vysvetlenie dlhého prvého načítania pre obrazovku sťahovania. */
   syncNote?: string;
   title?: string;
+  /** Keď modul má kategórie štítkov, v hlavičke pribudne prepínač ich zobrazenia. */
+  categoryVisibility?: CategoryVisibilitySettings & { activeFilterCounts?: Record<string, number> };
 };
 
 export function DashboardShell({
@@ -20,7 +26,8 @@ export function DashboardShell({
   isSyncing = false,
   onRefresh,
   syncNote,
-  title = "Príjmy"
+  title = "Príjmy",
+  categoryVisibility
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
   const pullStartYRef = useRef<number | null>(null);
@@ -87,6 +94,9 @@ export function DashboardShell({
           <h1>{title}</h1>
         </div>
         <div className="header-actions">
+          {categoryVisibility && categoryVisibility.categories.length > 0 ? (
+            <CategoryVisibilityButton {...categoryVisibility} moduleTitle={title} />
+          ) : null}
           {onRefresh ? (
             <button
               type="button"

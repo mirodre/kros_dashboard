@@ -2,6 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ModuleSkeleton } from "@/components/module-skeleton";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { RevenueDashboard } from "@/components/revenue-dashboard";
@@ -32,8 +33,10 @@ import { usePreference } from "@/lib/use-preference";
 import {
   categoryForTag,
   documentMatchesTagFilters,
+  hasRealCategories,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
+  sortTagCategories,
   type TagCategoryFilters
 } from "@/lib/tag-categories";
 import type { KrosConnection, NormalizedInvoice } from "@/lib/kros-types";
@@ -156,6 +159,7 @@ export default function HomePage() {
   const [categoryFilters, setCategoryFilters] = usePreference("revenue.tagFilters");
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
   const [selectedCompanies, setSelectedCompanies] = usePreference("revenue.companies");
+  const [hiddenCategories, setHiddenCategories] = usePreference("ui.revenueHiddenCategories");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
@@ -164,6 +168,9 @@ export default function HomePage() {
   const [, setLiveError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
+  // Kým nevieme, či ide o live alebo demo režim (a kým z cache neprídu prvé faktúry),
+  // nekreslíme čísla — inak na obrazovke blikne demo suma a hneď ju prepíše skutočná.
+  const [hasResolvedFirstData, setHasResolvedFirstData] = useState(false);
   const handledRefreshNonceRef = useRef(0);
   const { beginSync, startStep, completeStep, endSync } = useSyncProgress();
 
@@ -191,6 +198,7 @@ export default function HomePage() {
 
     if (connections.length === 0) {
       setLiveInvoices([]);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -198,6 +206,7 @@ export default function HomePage() {
     if (syncConnections.length === 0) {
       setLiveInvoices([]);
       setIsLoadingLiveData(false);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -241,6 +250,7 @@ export default function HomePage() {
         // Prepočet dashboardu z faktúr je drahý. Ako transition ho React vie
         // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
         startTransition(() => setLiveInvoices(cachedInvoices));
+        setHasResolvedFirstData(true);
       }
 
       setLiveError(null);
@@ -391,6 +401,8 @@ export default function HomePage() {
   ]);
 
   const hasLiveMode = connections.length > 0;
+  // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
+  const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
   const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
 
   useEffect(() => {
@@ -446,6 +458,25 @@ export default function HomePage() {
       : getTagsBreakdown(granularity);
     return [...points].sort((a, b) => b.amount - a.amount);
   }, [hasLiveMode, liveInvoices, effectiveCompanies, granularity]);
+
+  // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť.
+  const availableCategories = useMemo(() => {
+    if (!hasRealCategories(tagCategoryIndex)) return [];
+    const categories = new Set(
+      availableTagsData.map((point) => categoryForTag(tagCategoryIndex, point.name))
+    );
+    return sortTagCategories(Array.from(categories));
+  }, [availableTagsData, tagCategoryIndex]);
+
+  // Skrytie kategórie jej filter nezruší, takže prepínač musí vedieť, kde filter visí.
+  const categoryFilterCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [category, tags] of Object.entries(categoryFilters)) {
+      if (tags.length > 0) counts[category] = tags.length;
+    }
+    return counts;
+  }, [categoryFilters]);
 
   const tagsData = useMemo(() => {
     const filterPoints = hasLiveMode
@@ -527,7 +558,16 @@ export default function HomePage() {
       isSyncing={isLoadingLiveData}
       syncNote="Faktúry ťaháme po mesiacoch, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      categoryVisibility={{
+        categories: availableCategories,
+        hiddenCategories,
+        activeFilterCounts: categoryFilterCounts,
+        onHiddenCategoriesChange: setHiddenCategories
+      }}
     >
+      {isPreparingModule ? <ModuleSkeleton label="Načítavam tržby…" /> : null}
+      {isPreparingModule ? null : (
+        <>
       {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <RevenueDashboard
@@ -548,6 +588,7 @@ export default function HomePage() {
         availableTags={availableTagsData}
         categoryIndex={tagCategoryIndex}
         categoryFilters={categoryFilters}
+        hiddenCategories={hiddenCategories}
         focusedTags={focusedTag ? [focusedTag] : []}
         onCategoryFiltersChange={handleCategoryFiltersChange}
         // Tržby ostávajú na jednom focusnutom štítku — z klikov berieme ten posledný.
@@ -569,6 +610,8 @@ export default function HomePage() {
         }
         onFocusedCompanyChange={setFocusedCompany}
       />
+        </>
+      )}
     </DashboardShell>
   );
 }

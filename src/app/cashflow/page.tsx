@@ -4,6 +4,7 @@ import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ModuleSkeleton } from "@/components/module-skeleton";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { CASHFLOW_MOCK_COMPANIES, getCashflowOverview } from "@/lib/cashflow-mock-data";
@@ -86,6 +87,9 @@ export default function CashflowPage() {
   // Prepojenia sú firemné a žijú na serveri.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
+  // Kým nevieme, či ide o live alebo demo režim (a kým z cache neprídu prvé pohyby),
+  // nekreslíme čísla — inak na obrazovke blikne demo suma a hneď ju prepíše skutočná.
+  const [hasResolvedFirstData, setHasResolvedFirstData] = useState(false);
   const [liveAccounts, setLiveAccounts] = useState<NormalizedPaymentAccount[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<NormalizedPaymentTransaction[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -140,6 +144,7 @@ export default function CashflowPage() {
       setLiveAccounts([]);
       setLiveTransactions([]);
       setLiveError(null);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -149,6 +154,7 @@ export default function CashflowPage() {
       setLiveTransactions([]);
       setLiveError(null);
       setIsLoadingLiveData(false);
+      setHasResolvedFirstData(true);
       endSync();
       return;
     }
@@ -233,6 +239,7 @@ export default function CashflowPage() {
           setLiveAccounts(cachedAccounts);
           setLiveTransactions(cachedTransactions);
         });
+        setHasResolvedFirstData(true);
       }
       return { cachedAccounts, cachedTransactions };
     };
@@ -388,6 +395,8 @@ export default function CashflowPage() {
   };
 
   const shouldShowMockData = connections.length === 0 || (!!liveError && !hasLiveData);
+  // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
+  const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
 
   return (
     <DashboardShell
@@ -396,6 +405,9 @@ export default function CashflowPage() {
       syncNote="Pohyby na účtoch ťaháme pre každú firmu naraz, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
       onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
     >
+      {isPreparingModule ? <ModuleSkeleton label="Načítavam financie…" /> : null}
+      {isPreparingModule ? null : (
+        <>
       {shouldShowMockData && !isLoadingConnections ? <DemoDataBanner /> : null}
       {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <CashflowDashboard
@@ -422,6 +434,8 @@ export default function CashflowPage() {
         onSelectionChange={updateSelectionWithFocusedGuard}
         onFocusedCompanyChange={setFocusedCompany}
       />
+        </>
+      )}
     </DashboardShell>
   );
 }
