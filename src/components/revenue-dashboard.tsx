@@ -9,6 +9,7 @@ import type { NormalizedInvoice } from "@/lib/kros-types";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
@@ -98,7 +99,7 @@ export function RevenueDashboard({
   const detailTotal = detailInvoices.reduce((sum, invoice) => sum + invoice.totalPrice, 0);
 
   return (
-    <section className={invoiceDetailPoint ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
           <GranularityToggle value={granularity} onChange={onGranularityChange} />
@@ -182,7 +183,7 @@ export function RevenueDashboard({
       </article>
 
       {invoiceDetailPoint && invoiceDetails ? (
-        <div className="tag-filter-overlay" onClick={() => setInvoiceDetailPoint(null)} role="presentation">
+        <SheetOverlay onClose={() => setInvoiceDetailPoint(null)}>
           <div
             className="tag-filter-sheet invoice-detail-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -255,7 +256,7 @@ export function RevenueDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

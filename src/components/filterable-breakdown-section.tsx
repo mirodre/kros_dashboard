@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatCurrency, formatDelta, getDeltaPct } from "@/lib/format";
+import { SheetOverlay } from "./sheet-overlay";
 
 type BreakdownItem = {
   name: string;
@@ -105,7 +106,7 @@ export function FilterableBreakdownSection({
   };
 
   return (
-    <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
+    <section className="dashboard-body">
       <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           {collapsible ? (
@@ -179,7 +180,7 @@ export function FilterableBreakdownSection({
       </article>
 
       {isFilterOpen ? (
-        <div className="tag-filter-overlay" onClick={closeFilter} role="presentation">
+        <SheetOverlay onClose={closeFilter}>
           <div
             className="tag-filter-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -221,7 +222,7 @@ export function FilterableBreakdownSection({
               </button>
             </footer>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

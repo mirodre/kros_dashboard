@@ -440,11 +440,6 @@ body {
   position: relative;
 }
 
-.dashboard-section.overlay-open,
-.dashboard-body.overlay-open {
-  z-index: 140;
-}
-
 .row-head {
   align-items: center;
   display: flex;
@@ -1884,6 +1879,11 @@ body {
   position: absolute;
 }
 
+/*
+ * Vykresľuje sa portálom do `document.body` (`SheetOverlay`), teda ako súrodenec
+ * `.mobile-liquid-nav` — z-index preto musí byť nad menu (90), inak menu prekryje
+ * spodok dialógu.
+ */
 .tag-filter-overlay {
   background: rgba(6, 8, 14, 0.58);
   inset: 0;

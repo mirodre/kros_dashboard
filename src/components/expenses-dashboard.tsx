@@ -18,6 +18,7 @@ import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
 import { ExpenseRow } from "./recent-expenses-section";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
@@ -241,10 +242,9 @@ export function ExpensesDashboard({
   const overdueCount = dueWatchlist.overdue.length;
   const dueSheetDocs = dueSheetTab === "overdue" ? dueWatchlist.overdue : dueWatchlist.upcoming;
   const dueSheetTotal = dueSheetTab === "overdue" ? dueWatchlist.overdueTotal : dueWatchlist.upcomingTotal;
-  const isOverlayOpen = detailPoint !== null || isDueSheetOpen || isCategoryFilterOpen;
 
   return (
-    <section className={isOverlayOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
           <GranularityToggle value={granularity} onChange={onGranularityChange} />
@@ -445,11 +445,7 @@ export function ExpensesDashboard({
       </article>
 
       {isCategoryFilterOpen ? (
-        <div
-          className="tag-filter-overlay"
-          onClick={() => setIsCategoryFilterOpen(false)}
-          role="presentation"
-        >
+        <SheetOverlay onClose={() => setIsCategoryFilterOpen(false)}>
           <div
             className="tag-filter-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -510,11 +506,11 @@ export function ExpensesDashboard({
               </button>
             </footer>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
 
       {detailPoint && bucketDocs ? (
-        <div className="tag-filter-overlay" onClick={() => setDetailPoint(null)} role="presentation">
+        <SheetOverlay onClose={() => setDetailPoint(null)}>
           <div
             className="tag-filter-sheet invoice-detail-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -585,11 +581,11 @@ export function ExpensesDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
 
       {isDueSheetOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsDueSheetOpen(false)}>
+        <SheetOverlay onClose={() => setIsDueSheetOpen(false)}>
           <div
             className="tag-filter-sheet unsettled-payments-sheet"
             role="dialog"
@@ -645,7 +641,7 @@ export function ExpensesDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

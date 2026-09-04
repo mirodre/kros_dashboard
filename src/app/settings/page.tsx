@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { signOutAction } from "@/app/actions/sign-out";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
+import { SheetOverlay } from "@/components/sheet-overlay";
 import { TenantDefaultsCard } from "@/components/tenant-defaults-card";
 import { clearLocalDataCacheKeys } from "@/lib/cache-clear";
 import { clearCashflowCache } from "@/lib/cashflow-cache";
@@ -129,7 +130,7 @@ export default function SettingsPage() {
       </section>
 
       {companyToDisconnect ? (
-        <div className="tag-filter-overlay" onClick={() => setCompanyToDisconnect(null)} role="presentation">
+        <SheetOverlay onClose={() => setCompanyToDisconnect(null)}>
           <div
             className="confirm-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -151,11 +152,11 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
 
       {isCacheClearOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsCacheClearOpen(false)} role="presentation">
+        <SheetOverlay onClose={() => setIsCacheClearOpen(false)}>
           <div
             className="confirm-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -177,7 +178,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </DashboardShell>
   );

@@ -9,6 +9,7 @@ import type {
 } from "@/lib/cashflow-mock-data";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
 import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   kpis: KpiCard[];
@@ -184,7 +185,7 @@ export function CashflowDashboard({
   const unsettledCount = unsettledTransactions.length;
 
   return (
-    <section className={isUnsettledSheetOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
       {activeCompanyLabel ? (
         <button type="button" className="active-tag-badge" onClick={onClearCompanyFilter}>
@@ -457,7 +458,7 @@ export function CashflowDashboard({
         </article>
       </section>
       {isUnsettledSheetOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsUnsettledSheetOpen(false)}>
+        <SheetOverlay onClose={() => setIsUnsettledSheetOpen(false)}>
           <div
             className="tag-filter-sheet unsettled-payments-sheet"
             role="dialog"
@@ -523,7 +524,7 @@ export function CashflowDashboard({
               })}
             </ul>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );
