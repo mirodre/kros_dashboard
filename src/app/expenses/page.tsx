@@ -16,12 +16,12 @@ import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
 import { usePreference } from "@/lib/use-preference";
 import {
-  allSelectedTags,
   documentMatchesTagFilters,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
   tagFilterKey,
-  type TagCategoryFilters
+  type TagCategoryFilters,
+  type TagCategoryIndex
 } from "@/lib/tag-categories";
 import {
   computeComparableExpenseYtdTotals,
@@ -35,7 +35,7 @@ import {
   excludeFocusedTagSlices,
   getFilteredRecentExpenses,
   normalizeExpenses,
-  scopeExpenseAmountsToTags
+  scopeExpenseAmountsToTagFilters
 } from "@/lib/expenses-live";
 import { getDateRange } from "@/lib/dashboard-live";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
@@ -187,18 +187,20 @@ function withLastModifiedOverlap(value: string) {
 
 /**
  * Doklady zúžené filtrom štítkov a focusom (rozkliknutými štítkami) — doklad musí niesť
- * všetky focusnuté štítky. Sumy sa zúžia na rozúčtovania s aktívnymi štítkami, takže
- * z dokladu rozúčtovaného na viac štítkov sa počíta len časť patriaca tým zvoleným.
+ * všetky focusnuté štítky. Sumy sa potom zúžia na tie riadky rozúčtovania, ktoré prejdú
+ * filtrom aj focusom — z dokladu rozúčtovaného na viac štítkov sa tak všade (graf, KPI,
+ * dodávatelia aj zoznamy dokladov) počíta len časť patriaca výberu.
  */
 function scopeExpensesToTags(
   expenses: NormalizedExpense[],
   filters: TagCategoryFilters,
-  focusedTags: string[]
+  focusedTags: string[],
+  tagCategoryIndex: TagCategoryIndex
 ) {
   const matching = expenses.filter((expense) =>
     documentMatchesTagFilters(expense.tags, filters, focusedTags)
   );
-  return scopeExpenseAmountsToTags(matching, [...allSelectedTags(filters), ...focusedTags]);
+  return scopeExpenseAmountsToTagFilters(matching, filters, focusedTags, tagCategoryIndex);
 }
 
 export default function ExpensesPage() {
@@ -511,8 +513,8 @@ export default function ExpensesPage() {
 
   // Graf, KPI, donut, dodávatelia aj doklady idú z dokladov zúžených filtrom a focusom.
   const tagScopedExpenses = useMemo(
-    () => scopeExpensesToTags(expenses, sanitizedCategoryFilters, effectiveFocusedTags),
-    [expenses, sanitizedCategoryFilters, effectiveFocusedTags]
+    () => scopeExpensesToTags(expenses, sanitizedCategoryFilters, effectiveFocusedTags, tagCategoryIndex),
+    [expenses, sanitizedCategoryFilters, effectiveFocusedTags, tagCategoryIndex]
   );
 
   const points = useMemo(
@@ -592,7 +594,12 @@ export default function ExpensesPage() {
       const scopedExpenses =
         focusOutsideCategory.length === 0
           ? filterScopedExpenses
-          : scopeExpensesToTags(expenses, sanitizedCategoryFilters, focusOutsideCategory);
+          : scopeExpensesToTags(
+              expenses,
+              sanitizedCategoryFilters,
+              focusOutsideCategory,
+              tagCategoryIndex
+            );
       const points = computeExpenseTagBreakdown(scopedExpenses, effectiveCompanies);
       const byName = new Map(points.map((point) => [point.name, point]));
       breakdownByCategory.set(category, byName);

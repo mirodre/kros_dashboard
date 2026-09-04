@@ -17,6 +17,19 @@ function formatDueDate(expense: NormalizedExpense) {
   return due.toLocaleDateString("sk-SK");
 }
 
+/**
+ * Popisok pod sumou, keď je doklad rozúčtovaný a filter z neho berie len časť —
+ * bez neho by riadok tvrdil, že celý doklad je za menej, než na ňom naozaj je.
+ */
+export function ExpenseScopeNote({ expense }: { expense: NormalizedExpense }) {
+  if (expense.documentTotalPrice === undefined) return null;
+  return (
+    <p className="tag-sub expense-scope-note">
+      z dokladu {formatCurrencyPrecise(Math.abs(expense.documentTotalPrice))}
+    </p>
+  );
+}
+
 /** Riadok výdavkového dokladu — zdieľaný sekciou Posledné výdavky a sheetom splatností. */
 export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
   const issueDate = parseDocumentDate(expense.issueDate);
@@ -82,6 +95,7 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
           <p className={expense.totalPrice < 0 ? "movement-amount-text up" : "movement-amount-text down"}>
             {formatCurrencyPrecise(-expense.totalPrice)}
           </p>
+          <ExpenseScopeNote expense={expense} />
         </div>
       </div>
     </li>

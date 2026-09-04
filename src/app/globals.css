@@ -1594,6 +1594,21 @@ body {
   text-align: right;
 }
 
+/* Doklad zúžený filtrom — pod sumou je vidno, z akého celku tá časť je. */
+.expense-scope-note {
+  margin: 0.15rem 0 0;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.invoice-item-amount {
+  align-items: flex-end;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  text-align: right;
+}
+
 .movement-row.attention {
   border-color: rgba(255, 147, 171, 0.52);
   box-shadow: 0 10px 26px rgba(34, 8, 16, 0.34), 0 0 0 1px rgba(255, 147, 171, 0.2) inset;

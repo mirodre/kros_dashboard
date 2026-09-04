@@ -8,7 +8,13 @@ import type {
 } from "./kros-types";
 import { getDateRange } from "./dashboard-live";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
-import { UNCATEGORIZED_CATEGORY } from "./tag-categories";
+import {
+  EMPTY_TAG_CATEGORY_INDEX,
+  UNCATEGORIZED_CATEGORY,
+  tagFilterKey,
+  type TagCategoryFilters,
+  type TagCategoryIndex
+} from "./tag-categories";
 
 /** Podiel štítku na výdavkoch v aktuálnom období — podklad pre donut Štruktúra výdavkov. */
 export type ExpenseTagSlice = {
@@ -273,28 +279,93 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
     .filter((expense): expense is NormalizedExpense => Boolean(expense));
 }
 
+/** Jedna podmienka na riadok rozúčtovania — povolené štítky v rámci jednej kategórie. */
+type AllocationConstraint = { category: string; tags: Set<string> };
+
+function lowerTag(tag: string) {
+  return tag.trim().toLowerCase();
+}
+
 /**
- * Zúži sumy dokladov na rozúčtovania, ktoré nesú niektorý z aktívnych štítkov —
- * KPI, graf aj dodávatelia tak ukazujú len časť dokladu patriacu zvolenému
- * štítku. Bez aktívnych štítkov ostávajú doklady nezmenené.
+ * Podmienky pre riadky rozúčtovania: každá kategória s aktívnym filtrom a každá
+ * kategória s rozkliknutým štítkom je vlastná podmienka. V rámci kategórie stačí
+ * jeden zo štítkov (OR), kategórie sa spájajú cez AND — rovnako ako pri dokladoch.
  */
-export function scopeExpenseAmountsToTags(
+function buildAllocationConstraints(
+  filters: TagCategoryFilters,
+  focusedTags: string[],
+  index: TagCategoryIndex
+): AllocationConstraint[] {
+  const constraints: AllocationConstraint[] = [];
+
+  for (const [category, tags] of Object.entries(filters)) {
+    if (tags.length === 0) continue;
+    constraints.push({ category, tags: new Set(tags.map(lowerTag)) });
+  }
+
+  // Focus je samostatná podmienka nad filtrom — rozkliknutý štítok teda zúži riadky
+  // aj vtedy, keď je filter kategórie širší.
+  const focusByCategory = new Map<string, string[]>();
+  for (const tag of focusedTags) {
+    const category = tagFilterKey(index, tag);
+    focusByCategory.set(category, [...(focusByCategory.get(category) ?? []), tag]);
+  }
+  for (const [category, tags] of focusByCategory) {
+    constraints.push({ category, tags: new Set(tags.map(lowerTag)) });
+  }
+
+  return constraints;
+}
+
+/**
+ * Riadok prejde podmienkou, keď nesie niektorý z jej štítkov — alebo keď v tejto
+ * kategórii nemá štítok žiadny. Nerozlíšený riadok totiž patrí celému dokladu
+ * (KROS ho v tejto dimenzii nerozúčtoval), takže ho filter kategórie nesmie zahodiť.
+ */
+function allocationPassesConstraint(
+  allocation: ExpenseTagAllocation,
+  constraint: AllocationConstraint,
+  index: TagCategoryIndex
+) {
+  let touchesCategory = false;
+
+  for (const tag of allocation.tags) {
+    if (constraint.tags.has(lowerTag(tag))) return true;
+    if (tagFilterKey(index, tag) === constraint.category) touchesCategory = true;
+  }
+
+  return !touchesCategory;
+}
+
+/**
+ * Zúži sumy dokladov na riadky rozúčtovania (journalItems), ktoré prejdú aktívnym
+ * filtrom štítkov a rozkliknutými štítkami. Graf, KPI, dodávatelia aj zoznamy dokladov
+ * tak ukazujú rovnaké číslo — len tú časť dokladu, ktorá patrí do výberu. Pôvodná suma
+ * celého dokladu ostáva v `documentTotalPrice`, nech sa dá v zozname ukázať kontext.
+ * Bez aktívneho filtra aj bez focusu ostávajú doklady nezmenené.
+ */
+export function scopeExpenseAmountsToTagFilters(
   expenses: NormalizedExpense[],
-  tags: string[]
+  filters: TagCategoryFilters,
+  focusedTags: string[],
+  index: TagCategoryIndex = EMPTY_TAG_CATEGORY_INDEX
 ): NormalizedExpense[] {
-  if (tags.length === 0) return expenses;
-  const tagSet = new Set(tags.map((tag) => tag.trim().toLowerCase()));
+  const constraints = buildAllocationConstraints(filters, focusedTags, index);
+  if (constraints.length === 0) return expenses;
 
   return expenses.map((expense) => {
-    if (expense.allocations.length < 2) return expense;
     const matching = expense.allocations.filter((allocation) =>
-      allocation.tags.some((tag) => tagSet.has(tag.trim().toLowerCase()))
+      constraints.every((constraint) => allocationPassesConstraint(allocation, constraint, index))
     );
+    // Žiadny riadok nesedí (doklad prešiel len zjednotením štítkov naprieč riadkami)
+    // alebo sedia všetky — v oboch prípadoch niet čo zužovať.
     if (matching.length === 0 || matching.length === expense.allocations.length) return expense;
 
     return {
       ...expense,
       totalPrice: matching.reduce((sum, allocation) => sum + allocation.amount, 0),
+      documentTotalPrice: expense.documentTotalPrice ?? expense.totalPrice,
+      tags: collectAllocationTags(matching),
       allocations: matching
     };
   });

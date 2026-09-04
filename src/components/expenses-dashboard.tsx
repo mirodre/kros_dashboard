@@ -17,7 +17,7 @@ import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
-import { ExpenseRow } from "./recent-expenses-section";
+import { ExpenseRow, ExpenseScopeNote } from "./recent-expenses-section";
 import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
@@ -569,7 +569,10 @@ export function ExpensesDashboard({
                           {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
                         </p>
                       </div>
-                      <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
+                      <div className="invoice-item-amount">
+                        <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
+                        <ExpenseScopeNote expense={expense} />
+                      </div>
                     </div>
                     <div className="invoice-tags" aria-label={expense.tags.length ? "Štítky dokladu" : undefined}>
                       {expense.tags.map((tag) => (

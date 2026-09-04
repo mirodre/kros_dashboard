@@ -67,6 +67,12 @@ export type NormalizedExpense = {
    * pozri readExpenseAmounts v expenses-live.ts.
    */
   totalPrice: number;
+  /**
+   * Suma celého dokladu pred zúžením na aktívny filter štítkov. Vyplní ju až
+   * `scopeExpenseAmountsToTagFilters`, a to len keď sa `totalPrice` naozaj zúžila —
+   * zoznamy dokladov tak vedia ukázať, z akého celku je zobrazená časť.
+   */
+  documentTotalPrice?: number;
   paymentStatus: ExpensePaymentStatus;
   paymentType?: string;
   hasAttachments: boolean;
