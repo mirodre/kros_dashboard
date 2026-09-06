@@ -10,18 +10,31 @@ import { HomeAccountsCard } from "@/components/home-accounts-card";
 import { HomeDueCard } from "@/components/home-due-card";
 import { HomeVatCard } from "@/components/home-vat-card";
 import type { VisibilityOption } from "@/components/category-visibility-button";
+import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
+import { CompaniesDashboard } from "@/components/companies-dashboard";
 import {
   computeDuePositions,
+  computeProfitCompanyBreakdown,
   computeProfitKpis,
   computeProfitSeries,
+  computeProfitTagBreakdown,
   computeVatEstimate
 } from "@/lib/home-live";
 import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
+import { formatCurrency } from "@/lib/format";
 import { getBucketPeriodWindow } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
+import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { usePreference } from "@/lib/use-preference";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
-import { documentMatchesTagFilters } from "@/lib/tag-categories";
+import {
+  categoryForTag,
+  documentMatchesTagFilters,
+  hasRealCategories,
+  isTagAllowedByFilters,
+  sortTagCategories,
+  type TagCategoryFilters
+} from "@/lib/tag-categories";
 import { useSyncOrchestrator } from "@/lib/sync/use-sync-orchestrator";
 import { invoiceEngine } from "@/lib/sync/invoice-engine";
 import { expenseEngine } from "@/lib/sync/expense-engine";
@@ -47,12 +60,16 @@ export const HOME_SECTIONS = {
 
 export default function HomePage() {
   const [granularity, setGranularity] = usePreference("ui.granularity");
-  const [categoryFilters] = usePreference("home.tagFilters");
+  const [categoryFilters, setCategoryFilters] = usePreference("home.tagFilters");
   const [selectedCompanies, setSelectedCompanies] = usePreference("home.companies");
   const [hiddenSections, setHiddenSections] = usePreference("ui.homeHiddenSections");
   const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
+  const [focusedTag, setFocusedTag] = useState<string | null>(null);
+  const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
+  const [tagRefreshNonce, setTagRefreshNonce] = useState(0);
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
+  const tagCategoryIndex = useTagCategoryIndex(connections, tagRefreshNonce);
 
   useEffect(() => {
     setHasLoadedPersistedFilters(true);
@@ -76,24 +93,41 @@ export default function HomePage() {
     enabled: hasLoadedPersistedFilters
   });
 
-  // Id-čka len ZVOLENÝCH firiem, nie všetkých synchronizovaných — pozri komentár pri
-  // rovnomennom parametri v `computeCashflowOverviewFromLiveData`: keby sem šli všetky
-  // firmy, rozkliknutý filter by účty vôbec nezúžil.
+  const handleRefresh = () => {
+    setTagRefreshNonce((value) => value + 1);
+    refresh();
+  };
+
+  // Rozklik firmy zúži graf a KPI, ale nie zoznam firiem — rovnako ako v moduloch.
+  const effectiveCompanies = useMemo(
+    () => (focusedCompany ? [focusedCompany] : selectedCompanies),
+    [focusedCompany, selectedCompanies]
+  );
+
+  // Id-čka len EFEKTÍVNE zvolených firiem (po focuse), nie všetkých synchronizovaných —
+  // pozri komentár pri rovnomennom parametri v `computeCashflowOverviewFromLiveData`: keby
+  // sem šli mená aj id-čka z rôznych množín, rozkliknutá firma by účty cez id nezúžila.
   const selectedCompanyIds = useMemo(() => {
-    if (selectedCompanies.length === 0) return [];
-    const selected = new Set(selectedCompanies);
+    if (effectiveCompanies.length === 0) return [];
+    const selected = new Set(effectiveCompanies);
     return connections
       .filter((connection) => selected.has(connection.companyName))
       .map((connection) => connection.companyId);
-  }, [selectedCompanies, connections]);
+  }, [effectiveCompanies, connections]);
 
   const scopedInvoices = useMemo(
-    () => invoices.filter((invoice) => documentMatchesTagFilters(invoice.tags, categoryFilters)),
-    [invoices, categoryFilters]
+    () =>
+      invoices.filter((invoice) =>
+        documentMatchesTagFilters(invoice.tags, categoryFilters, focusedTag ? [focusedTag] : [])
+      ),
+    [invoices, categoryFilters, focusedTag]
   );
   const scopedExpenses = useMemo(
-    () => expenses.filter((expense) => documentMatchesTagFilters(expense.tags, categoryFilters)),
-    [expenses, categoryFilters]
+    () =>
+      expenses.filter((expense) =>
+        documentMatchesTagFilters(expense.tags, categoryFilters, focusedTag ? [focusedTag] : [])
+      ),
+    [expenses, categoryFilters, focusedTag]
   );
 
   const points = useMemo(
@@ -103,9 +137,9 @@ export default function HomePage() {
         expenses: scopedExpenses,
         granularity,
         selectedTags: [],
-        selectedCompanies
+        selectedCompanies: effectiveCompanies
       }),
-    [scopedInvoices, scopedExpenses, granularity, selectedCompanies]
+    [scopedInvoices, scopedExpenses, granularity, effectiveCompanies]
   );
 
   const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
@@ -119,9 +153,83 @@ export default function HomePage() {
         invoices: scopedInvoices,
         expenses: scopedExpenses,
         selectedTags: [],
-        selectedCompanies
+        selectedCompanies: effectiveCompanies
       }),
-    [scopedInvoices, scopedExpenses, selectedCompanies]
+    [scopedInvoices, scopedExpenses, effectiveCompanies]
+  );
+
+  // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca. Po prepnutí obdobia
+  // (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa nemá čoho držať,
+  // patrí zahodiť, nie ho ticho nechať visieť.
+  const periodWindow = useMemo(
+    () => (focusedPeriod ? getBucketPeriodWindow(granularity, focusedPeriod) : null),
+    [focusedPeriod, granularity]
+  );
+  useEffect(() => {
+    if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
+  }, [focusedPeriod, periodWindow]);
+
+  const tagPoints = useMemo(
+    () =>
+      computeProfitTagBreakdown({
+        invoices: scopedInvoices,
+        expenses: scopedExpenses,
+        selectedCompanies: effectiveCompanies,
+        period: periodWindow ?? undefined
+      }),
+    [scopedInvoices, scopedExpenses, effectiveCompanies, periodWindow]
+  );
+
+  const companyPoints = useMemo(
+    () =>
+      computeProfitCompanyBreakdown({
+        invoices: scopedInvoices,
+        expenses: scopedExpenses,
+        selectedTags: [],
+        selectedCompanies,
+        period: periodWindow ?? undefined
+      }),
+    [scopedInvoices, scopedExpenses, selectedCompanies, periodWindow]
+  );
+
+  /** Zisk štítku ako bod rozpisu — `CategorizedTagsDashboard` číta `amount`. */
+  const tagBreakdownPoints = useMemo(
+    () =>
+      tagPoints.map((point) => ({
+        name: point.name,
+        amount: point.profit,
+        previousAmount: point.previousProfit
+      })),
+    [tagPoints]
+  );
+
+  // Neodfiltrovaný rozpis (bez `categoryFilters` aj bez focusu) pre dialóg filtra a pre
+  // `categoryOptions` — rovnako ako `availableTagsData` v Príjmoch/Výdavkoch: kategória či
+  // štítok, ktorý filter práve vyprázdnil, tu musí zostať vidieť, inak by sa nedali vrátiť.
+  const availableTagPoints = useMemo(
+    () =>
+      computeProfitTagBreakdown({
+        invoices,
+        expenses,
+        selectedCompanies: effectiveCompanies
+      }),
+    [invoices, expenses, effectiveCompanies]
+  );
+
+  const availableTagBreakdownPoints = useMemo(
+    () =>
+      availableTagPoints.map((point) => ({
+        name: point.name,
+        amount: point.profit,
+        previousAmount: point.previousProfit
+      })),
+    [availableTagPoints]
+  );
+
+  /** Zložky zisku podľa štítku — pre doplnkový riadok pod sumou. */
+  const tagPartsByName = useMemo(
+    () => new Map(tagPoints.map((point) => [point.name, point])),
+    [tagPoints]
   );
 
   // Kalendárne mesiace vždy — bez ohľadu na prepínač obdobia. DPH sa podáva po
@@ -147,22 +255,34 @@ export default function HomePage() {
         accounts: cashflowAccounts,
         transactions,
         granularity,
-        selectedCompanies,
+        selectedCompanies: effectiveCompanies,
         selectedCompanyIds
       }).accountBreakdown,
-    [cashflowAccounts, transactions, granularity, selectedCompanies, selectedCompanyIds]
+    [cashflowAccounts, transactions, granularity, effectiveCompanies, selectedCompanyIds]
   );
 
-  // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca. Po prepnutí obdobia
-  // (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa nemá čoho držať,
-  // patrí zahodiť, nie ho ticho nechať visieť.
-  const periodWindow = useMemo(
-    () => (focusedPeriod ? getBucketPeriodWindow(granularity, focusedPeriod) : null),
-    [focusedPeriod, granularity]
-  );
-  useEffect(() => {
-    if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
-  }, [focusedPeriod, periodWindow]);
+  const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
+    setCategoryFilters(next);
+    // Rozkliknutý štítok, ktorý filter práve vylúčil, by ostal visieť na odznaku
+    // a zužoval čísla, hoci ho v zozname už nevidno.
+    if (focusedTag && !isTagAllowedByFilters(focusedTag, next, tagCategoryIndex)) {
+      setFocusedTag(null);
+    }
+  };
+
+  // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť.
+  const categoryOptions = useMemo<VisibilityOption[]>(() => {
+    if (!hasRealCategories(tagCategoryIndex)) return [];
+    const categories = new Set(
+      availableTagPoints.map((point) => categoryForTag(tagCategoryIndex, point.name))
+    );
+    return sortTagCategories(Array.from(categories)).map((category) => ({
+      id: category,
+      label: category,
+      filterCount: categoryFilters[category]?.length ?? 0
+    }));
+  }, [availableTagPoints, tagCategoryIndex, categoryFilters]);
 
   const sectionOptions = useMemo<VisibilityOption[]>(
     () => [
@@ -182,9 +302,9 @@ export default function HomePage() {
       title="Domov"
       isSyncing={isSyncing}
       syncNote="Domov skladá čísla zo všetkých modulov, preto prvé načítanie trvá najdlhšie. Ostanú uložené v zariadení a moduly ich už nesťahujú znova."
-      onRefresh={hasLiveMode ? refresh : undefined}
+      onRefresh={hasLiveMode ? handleRefresh : undefined}
       categoryVisibility={{
-        categoryOptions: [],
+        categoryOptions,
         sectionOptions,
         hiddenIds: hiddenSections,
         onHiddenIdsChange: setHiddenSections,
@@ -213,6 +333,54 @@ export default function HomePage() {
           )}
           {hiddenSections.includes(HOME_SECTIONS.vat) ? null : (
             <HomeVatCard estimate={vatEstimate} isPeriodFocused={Boolean(focusedPeriod)} />
+          )}
+          <CategorizedTagsDashboard
+            baseTitle="Zisk podľa štítkov"
+            ariaLabelPrefix="Filtrovať prehľad podľa štítku"
+            tags={tagBreakdownPoints}
+            availableTags={availableTagBreakdownPoints}
+            categoryIndex={tagCategoryIndex}
+            categoryFilters={categoryFilters}
+            hiddenCategories={hiddenSections}
+            focusedTags={focusedTag ? [focusedTag] : []}
+            onCategoryFiltersChange={handleCategoryFiltersChange}
+            // Zisk ostáva na jednom rozkliknutom štítku — z klikov berieme posledný.
+            onFocusedTagsChange={(tags) => setFocusedTag(tags[tags.length - 1] ?? null)}
+            renderMeta={(item) => {
+              const parts = tagPartsByName.get(item.name);
+              if (!parts) return null;
+              return `${formatCurrency(parts.income)} − ${formatCurrency(parts.expense)}`;
+            }}
+          />
+          {/*
+            Priznaná nepresnosť: príjmová a výdavková strana priraďujú štítky rôzne.
+            Predstierať presnosť, ktorú dáta nemajú, by bolo horšie než ju povedať.
+          */}
+          <section className="dashboard-body">
+            <p className="tag-filter-help">
+              Faktúra s viacerými štítkami sa započíta celá do každého z nich, výdavok sa
+              rozdelí podľa rozúčtovania. Súčet riadkov preto nedá celkový zisk.
+            </p>
+          </section>
+
+          {hiddenSections.includes(HOME_SECTIONS.companies) ? null : (
+            <CompaniesDashboard
+              title="Zisk podľa firiem"
+              companies={companyPoints.map((point) => ({
+                name: point.name,
+                amount: point.profit,
+                previousAmount: point.previousProfit
+              }))}
+              selectedCompanies={selectedCompanies}
+              availableCompanyNames={connections.map((connection) => connection.companyName)}
+              focusedCompany={focusedCompany}
+              onSelectionChange={(companies) => {
+                setSelectedCompanies(companies);
+                if (focusedCompany && !companies.includes(focusedCompany)) setFocusedCompany(null);
+              }}
+              onFocusedCompanyChange={setFocusedCompany}
+              collapsedKey="ui.collapsed.homeCompanies"
+            />
           )}
         </>
       )}
