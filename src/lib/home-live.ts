@@ -1,7 +1,13 @@
-import { computeRevenueSeries } from "./dashboard-live";
-import { computeExpenseSeries, countsTowardsSpend, isExpenseUnpaid } from "./expenses-live";
+import { computeRevenueSeries, getInvoiceAnalyticsDate } from "./dashboard-live";
+import {
+  computeExpenseSeries,
+  countsTowardsSpend,
+  getExpenseAnalyticsDate,
+  isExpenseUnpaid
+} from "./expenses-live";
 import { parseDocumentDate } from "./document-date";
 import { getDeltaPct } from "./format";
+import { monthKeyFromDate } from "./invoice-cache";
 import type { Granularity } from "./mock-data";
 import type { NormalizedExpense, NormalizedInvoice } from "./kros-types";
 
@@ -266,4 +272,93 @@ export function computeDuePositions({
     payables,
     receivablesAvailable
   };
+}
+
+export type VatMonthEstimate = {
+  /** `2026-09` */
+  monthKey: string;
+  /**
+   * Odhad dane. `null` znamená, že ani jeden doklad mesiaca nenesie sumu DPH —
+   * teda že sa nedá spočítať, nie že vyšla nula.
+   */
+  amount: number | null;
+  outputVat: number;
+  inputVat: number;
+};
+
+export type VatEstimate = {
+  previousMonth: VatMonthEstimate;
+  currentMonth: VatMonthEstimate;
+};
+
+type VatInput = {
+  invoices: NormalizedInvoice[];
+  expenses: NormalizedExpense[];
+  selectedCompanies: string[];
+  referenceDate?: Date;
+};
+
+/**
+ * Odhad DPH za kalendárne mesiace — vždy, bez ohľadu na prepínač obdobia.
+ * Priznanie sa podáva po mesiacoch a po týždňoch alebo rokoch by to číslo
+ * nemalo význam.
+ *
+ * Doklady sa zaraďujú podľa dátumu dodania (DUZP), rovnako ako v grafoch.
+ * Filter štítkov sa nepoužíva: daň sa priraďuje dokladu ako celku a rozpočítať
+ * ju na štítky by bol odhad tváriaci sa ako číslo z účtovníctva.
+ */
+export function computeVatEstimate({
+  invoices,
+  expenses,
+  selectedCompanies,
+  referenceDate = new Date()
+}: VatInput): VatEstimate {
+  const companySet = new Set(selectedCompanies);
+  const inCompany = (companyName: string) =>
+    companySet.size === 0 || companySet.has(companyName);
+
+  const currentKey = monthKeyFromDate(referenceDate);
+  const previousKey = monthKeyFromDate(
+    new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, 1)
+  );
+
+  const totals = new Map<string, { output: number; input: number; hasAny: boolean }>([
+    [previousKey, { output: 0, input: 0, hasAny: false }],
+    [currentKey, { output: 0, input: 0, hasAny: false }]
+  ]);
+
+  const bucketFor = (rawDate: string | undefined, companyName: string) => {
+    if (!inCompany(companyName)) return null;
+    const date = rawDate ? parseDocumentDate(rawDate) : null;
+    if (!date) return null;
+    return totals.get(monthKeyFromDate(date)) ?? null;
+  };
+
+  for (const invoice of invoices) {
+    const bucket = bucketFor(getInvoiceAnalyticsDate(invoice), invoice.companyName);
+    if (!bucket || invoice.vatAmount === undefined) continue;
+    bucket.output += invoice.vatAmount;
+    bucket.hasAny = true;
+  }
+
+  for (const expense of expenses) {
+    if (!countsTowardsSpend(expense)) continue;
+    const bucket = bucketFor(getExpenseAnalyticsDate(expense), expense.companyName);
+    if (!bucket || expense.vatAmount === undefined) continue;
+    // Bez otáčania znamienka: dobropis nesie zápornú DPH už z KROSu.
+    bucket.input += expense.vatAmount;
+    bucket.hasAny = true;
+  }
+
+  const toEstimate = (monthKey: string): VatMonthEstimate => {
+    const bucket = totals.get(monthKey) ?? { output: 0, input: 0, hasAny: false };
+    return {
+      monthKey,
+      outputVat: Math.round(bucket.output * 100) / 100,
+      inputVat: Math.round(bucket.input * 100) / 100,
+      amount: bucket.hasAny ? Math.round((bucket.output - bucket.input) * 100) / 100 : null
+    };
+  };
+
+  return { previousMonth: toEstimate(previousKey), currentMonth: toEstimate(currentKey) };
 }

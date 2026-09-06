@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeDuePositions, computeProfitKpis, computeProfitSeries, type ProfitPoint } from "./home-live";
+import {
+  computeDuePositions,
+  computeProfitKpis,
+  computeProfitSeries,
+  computeVatEstimate,
+  type ProfitPoint
+} from "./home-live";
 import type { NormalizedExpense, NormalizedInvoice } from "./kros-types";
 
 const NOW = new Date();
@@ -223,5 +229,109 @@ describe("computeDuePositions", () => {
     const result = positions([unknown, unpaidInvoice("2026-09-30", 200)], []);
     expect(result.receivablesAvailable).toBe(true);
     expect(result.receivables.total).toBe(200);
+  });
+});
+
+/** 6. september 2026 — „tento mesiac" je 2026-09, „minulý" 2026-08. */
+const VAT_REFERENCE = new Date(2026, 8, 6);
+
+function vatInvoice(deliveryDate: string, vatAmount: number | undefined): NormalizedInvoice {
+  return {
+    id: `inv-vat-${deliveryDate}-${vatAmount}`,
+    companyName: "Kros Trade",
+    issueDate: deliveryDate,
+    deliveryDate,
+    totalPrice: 1000,
+    paymentStatus: "fullyPaid",
+    vatAmount,
+    tags: ["Retail"]
+  };
+}
+
+function vatExpense(
+  deliveryDate: string,
+  vatAmount: number | undefined,
+  documentType = 10
+): NormalizedExpense {
+  return {
+    id: `exp-vat-${deliveryDate}-${vatAmount}-${documentType}`,
+    companyName: "Kros Trade",
+    documentType,
+    issueDate: deliveryDate,
+    deliveryDate,
+    totalPrice: documentType === 17 ? -500 : 500,
+    paymentStatus: "fullyPaid",
+    hasAttachments: false,
+    vatAmount,
+    tags: ["Retail"],
+    allocations: [{ tags: ["Retail"], amount: documentType === 17 ? -500 : 500 }]
+  };
+}
+
+function vat(invoices: NormalizedInvoice[], expenses: NormalizedExpense[]) {
+  return computeVatEstimate({
+    invoices,
+    expenses,
+    selectedCompanies: [],
+    referenceDate: VAT_REFERENCE
+  });
+}
+
+describe("computeVatEstimate", () => {
+  it("odhad je DPH na výstupe mínus DPH na vstupe", () => {
+    const result = vat([vatInvoice("2026-09-02", 200)], [vatExpense("2026-09-03", 60)]);
+    expect(result.currentMonth.outputVat).toBe(200);
+    expect(result.currentMonth.inputVat).toBe(60);
+    expect(result.currentMonth.amount).toBe(140);
+  });
+
+  it("triedi podľa dátumu dodania, nie vystavenia — DPH sa podáva podľa DUZP", () => {
+    const result = vat([vatInvoice("2026-08-31", 100), vatInvoice("2026-09-01", 300)], []);
+    expect(result.previousMonth.outputVat).toBe(100);
+    expect(result.currentMonth.outputVat).toBe(300);
+  });
+
+  it("doklady mimo oboch mesiacov sa nerátajú", () => {
+    const result = vat([vatInvoice("2026-07-15", 999)], []);
+    expect(result.currentMonth.outputVat).toBe(0);
+    expect(result.previousMonth.outputVat).toBe(0);
+  });
+
+  it("dobropis vstupnú daň znižuje — prichádza už so záporným znamienkom", () => {
+    // KROS vracia pri dobropise zápornú DPH, takže stačí sčítať. Otočenie
+    // znamienka by daň pripočítalo namiesto odpočítania.
+    const result = vat([], [vatExpense("2026-09-03", 60), vatExpense("2026-09-04", -20, 17)]);
+    expect(result.currentMonth.inputVat).toBe(40);
+  });
+
+  it("faktúrový dobropis znižuje daň na výstupe", () => {
+    const result = vat([vatInvoice("2026-09-02", 200), vatInvoice("2026-09-05", -50)], []);
+    expect(result.currentMonth.outputVat).toBe(150);
+  });
+
+  it("bez jediného dokladu s DPH je odhad null, nie nula", () => {
+    const result = vat([vatInvoice("2026-09-02", undefined)], [vatExpense("2026-09-03", undefined)]);
+    expect(result.currentMonth.amount).toBeNull();
+  });
+
+  it("nulová DPH na doklade je platný odhad nula", () => {
+    const result = vat([vatInvoice("2026-09-02", 0)], []);
+    expect(result.currentMonth.amount).toBe(0);
+  });
+
+  it("mesiace sú kalendárne bez ohľadu na prepínač obdobia", () => {
+    const result = vat([], []);
+    expect(result.previousMonth.monthKey).toBe("2026-08");
+    expect(result.currentMonth.monthKey).toBe("2026-09");
+  });
+
+  it("január vracia december predchádzajúceho roka", () => {
+    const result = computeVatEstimate({
+      invoices: [],
+      expenses: [],
+      selectedCompanies: [],
+      referenceDate: new Date(2026, 0, 10)
+    });
+    expect(result.previousMonth.monthKey).toBe("2025-12");
   });
 });
