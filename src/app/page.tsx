@@ -39,6 +39,7 @@ import { useSyncOrchestrator } from "@/lib/sync/use-sync-orchestrator";
 import { invoiceEngine } from "@/lib/sync/invoice-engine";
 import { expenseEngine } from "@/lib/sync/expense-engine";
 import { cashflowEngine } from "@/lib/sync/cashflow-engine";
+import { getHomeMockData } from "@/lib/home-mock-data";
 
 /**
  * Domov ťahá VŠETKY tri domény. Nie je to sťahovanie navyše: enginy sú tie isté,
@@ -82,7 +83,12 @@ export default function HomePage() {
   const syncConnections = companyFilter.companies;
 
   const {
-    data: { invoices, expenses, accounts: cashflowAccounts, transactions },
+    data: {
+      invoices: liveInvoices,
+      expenses: liveExpenses,
+      accounts: liveAccounts,
+      transactions: liveTransactions
+    },
     isSyncing,
     hasResolvedFirstData,
     refresh
@@ -92,6 +98,15 @@ export default function HomePage() {
     granularity,
     enabled: hasLoadedPersistedFilters
   });
+
+  const hasLiveMode = connections.length > 0;
+  // Bez prepojenia ide demo tými istými funkciami ako živé dáta — nie vlastnou
+  // vetvou výpočtov, ktorá by sa časom rozišla s tou skutočnou.
+  const demoData = useMemo(() => (hasLiveMode ? null : getHomeMockData()), [hasLiveMode]);
+  const invoices = demoData?.invoices ?? liveInvoices;
+  const expenses = demoData?.expenses ?? liveExpenses;
+  const cashflowAccounts = demoData?.accounts ?? liveAccounts;
+  const transactions = demoData?.transactions ?? liveTransactions;
 
   const handleRefresh = () => {
     setTagRefreshNonce((value) => value + 1);
@@ -349,7 +364,6 @@ export default function HomePage() {
     [selectedCompanies]
   );
 
-  const hasLiveMode = connections.length > 0;
   const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
 
   return (
@@ -374,11 +388,17 @@ export default function HomePage() {
           {companyFilter.noneAvailable ? (
             <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} />
           ) : null}
+          {/*
+            Na rozdiel od ostatných modulov demo Domova nesie doklady, nie hotové
+            súčty — klik do grafu má teda z čoho prepočítať aj v demo režime, preto
+            tu (na rozdiel od `hasLiveMode` gate v Príjmoch/Výdavkoch) focus nie je
+            viazaný na `hasLiveMode`.
+          */}
           <ProfitDashboard
             kpis={kpis}
             points={points}
-            focusedPeriod={hasLiveMode ? focusedPeriod : null}
-            onFocusedPeriodChange={hasLiveMode ? setFocusedPeriod : undefined}
+            focusedPeriod={focusedPeriod}
+            onFocusedPeriodChange={setFocusedPeriod}
           />
           {hiddenSections.includes(HOME_SECTIONS.receivables) ? null : (
             <HomeDueCard positions={duePositions} isPeriodFocused={Boolean(focusedPeriod)} />
