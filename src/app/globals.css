@@ -3059,3 +3059,20 @@ body {
   flex-basis: 100%;
   font-size: 0.76rem;
 }
+
+.home-donut {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  margin: 0.6rem auto;
+  mask: radial-gradient(circle, transparent 56%, #000 57%);
+  width: min(190px, 52vw);
+}
+
+.home-card-link {
+  color: #a9bcff;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 0.7rem;
+  text-decoration: none;
+}

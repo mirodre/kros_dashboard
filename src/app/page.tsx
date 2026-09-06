@@ -6,8 +6,10 @@ import { ModuleSkeleton } from "@/components/module-skeleton";
 import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ProfitDashboard } from "@/components/profit-dashboard";
+import { HomeAccountsCard } from "@/components/home-accounts-card";
 import type { VisibilityOption } from "@/components/category-visibility-button";
 import { computeProfitKpis, computeProfitSeries } from "@/lib/home-live";
+import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
 import { getBucketPeriodWindow } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import { usePreference } from "@/lib/use-preference";
@@ -56,7 +58,7 @@ export default function HomePage() {
   const syncConnections = companyFilter.companies;
 
   const {
-    data: { invoices, expenses },
+    data: { invoices, expenses, accounts: cashflowAccounts, transactions },
     isSyncing,
     hasResolvedFirstData,
     refresh
@@ -66,6 +68,17 @@ export default function HomePage() {
     granularity,
     enabled: hasLoadedPersistedFilters
   });
+
+  // Id-čka len ZVOLENÝCH firiem, nie všetkých synchronizovaných — pozri komentár pri
+  // rovnomennom parametri v `computeCashflowOverviewFromLiveData`: keby sem šli všetky
+  // firmy, rozkliknutý filter by účty vôbec nezúžil.
+  const selectedCompanyIds = useMemo(() => {
+    if (selectedCompanies.length === 0) return [];
+    const selected = new Set(selectedCompanies);
+    return connections
+      .filter((connection) => selected.has(connection.companyName))
+      .map((connection) => connection.companyId);
+  }, [selectedCompanies, connections]);
 
   const scopedInvoices = useMemo(
     () => invoices.filter((invoice) => documentMatchesTagFilters(invoice.tags, categoryFilters)),
@@ -89,6 +102,21 @@ export default function HomePage() {
   );
 
   const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
+
+  // Účty sú stav k dnešku, nie tok za obdobie: granularita sem ide len preto, že ju
+  // prehľad Financií vyžaduje na svoje vlastné série, ktoré Domov nepoužíva. Focus
+  // stĺpca sa sem zámerne neposiela — karta ho ignoruje, nie sledovanie s omeškaním.
+  const accounts = useMemo(
+    () =>
+      computeCashflowOverviewFromLiveData({
+        accounts: cashflowAccounts,
+        transactions,
+        granularity,
+        selectedCompanies,
+        selectedCompanyIds
+      }).accountBreakdown,
+    [cashflowAccounts, transactions, granularity, selectedCompanies, selectedCompanyIds]
+  );
 
   // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca. Po prepnutí obdobia
   // (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa nemá čoho držať,
@@ -142,6 +170,9 @@ export default function HomePage() {
             focusedPeriod={hasLiveMode ? focusedPeriod : null}
             onFocusedPeriodChange={hasLiveMode ? setFocusedPeriod : undefined}
           />
+          {hiddenSections.includes(HOME_SECTIONS.accounts) ? null : (
+            <HomeAccountsCard accounts={accounts} isPeriodFocused={Boolean(focusedPeriod)} />
+          )}
         </>
       )}
     </DashboardShell>

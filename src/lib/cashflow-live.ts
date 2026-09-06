@@ -11,6 +11,11 @@ import type {
 import { getDocumentDateTime } from "./document-date";
 import { PAYMENT_BOOKED_AT_KEYS } from "./payment-sync-progress";
 
+// Domov (`home-accounts-card.tsx`) potrebuje typ účtu, ale nemá dôvod poznať, že
+// jeho pôvodná definícia býva v `cashflow-mock-data.ts` — preexportujeme ho, aby
+// druhý modul importoval z jedného, stabilného miesta.
+export type { CashflowAccountPoint };
+
 /**
  * Deň zaúčtovania platby — rovnako ako pri dokladoch berieme len dátumovú
  * zložku, aby čas (napr. `...T23:00:00Z`) nepresunul pohyb do iného dňa,
