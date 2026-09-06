@@ -428,6 +428,30 @@ describe("computeProfitTagBreakdown", () => {
     });
     expect(points.map((point) => point.name)).toEqual(["A", "B"]);
   });
+
+  it("rozpis zisku pripína vlaňajšok aj — profit a previousProfit sú odlišné", () => {
+    const thisYear = firstDayOf(CURRENT_YEAR, NOW.getMonth());
+    const lastYear = firstDayOf(CURRENT_YEAR - 1, NOW.getMonth());
+    const points = computeProfitTagBreakdown({
+      invoices: [
+        taggedInvoice(thisYear, 2000, ["Consulting"]),
+        taggedInvoice(lastYear, 1500, ["Consulting"])
+      ],
+      expenses: [
+        taggedExpense(thisYear, 800, ["Consulting"]),
+        taggedExpense(lastYear, 500, ["Consulting"])
+      ],
+      selectedCompanies: []
+    });
+    const consulting = points.find((point) => point.name === "Consulting");
+    expect(consulting).toMatchObject({
+      income: 2000,
+      expense: 800,
+      profit: 1200,
+      previousProfit: 1000
+    });
+    expect(consulting?.profit).not.toBe(consulting?.previousProfit);
+  });
 });
 
 describe("computeProfitCompanyBreakdown", () => {
@@ -456,5 +480,39 @@ describe("computeProfitCompanyBreakdown", () => {
       selectedCompanies: []
     });
     expect(points.find((point) => point.name === "Kros Servis")?.profit).toBe(-300);
+  });
+
+  it("filter štítkov zúžuje výsledok len na firmy s dokladmi v tom štítku", () => {
+    const companyAInvoice = taggedInvoice(date, 1000, ["Marketing"]);
+    const companyAInvoice2 = taggedInvoice(date, 500, ["Operations"]);
+    const companyBInvoice = taggedInvoice(date, 800, ["Operations"]);
+    const companyAExpense = taggedExpense(date, 200, ["Marketing"]);
+    const companyAExpense2 = taggedExpense(date, 300, ["Operations"]);
+    const companyBExpense = taggedExpense(date, 150, ["Operations"]);
+
+    const points = computeProfitCompanyBreakdown({
+      invoices: [
+        { ...companyAInvoice, companyName: "CompanyA" },
+        { ...companyAInvoice2, companyName: "CompanyA" },
+        { ...companyBInvoice, companyName: "CompanyB" }
+      ],
+      expenses: [
+        { ...companyAExpense, companyName: "CompanyA" },
+        { ...companyAExpense2, companyName: "CompanyA" },
+        { ...companyBExpense, companyName: "CompanyB" }
+      ],
+      selectedTags: ["Marketing"],
+      selectedCompanies: []
+    });
+
+    const companyA = points.find((point) => point.name === "CompanyA");
+    const companyB = points.find((point) => point.name === "CompanyB");
+
+    expect(companyA).toMatchObject({
+      income: 1000,
+      expense: 200,
+      profit: 800
+    });
+    expect(companyB).toBeUndefined();
   });
 });
