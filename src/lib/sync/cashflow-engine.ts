@@ -127,7 +127,9 @@ export const cashflowEngine: SyncEngine<CashflowSyncStep> = {
 
   describe(step) {
     return {
-      key: `${step.connection.companyId}:payments`,
+      // Rovnaký tvar kľúča ako u ostatných dvoch enginov (`invoices:`, `expenses:`) —
+      // doména ako prefix, nie prípona.
+      key: `payments:${step.connection.companyId}`,
       group: step.connection.companyName,
       label: "bankové účty a pohyby"
     };

@@ -81,4 +81,14 @@ describe("planExpenseSteps", () => {
     const steps = await planExpenseSteps(context({ granularity: "year" }));
     expect(steps.every((step) => step.range === "history")).toBe(true);
   });
+
+  it("chýbajúci mesiac má prednosť pred krokom zmien", async () => {
+    syncMeta.set(expenseCompanyMetaKey(CONNECTION.companyId, "ytd"), {
+      completedAt: "2026-09-01T00:00:00Z",
+      lastModifiedTimestamp: "2026-09-01T00:00:00Z"
+    });
+
+    const steps = await planExpenseSteps(context({ isManualRefresh: true }));
+    expect(steps.every((step) => step.kind === "month")).toBe(true);
+  });
 });

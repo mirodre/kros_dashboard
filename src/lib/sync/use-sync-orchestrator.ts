@@ -115,7 +115,13 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
         setIsSyncing(true);
         // Log KROS volaní čistíme raz na začiatku sťahovania, nie raz za modul —
         // inak by Domov premazal to, čo práve zapísal jeho vlastný prvý engine.
-        await fetch("/api/kros/logs", { method: "DELETE" });
+        // Zlyhanie mazania logu nesmie zhodiť celý sync — log je diagnostika,
+        // nie dáta, a pôvodný cashflow efekt toto mazanie ani nevolal.
+        try {
+          await fetch("/api/kros/logs", { method: "DELETE" });
+        } catch {
+          // Nič — log ostane nevymazaný, sťahovanie pokračuje.
+        }
 
         for (const [index, { engine, step }] of planned.entries()) {
           if (abortController.signal.aborted) return;
