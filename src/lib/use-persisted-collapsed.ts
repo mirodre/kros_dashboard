@@ -8,7 +8,11 @@ export type CollapsedPreferenceKey =
   | "ui.collapsed.expensesCompanies"
   | "ui.collapsed.recentInvoices"
   | "ui.collapsed.recentExpenses"
-  | "ui.collapsed.expenseVendors";
+  | "ui.collapsed.expenseVendors"
+  | "ui.collapsed.homeCompanies"
+  | "ui.collapsed.homeReceivables"
+  | "ui.collapsed.homeAccounts"
+  | "ui.collapsed.homeVat";
 
 /**
  * Zapamätá zbalenie panela. Zbalenie je OSOBNÉ nastavenie (register v

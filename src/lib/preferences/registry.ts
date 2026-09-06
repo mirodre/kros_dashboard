@@ -36,6 +36,14 @@ export type PreferenceValueMap = {
   "ui.collapsed.recentInvoices": boolean;
   "ui.collapsed.recentExpenses": boolean;
   "ui.collapsed.expenseVendors": boolean;
+  /** Filter štítkov Domova — vlastný, nie zdieľaný s modulmi: zmena tu nesmie prestaviť Príjmy. */
+  "home.tagFilters": Record<string, string[]>;
+  "home.companies": string[];
+  "ui.homeHiddenSections": string[];
+  "ui.collapsed.homeCompanies": boolean;
+  "ui.collapsed.homeReceivables": boolean;
+  "ui.collapsed.homeAccounts": boolean;
+  "ui.collapsed.homeVat": boolean;
 };
 
 export type PreferenceKey = keyof PreferenceValueMap;
@@ -163,7 +171,30 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
   "ui.collapsed.expensesCompanies": collapsedPanel("kros_dashboard_expenses_collapsed_companies"),
   "ui.collapsed.recentInvoices": collapsedPanel("kros_dashboard_collapsed_recent_invoices"),
   "ui.collapsed.recentExpenses": collapsedPanel("kros_dashboard_collapsed_recent_expenses"),
-  "ui.collapsed.expenseVendors": collapsedPanel("kros_dashboard_collapsed_expense_vendors")
+  "ui.collapsed.expenseVendors": collapsedPanel("kros_dashboard_collapsed_expense_vendors"),
+  "home.tagFilters": {
+    level: "tenant",
+    storageKey: "kros_dashboard_home_selected_tags",
+    default: {},
+    isValid: isTagFilters,
+    normalize: normalizeTagFilters
+  },
+  "home.companies": {
+    level: "tenant",
+    storageKey: "kros_dashboard_home_selected_companies",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.homeHiddenSections": {
+    level: "user",
+    storageKey: "kros_dashboard_home_hidden_sections",
+    default: [],
+    isValid: isStringArray
+  },
+  "ui.collapsed.homeCompanies": collapsedPanel("kros_dashboard_home_collapsed_companies"),
+  "ui.collapsed.homeReceivables": collapsedPanel("kros_dashboard_home_collapsed_receivables"),
+  "ui.collapsed.homeAccounts": collapsedPanel("kros_dashboard_home_collapsed_accounts"),
+  "ui.collapsed.homeVat": collapsedPanel("kros_dashboard_home_collapsed_vat")
 };
 
 export const PREFERENCE_KEY_LIST = Object.keys(PREFERENCE_KEYS) as PreferenceKey[];
