@@ -56,7 +56,7 @@ const REVENUE_SECTIONS = {
  */
 const REVENUE_ENGINES = [invoiceEngine];
 
-export default function HomePage() {
+export default function PrijmyPage() {
   // Nastavenia žijú v spoločnom store (server + `localStorage` ako cache), nie v stave
   // stránky: to je celý zmysel tejto fázy — filtre nasledujú človeka na iné zariadenie.
   const [granularity, setGranularity] = usePreference("ui.granularity");
