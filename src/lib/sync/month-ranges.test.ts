@@ -15,8 +15,23 @@ describe("buildMonthSyncRanges", () => {
       new Date(2026, 0, 15).toISOString(),
       new Date(2026, 1, 10).toISOString()
     );
-    expect(new Date(ranges[0].from).getDate()).toBe(15);
-    expect(new Date(ranges[1].to).getDate()).toBe(10);
+
+    // Začiatok okna: startOfDayIso musí cieliť na miestnu 00:00:00.000, nielen na správny deň.
+    const windowStart = new Date(ranges[0].from);
+    expect(windowStart.getDate()).toBe(15);
+    expect(windowStart.getHours()).toBe(0);
+    expect(windowStart.getMinutes()).toBe(0);
+    expect(windowStart.getSeconds()).toBe(0);
+    expect(windowStart.getMilliseconds()).toBe(0);
+
+    // Koniec okna: endOfDayIso musí cieliť na miestnu 23:59:59.999, nielen na správny deň
+    // (getDate() samo osebe by pri UTC posune stále vrátilo 10 aj pri zle vypočítanom čase).
+    const windowEnd = new Date(ranges[1].to);
+    expect(windowEnd.getDate()).toBe(10);
+    expect(windowEnd.getHours()).toBe(23);
+    expect(windowEnd.getMinutes()).toBe(59);
+    expect(windowEnd.getSeconds()).toBe(59);
+    expect(windowEnd.getMilliseconds()).toBe(999);
   });
 
   it("okno v jednom mesiaci dá jediný rozsah", () => {
