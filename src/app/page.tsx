@@ -443,15 +443,12 @@ export default function HomePage() {
             }}
           />
           {/*
-            Priznaná nepresnosť: príjmová a výdavková strana priraďujú štítky rôzne.
-            Predstierať presnosť, ktorú dáta nemajú, by bolo horšie než ju povedať.
+            Príjmová a výdavková strana priraďujú štítky rôzne: faktúra s viacerými
+            štítkami sa započíta celá do každého z nich, výdavok sa rozdelí podľa
+            rozúčtovania. Súčet riadkov preto nedá celkový zisk. Vetu, ktorá to
+            hovorila pod zoznamom, si používateľ vyžiadal zmazať — nepresnosť tým
+            nezmizla, len sa už nepomenúva na obrazovke.
           */}
-          <section className="dashboard-body">
-            <p className="tag-filter-help">
-              Faktúra s viacerými štítkami sa započíta celá do každého z nich, výdavok sa
-              rozdelí podľa rozúčtovania. Súčet riadkov preto nedá celkový zisk.
-            </p>
-          </section>
 
           {hiddenSections.includes(HOME_SECTIONS.companies) ? null : (
             <CompaniesDashboard

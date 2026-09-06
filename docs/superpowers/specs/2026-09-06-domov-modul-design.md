@@ -188,9 +188,13 @@ malým písmom obe zložky (napr. `24 850 − 17 320`).
 **Známa asymetria, ktorú treba priznať v UI.** Faktúra s dvoma štítkami sa započíta
 celá do oboch (`computeTagBreakdown`), kým výdavok sa rozdelí podľa rozúčtovania
 (`scopeExpenseAmountsToTagFilters`). Zisk na štítok teda nie je súčet, ktorý by dal
-celkový zisk, a pri viacštítkových faktúrach bude nadhodnotený. Pod zoznam patrí
-jedna veta, ktorá to povie. Prerobiť aj príjmovú stranu na rozúčtovanie je vlastný
-projekt, nie súčasť tohto.
+celkový zisk, a pri viacštítkových faktúrach bude nadhodnotený. Prerobiť aj príjmovú
+stranu na rozúčtovanie je vlastný projekt, nie súčasť tohto.
+
+**Zmena po nasadení (2026-09-06):** pôvodne tu stálo, že pod zoznam patrí jedna veta,
+ktorá tú nepresnosť povie, a tá veta sa aj naozaj vykresľovala. Používateľ si ju
+vyžiadal zmazať. Asymetria tým nezmizla — Domov ju len už nepomenúva na obrazovke;
+zostáva zapísaná v komentári nad tou sekciou v `src/app/page.tsx`.
 
 ### 6. Zisk podľa firiem
 
