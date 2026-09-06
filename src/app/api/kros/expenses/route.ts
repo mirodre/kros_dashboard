@@ -177,6 +177,18 @@ async function attachJournalItems(
         : `Detaily načítané: ${expenses.length}/${expenses.length}`
   });
 
+  // Dočasná diagnostika (KROS_LOG_SAMPLE_PAYLOAD) — rovnaký účel ako pri faktúrach.
+  if (process.env.KROS_LOG_SAMPLE_PAYLOAD && expenses.length > 0) {
+    await appendKrosLog({
+      direction: "response",
+      endpoint: "/api/expenses/{id}",
+      method: "GET",
+      companyName: company.companyName,
+      message: "VZORKA: prvý výdavok aj s detailom",
+      payload: expenses[0]
+    });
+  }
+
   return expenses;
 }
 
