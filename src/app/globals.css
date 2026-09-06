@@ -2900,8 +2900,34 @@ body {
  * polohujú od NULOVEJ ČIARY, nie od spodku — pri zápornom zisku sa nula odlepí
  * od dna a čiara klesne pod ňu. Preto vlastné triedy a nie `.bar-*`: tie držia
  * Príjmy aj Výdavky, kde stĺpce znamenajú tento rok vs. vlani.
+ *
+ * `.profit-chart-scroll` je JEDINÝ posúvateľný kontajner a čiara (SVG) aj stĺpce
+ * sú jeho priami/nepriami potomkovia vnútri `.profit-chart-track` so ŠÍRKOU V PIXELOCH
+ * (nastavuje ju komponent, nie CSS percento). Vďaka tomu majú obe vrstvy vždy presne tú
+ * istú šírku obsahu a posúvajú sa spolu — predtým bola čiara (SVG) sirotou v
+ * neposúvateľnom `.profit-chart-wrap` na šírku `100 %` OBRAZOVKY, kým stĺpce pri väčšom
+ * počte než sa zmestí pretekali mimo neho (`.bar-chart` má rovnaký problém vyriešený
+ * priamo na sebe, tu ho vyriešiť nešlo, lebo čiara bola mimo posúvateľnej vrstvy).
  */
 .profit-chart-wrap {
+  position: relative;
+}
+
+.profit-chart-scroll {
+  -ms-overflow-style: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.profit-chart-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.profit-chart-track {
+  /* Šírka príde inline z komponentu (počet stĺpcov × ich pixelová šírka), toto je
+     len poistka, nech pri málo stĺpcoch track nezostane užší, než je viditeľná plocha. */
+  min-width: 100%;
   position: relative;
 }
 
@@ -2919,10 +2945,13 @@ body {
   color: inherit;
   cursor: pointer;
   display: flex;
-  flex: 1 1 0;
+  /* Základ 44px zodpovedá `COLUMN_WIDTH` v profit-chart.tsx — grow nechá stĺpce
+     roztiahnuť sa, keď je stĺpcov málo a track je širší než ich súčet (pozri
+     `min-width: 100%` vyššie); keď stĺpcov je veľa, track má presne ich súčet
+     šírky a grow nemá čo rozdeliť, takže stĺpce ostanú pri 44px a posúvajú sa. */
+  flex: 1 1 44px;
   flex-direction: column;
   gap: 0.4rem;
-  min-width: 32px;
   padding: 0;
   position: relative;
   animation: revenue-bar-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;

@@ -83,6 +83,34 @@ export function getHomeMockData(referenceDate: Date = new Date()) {
     }
   }
 
+  // Jeden výdavok rozúčtovaný na DVA štítky naraz, v aktuálnom mesiaci — demo dáta
+  // dovtedy nemali ani jeden genuinely split doklad, takže sa nedalo v prehliadači
+  // overiť, že tok (graf zisku, KPI) a „Zisk podľa štítkov" počítajú s rovnakou
+  // (alikvotnou) sumou. Bez `scopeExpenseAmountsToTagFilters` vo flow-výpočtoch by
+  // filter na jeden z týchto dvoch štítkov ukázal v grafe CELÝCH 4000 €, kým riadok
+  // štítku len jeho podiel (1200 €, resp. 2800 €) — presne tá nezhoda z review.
+  const splitDate = isoDate(shiftMonths(referenceDate, 0, safeDay));
+  const splitAmount = 4000;
+  expenses.push({
+    id: "demo-exp-split",
+    companyId: 1,
+    companyName: COMPANIES[0],
+    documentNumber: "D2026SPLIT",
+    documentType: 10,
+    partnerName: "Zdieľaný dodávateľ",
+    issueDate: splitDate,
+    deliveryDate: splitDate,
+    totalPrice: splitAmount,
+    vatAmount: Math.round(splitAmount * 0.2),
+    paymentStatus: "fullyPaid",
+    hasAttachments: false,
+    tags: ["Retail", "Réžia"],
+    allocations: [
+      { tags: ["Retail"], amount: splitAmount * 0.3 },
+      { tags: ["Réžia"], amount: splitAmount * 0.7 }
+    ]
+  });
+
   // Neuhradené doklady v troch pásmach splatnosti, nech je karta Pohľadávky
   // a záväzky vidieť celá — vrátane pásma nad 60 dní.
   const unpaid: { days: number; amount: number }[] = [

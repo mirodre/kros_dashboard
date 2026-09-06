@@ -10,6 +10,14 @@ type Props = {
 };
 
 /**
+ * Šírka jedného stĺpca v pixeloch. Pevná hodnota, nie percento kontajnera —
+ * presne preto, aby stĺpce aj čiara zisku vždy dostali TÚ ISTÚ šírku obsahu
+ * (pozri `contentWidth` nižšie) a nemohli sa navzájom rozísť, keď je stĺpcov
+ * viac, než sa zmestí na obrazovku (viď `.profit-chart-scroll` v globals.css).
+ */
+const COLUMN_WIDTH = 44;
+
+/**
  * Stĺpce sú príjmy a výdavky toho istého obdobia, čiara nad nimi je zisk.
  *
  * Všetko na JEDNEJ škále v eurách. Dve osi pre rovnaké jednotky by boli spôsob,
@@ -55,84 +63,102 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
     .map((point, index) => `${index * stepX + stepX / 2},${lineY(point.profit)}`)
     .join(" ");
 
+  /**
+   * Obsah v pixeloch — SVG aj stĺpce dostanú TÚTO ISTÚ šírku (pozri `.profit-chart-track`
+   * v globals.css), takže sa neposúvajú nezávisle: `width: N%` kdekoľvek v tomto strome
+   * by mieril na inú základňu podľa toho, či je stĺpcov viac či menej, ako sa zmestí
+   * na obrazovku, a presne to čiaru od stĺpcov rozhodilo predtým.
+   */
+  const contentWidth = points.length * COLUMN_WIDTH;
+
   return (
     <div className="profit-chart-wrap">
-      <svg
-        className="profit-chart-line"
-        viewBox={`0 0 ${viewBoxWidth} 100`}
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <line
-          className="profit-chart-zero"
-          x1="0"
-          x2={viewBoxWidth}
-          y1={lineY(0)}
-          y2={lineY(0)}
-          vectorEffect="non-scaling-stroke"
-        />
-        <polyline points={linePoints} vectorEffect="non-scaling-stroke" />
-        {points.map((point, index) => (
-          <circle
-            key={point.label}
-            cx={index * stepX + stepX / 2}
-            cy={lineY(point.profit)}
-            r="2"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
+      <div className="profit-chart-scroll">
+        <div className="profit-chart-track" style={{ width: `${contentWidth}px` }}>
+          <svg
+            className="profit-chart-line"
+            viewBox={`0 0 ${viewBoxWidth} 100`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <line
+              className="profit-chart-zero"
+              x1="0"
+              x2={viewBoxWidth}
+              y1={lineY(0)}
+              y2={lineY(0)}
+              vectorEffect="non-scaling-stroke"
+            />
+            <polyline points={linePoints} vectorEffect="non-scaling-stroke" />
+            {points.map((point, index) => (
+              <circle
+                key={point.label}
+                cx={index * stepX + stepX / 2}
+                cy={lineY(point.profit)}
+                r="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
 
-      <div
-        className={focusedPeriod ? "profit-chart has-period-focus" : "profit-chart"}
-        role="group"
-        aria-label="Príjmy, výdavky a zisk po obdobiach"
-      >
-        {points.map((point, index) => {
-          const isFocused = focusedPeriod === point.label;
-          const tooltipEdgeClass =
-            index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
-          return (
-            <button
-              type="button"
-              key={point.label}
-              className={`profit-bar-item${isFocused ? " is-period-focused" : ""}`}
-              style={{ "--bar-index": index } as React.CSSProperties}
-              aria-pressed={isFocused}
-              aria-label={`${point.label}: zisk ${formatCurrency(point.profit)}`}
-              onClick={() => onFocusedPeriodChange?.(isFocused ? null : point.label)}
-            >
-              {isFocused ? (
-                <div className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`} aria-live="polite">
-                  <p className="tooltip-label">{point.label}</p>
-                  <div className="tooltip-values">
-                    <span>Príjmy: {formatCurrency(point.income)}</span>
-                    <span>Výdavky: {formatCurrency(point.expense)}</span>
-                    <span>Zisk: {formatCurrency(point.profit)}</span>
-                    <span className="profit-tooltip-previous">
-                      Vlani: {formatCurrency(point.previousProfit)}
-                    </span>
+          <div
+            className={focusedPeriod ? "profit-chart has-period-focus" : "profit-chart"}
+            role="group"
+            aria-label="Príjmy, výdavky a zisk po obdobiach"
+          >
+            {points.map((point, index) => {
+              const isFocused = focusedPeriod === point.label;
+              const tooltipEdgeClass =
+                index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
+              return (
+                <button
+                  type="button"
+                  key={point.label}
+                  className={`profit-bar-item${isFocused ? " is-period-focused" : ""}`}
+                  style={{ "--bar-index": index } as React.CSSProperties}
+                  aria-pressed={isFocused}
+                  aria-label={`${point.label}: zisk ${formatCurrency(point.profit)}`}
+                  onClick={() => onFocusedPeriodChange?.(isFocused ? null : point.label)}
+                >
+                  {isFocused ? (
+                    <div
+                      className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`}
+                      aria-live="polite"
+                    >
+                      <p className="tooltip-label">{point.label}</p>
+                      <div className="tooltip-values">
+                        <span>Príjmy: {formatCurrency(point.income)}</span>
+                        <span>Výdavky: {formatCurrency(point.expense)}</span>
+                        <span>Zisk: {formatCurrency(point.profit)}</span>
+                        <span className="profit-tooltip-previous">
+                          Vlani: {formatCurrency(point.previousProfit)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="profit-bar-stack">
+                    <div
+                      className="profit-bar income"
+                      style={{
+                        height: `${heightPct(point.income)}%`,
+                        bottom: `${bottomPct(point.income)}%`
+                      }}
+                    />
+                    <div
+                      className="profit-bar expense"
+                      style={{
+                        height: `${heightPct(point.expense)}%`,
+                        bottom: `${bottomPct(point.expense)}%`
+                      }}
+                    />
                   </div>
-                </div>
-              ) : null}
-
-              <div className="profit-bar-stack">
-                <div
-                  className="profit-bar income"
-                  style={{ height: `${heightPct(point.income)}%`, bottom: `${bottomPct(point.income)}%` }}
-                />
-                <div
-                  className="profit-bar expense"
-                  style={{
-                    height: `${heightPct(point.expense)}%`,
-                    bottom: `${bottomPct(point.expense)}%`
-                  }}
-                />
-              </div>
-              <p>{point.label}</p>
-            </button>
-          );
-        })}
+                  <p>{point.label}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <ul className="profit-chart-legend">
