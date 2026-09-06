@@ -115,6 +115,21 @@ export default function HomePage() {
       .map((connection) => connection.companyId);
   }, [effectiveCompanies, connections]);
 
+  // Tri rozsahy dokladov, každý na iný účel:
+  // 1) `invoices`/`expenses` (zo synchronizácie) — úplne neodfiltrované, použité nižšie pre
+  //    `availableTagPoints`/`categoryOptions` a pre DPH, kde filter štítkov neplatí.
+  // 2) `filterScopedInvoices`/`filterScopedExpenses` — len podľa Filtra štítkov, BEZ focusu.
+  //    Vstup pre kategóriu focusnutého štítku v zozname nižšie: tá sa focusom nesmie zúžiť.
+  // 3) `scopedInvoices`/`scopedExpenses` — Filter štítkov AJ focus. Toto je „hlavný" rozsah:
+  //    graf, KPI, pohľadávky/záväzky a zisk podľa firiem správne zúžiť focusom majú.
+  const filterScopedInvoices = useMemo(
+    () => invoices.filter((invoice) => documentMatchesTagFilters(invoice.tags, categoryFilters)),
+    [invoices, categoryFilters]
+  );
+  const filterScopedExpenses = useMemo(
+    () => expenses.filter((expense) => documentMatchesTagFilters(expense.tags, categoryFilters)),
+    [expenses, categoryFilters]
+  );
   const scopedInvoices = useMemo(
     () =>
       invoices.filter((invoice) =>
@@ -169,7 +184,21 @@ export default function HomePage() {
     if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
   }, [focusedPeriod, periodWindow]);
 
-  const tagPoints = useMemo(
+  // Rozpis zisku podľa Filtra štítkov (bez focusu) — vstup pre kategóriu focusnutého
+  // štítku, ktorá sa focusom nesmie zúžiť.
+  const filterTagPoints = useMemo(
+    () =>
+      computeProfitTagBreakdown({
+        invoices: filterScopedInvoices,
+        expenses: filterScopedExpenses,
+        selectedCompanies: effectiveCompanies,
+        period: periodWindow ?? undefined
+      }),
+    [filterScopedInvoices, filterScopedExpenses, effectiveCompanies, periodWindow]
+  );
+
+  // Rozpis zisku zúžený aj o focusnutý štítok — vstup pre OSTATNÉ kategórie zoznamu.
+  const focusTagPoints = useMemo(
     () =>
       computeProfitTagBreakdown({
         invoices: scopedInvoices,
@@ -179,6 +208,32 @@ export default function HomePage() {
       }),
     [scopedInvoices, scopedExpenses, effectiveCompanies, periodWindow]
   );
+
+  /**
+   * Zoznam pre kartu „Zisk podľa štítkov": v kategórii focusnutého štítku ostávajú sumy
+   * podľa Filtra štítkov (bez zúženia focusom), ostatné kategórie sa prepočítajú podľa
+   * focusnutého štítku — rovnaký princíp ako `tagsData` v Príjmoch/Výdavkoch, len namiesto
+   * jednej sumy nesie riadok príjem aj výdavok (`ProfitBreakdownPoint`), preto sa spája
+   * priamo tu a nie cez `computeProfitTagBreakdown`.
+   */
+  const tagPoints = useMemo(() => {
+    const allowedFilter = filterTagPoints.filter((point) =>
+      isTagAllowedByFilters(point.name, categoryFilters, tagCategoryIndex)
+    );
+    if (!focusedTag) {
+      return [...allowedFilter].sort((a, b) => b.profit - a.profit);
+    }
+
+    const focusedCategory = categoryForTag(tagCategoryIndex, focusedTag);
+    const focusByName = new Map(focusTagPoints.map((point) => [point.name, point]));
+    const merged = allowedFilter.flatMap((point) => {
+      const category = categoryForTag(tagCategoryIndex, point.name);
+      if (category === focusedCategory) return [point];
+      const focusedPoint = focusByName.get(point.name);
+      return focusedPoint ? [focusedPoint] : [];
+    });
+    return merged.sort((a, b) => b.profit - a.profit);
+  }, [filterTagPoints, focusTagPoints, categoryFilters, tagCategoryIndex, focusedTag]);
 
   const companyPoints = useMemo(
     () =>
