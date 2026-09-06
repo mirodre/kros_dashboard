@@ -51,10 +51,34 @@ const guardProtected = auth((request: NextAuthRequest, _event: NextFetchEvent) =
  * vôbec nespustil („The Middleware file must export a function named `middleware` or a
  * default function"), takže neplatila ŽIADNA ochrana.
  */
+/**
+ * DOČASNÉ: náhľad rozostavanej obrazovky pre vývoj UI.
+ *
+ * Lokálne sa nedá prihlásiť — SSO klient nie je registrovaný pre `localhost`, takže
+ * bez tejto výnimky by sa novo stavaná obrazovka nedala v prehliadači vôbec pozrieť.
+ *
+ * Výnimka žije TU, a nie v `public-paths.ts`: ten zoznam je bezpečnostný allowlist,
+ * ktorý platí aj v produkcii, a jeho komentár hovorí, že pridať doň niečo má byť
+ * vedomé rozhodnutie. Toto rozhodnutie vedomé nie je — je to nástroj na vývoj.
+ *
+ * `next build` nastavuje `NODE_ENV` na `production`, takže v nasadenej appke táto
+ * vetva nikdy neprejde. Test v `middleware.test.ts` to stráži.
+ *
+ * Zmazať aj so `src/app/nahlad/` po dokončení modulu Domov.
+ */
+const DEV_PREVIEW_PATH = "/nahlad";
+
 export default async function middleware(
   request: NextRequest,
   event: NextFetchEvent
 ): Promise<Response> {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    request.nextUrl.pathname === DEV_PREVIEW_PATH
+  ) {
+    return NextResponse.next();
+  }
+
   if (isPublicPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }

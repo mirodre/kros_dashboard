@@ -52,6 +52,30 @@ describe("middleware", () => {
     expect(typeof middleware).toBe("function");
   });
 
+  it("docasny nahlad je mimo produkcie verejny", async () => {
+    // Nástroj na vývoj: lokálne sa nedá prihlásiť, takže bez tejto výnimky by sa
+    // rozostavaná obrazovka nedala v prehliadači vôbec pozrieť.
+    const response = await middleware(request("http://localhost:3000/nahlad"), EVENT);
+
+    expect(isNext(response)).toBe(true);
+    expect(guardCalls.count).toBe(0);
+  });
+
+  it("docasny nahlad je V PRODUKCII chraneny ako cokolvek ine", async () => {
+    // Toto je celá poistka tej výnimky. Keby prešla aj v produkcii, appka by mala
+    // verejnú stránku s účtovnými číslami — a nikto by si toho nemusel všimnúť.
+    vi.stubEnv("NODE_ENV", "production");
+
+    const response = await middleware(request("https://prehlady.test/nahlad"), EVENT);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://prehlady.test/prihlasenie?callbackUrl=%2Fnahlad"
+    );
+
+    vi.unstubAllEnvs();
+  });
+
   it("chranena stranka bez session presmeruje na prihlasenie s cestou aj query", async () => {
     const response = await middleware(request("https://prehlady.test/cashflow?mesiac=3"), EVENT);
 
