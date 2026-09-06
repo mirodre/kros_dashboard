@@ -29,6 +29,11 @@ type Props = {
   collapsible?: boolean;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /**
+   * Doplnkový riadok pod sumou. Domov ním ukazuje, z čoho zisk vznikol
+   * („24 850 € − 17 320 €"); moduly, ktoré ukazujú jednu veličinu, ho neposielajú.
+   */
+  renderMeta?: (item: BreakdownItem) => React.ReactNode;
 };
 
 export function FilterableBreakdownSection({
@@ -45,7 +50,8 @@ export function FilterableBreakdownSection({
   invertDeltaColor = false,
   collapsible = false,
   collapsed = false,
-  onCollapsedChange
+  onCollapsedChange,
+  renderMeta
 }: Props) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
@@ -155,6 +161,7 @@ export function FilterableBreakdownSection({
                     </div>
                     <div className="tag-values">
                       <p>{formatCurrency(item.amount)}</p>
+                      {renderMeta ? <small className="breakdown-meta">{renderMeta(item)}</small> : null}
                       {delta !== null ? (
                         <p
                           className={

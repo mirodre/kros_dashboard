@@ -1848,6 +1848,12 @@ body {
   margin: 0;
 }
 
+.breakdown-meta {
+  color: var(--muted);
+  display: block;
+  font-size: 0.7rem;
+}
+
 .movement-amount-text {
   font-weight: 700;
 }

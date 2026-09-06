@@ -33,6 +33,11 @@ type Props = {
   baseTitle?: string;
   ariaLabelPrefix?: string;
   invertDeltaColor?: boolean;
+  /**
+   * Doplnkový riadok pod sumou. Domov ním ukazuje, z čoho zisk vznikol
+   * („24 850 € − 17 320 €"); moduly, ktoré ukazujú jednu veličinu, ho neposielajú.
+   */
+  renderMeta?: (item: AggregatedBreakdownPoint) => React.ReactNode;
 };
 
 export function CategorizedTagsDashboard({
@@ -46,7 +51,8 @@ export function CategorizedTagsDashboard({
   onFocusedTagsChange,
   baseTitle = "Tržby podľa štítkov",
   ariaLabelPrefix = "Filtrovať prehľad podľa štítku",
-  invertDeltaColor = false
+  invertDeltaColor = false,
+  renderMeta
 }: Props) {
   const filters = categoryFilters ?? {};
   const dialogSource = availableTags ?? tags;
@@ -106,6 +112,7 @@ export function CategorizedTagsDashboard({
         }
         onFocusedItemsChange={onFocusedTagsChange}
         invertDeltaColor={invertDeltaColor}
+        renderMeta={renderMeta}
       />
     );
   }
@@ -148,6 +155,7 @@ export function CategorizedTagsDashboard({
             onCollapsedChange={(collapsed) =>
               setCategoryCollapsed(availableGroup.category, collapsed)
             }
+            renderMeta={renderMeta}
           />
         );
       })}
