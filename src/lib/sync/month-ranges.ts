@@ -11,13 +11,13 @@ export function getLiveDataRange(granularity: Granularity): "ytd" | "history" {
 
 function startOfDayIso(date: Date) {
   const value = new Date(date);
-  value.setUTCHours(0, 0, 0, 0);
+  value.setHours(0, 0, 0, 0);
   return value.toISOString();
 }
 
 function endOfDayIso(date: Date) {
   const value = new Date(date);
-  value.setUTCHours(23, 59, 59, 999);
+  value.setHours(23, 59, 59, 999);
   return value.toISOString();
 }
 
