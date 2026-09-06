@@ -8,10 +8,10 @@ import { PreferencesBoot } from "@/components/preferences-boot";
 export const metadata: Metadata = {
   // Názov záložky si každý modul určuje vo svojom layoute (`src/app/expenses/layout.tsx`
   // a spol.) a `template` mu dopredu dá „KROS", aby sa prefix nepísal v každom module
-  // znova a nerozišel sa. `default` je pre koreňovú route `/`, čo je modul Príjmy —
+  // znova a nerozišel sa. `default` je pre koreňovú route `/`, čo je modul Domov —
   // a zároveň slúži ako fallback pre route bez vlastného titulku.
   title: {
-    default: "KROS Príjmy",
+    default: "KROS Domov",
     template: "KROS %s"
   },
   description: "Mobile-first prehľad tržieb a štítkov pre dáta z KROS",

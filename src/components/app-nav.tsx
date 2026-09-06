@@ -13,11 +13,21 @@ import { useEffect, useState } from "react";
 const NAV_ITEMS = [
   {
     href: "/",
-    label: "Príjmy",
+    label: "Domov",
     icon: (
       <>
         <path d="M4.5 10.4 12 4l7.5 6.4V20a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1v-9.6Z" />
         <path d="M9.5 21v-5.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V21" />
+      </>
+    )
+  },
+  {
+    href: "/prijmy",
+    label: "Príjmy",
+    icon: (
+      <>
+        <path d="M4 16.5 9.2 11l3.4 3.2L20 7" />
+        <path d="M15.2 7H20v4.8" />
       </>
     )
   },
