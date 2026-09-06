@@ -173,7 +173,7 @@ export function getMockRecentInvoices(referenceDate: Date = new Date()): Normali
     return d.toISOString().slice(0, 10);
   };
 
-  const rows: Omit<NormalizedInvoice, "id">[] = [
+  const rows: Omit<NormalizedInvoice, "id" | "paymentStatus">[] = [
     {
       companyName: "Kros Trade",
       partnerName: "TechPartner SK s.r.o.",
@@ -290,7 +290,9 @@ export function getMockRecentInvoices(referenceDate: Date = new Date()): Normali
 
   return rows.map((row, index) => ({
     ...row,
-    id: `mock-invoice-${index}-${row.issueDate}`
+    id: `mock-invoice-${index}-${row.issueDate}`,
+    // Demo dáta bez pripojenej firmy — v mock zozname sú všetky faktúry uhradené.
+    paymentStatus: "fullyPaid" as const
   }));
 }
 

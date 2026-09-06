@@ -20,6 +20,15 @@ export type NormalizedInvoice = {
   lastModifiedTimestamp?: string;
   totalPrice: number;
   tags: string[];
+  /** Dátum splatnosti — bez neho sa faktúra nedá zaradiť medzi po splatnosti. */
+  dueDate?: string;
+  paymentStatus: DocumentPaymentStatus;
+  /**
+   * DPH z dokladu v EUR (`prices.legislativePrices.vatTotalPrice`). Dobropis ju
+   * nesie už zápornú, takže sa nikde neotáča znamienko. `undefined` znamená,
+   * že ju KROS nevrátil — a to je iná správa než nula.
+   */
+  vatAmount?: number;
 };
 
 export type AggregatedRevenuePoint = {
@@ -34,7 +43,12 @@ export type AggregatedBreakdownPoint = {
   previousAmount: number;
 };
 
-export type ExpensePaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
+/**
+ * Kód stavu úhrady dokladu z KROS API. Faktúry aj výdavky používajú tie isté
+ * číselné kódy (0 notPaid, 1 fullyPaid, 2 overPaid, 3 partiallyPaid), preto je
+ * typ spoločný pre oba doklady, nielen pre výdavky.
+ */
+export type DocumentPaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
 
 /**
  * Jedna položka rozúčtovania výdavku na štítky. Vzniká z riadkov journalItems
@@ -73,7 +87,7 @@ export type NormalizedExpense = {
    * zoznamy dokladov tak vedia ukázať, z akého celku je zobrazená časť.
    */
   documentTotalPrice?: number;
-  paymentStatus: ExpensePaymentStatus;
+  paymentStatus: DocumentPaymentStatus;
   paymentType?: string;
   hasAttachments: boolean;
   /** Zjednotenie štítkov zo všetkých rozúčtovaní — na filtrovanie dokladov. */

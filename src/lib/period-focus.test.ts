@@ -41,6 +41,7 @@ function invoice(date: string, overrides: Partial<NormalizedInvoice> = {}): Norm
     issueDate: date,
     deliveryDate: date,
     totalPrice: 100,
+    paymentStatus: "fullyPaid",
     tags: ["Retail"],
     ...overrides
   };

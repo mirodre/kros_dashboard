@@ -1,5 +1,11 @@
 import type { Granularity, KpiCard } from "./mock-data";
-import type { AggregatedBreakdownPoint, AggregatedRevenuePoint, NormalizedInvoice } from "./kros-types";
+import type {
+  AggregatedBreakdownPoint,
+  AggregatedRevenuePoint,
+  DocumentPaymentStatus,
+  NormalizedInvoice
+} from "./kros-types";
+import { PAYMENT_STATUS_BY_CODE } from "./document-payment-status";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
 import {
   buildBuckets,
@@ -66,6 +72,39 @@ export function getInvoiceAnalyticsDate(invoice: NormalizedInvoice) {
   return invoice.deliveryDate ?? invoice.issueDate;
 }
 
+/**
+ * Cenová skupina dokladu. `legislativePrices` je v účtovnej mene (EUR),
+ * `documentPrices` v mene dokladu — preto analytiky čítajú výhradne
+ * legislatívnu skupinu. Fallback medzi nimi by miešal meny: česká faktúra
+ * má v dokladových cenách 67 919 CZK tam, kde legislatívne 2 695 EUR.
+ */
+function legislativePrices(row: Record<string, unknown>) {
+  const prices = row.prices;
+  if (!prices || typeof prices !== "object") return undefined;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  return group && typeof group === "object" ? (group as Record<string, unknown>) : undefined;
+}
+
+function readNumber(value: unknown) {
+  const parsed = Number(value);
+  return value !== undefined && value !== null && Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * DPH z dokladu. `undefined` = KROS pole nevrátil; nula je platná hodnota
+ * (oslobodené plnenie, prenesená daňová povinnosť) a nesmie sa s tým zamieňať.
+ * Dobropis nesie hodnotu už zápornú, takže sa znamienko neotáča.
+ */
+function readInvoiceVatAmount(row: Record<string, unknown>) {
+  return readNumber(legislativePrices(row)?.vatTotalPrice);
+}
+
+function readPaymentStatus(row: Record<string, unknown>): DocumentPaymentStatus {
+  const code = readNumber(row.paymentStatus);
+  if (code === undefined) return "undefined";
+  return PAYMENT_STATUS_BY_CODE[code] ?? "undefined";
+}
+
 export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
   return rawInvoices
     .map((invoice): NormalizedInvoice | null => {
@@ -80,11 +119,7 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
       const partnerName = readPartnerName(row);
       const lastModifiedTimestamp =
         readString(row, ["lastModifiedTimestamp", "lastModified", "modifiedAt", "updatedAt"]) ?? undefined;
-      const totalPrice =
-        Number(
-          (row.prices as Record<string, unknown> | undefined)?.legislativePrices &&
-            ((row.prices as Record<string, unknown>).legislativePrices as Record<string, unknown>).totalPrice
-        ) || 0;
+      const totalPrice = readNumber(legislativePrices(row)?.totalPrice) ?? 0;
       const tagsRaw = Array.isArray(row.tags) ? row.tags : [];
       const tags = tagsRaw.map(normalizeTag).filter((tag): tag is string => Boolean(tag));
 
@@ -100,7 +135,10 @@ export function normalizeInvoices(rawInvoices: unknown[]): NormalizedInvoice[] {
         deliveryDate,
         lastModifiedTimestamp,
         totalPrice,
-        tags: tags.length > 0 ? tags : ["Nedefinované"]
+        tags: tags.length > 0 ? tags : ["Nedefinované"],
+        dueDate: readString(row, ["dueDate"]) ?? undefined,
+        paymentStatus: readPaymentStatus(row),
+        vatAmount: readInvoiceVatAmount(row)
       } satisfies NormalizedInvoice;
     })
     .filter((invoice): invoice is NormalizedInvoice => Boolean(invoice));

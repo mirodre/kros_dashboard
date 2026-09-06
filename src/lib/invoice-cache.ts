@@ -1,10 +1,9 @@
 import type { NormalizedInvoice } from "./kros-types";
 
 const DB_NAME = "kros_dashboard_cache";
-// v3: analytiky aj sync idú podľa dátumu dodania — v1 faktúry nemajú
-// deliveryDate a mesačné sync metadáta znamenali mesiac vystavenia,
-// upgrade preto starú cache premaže a stiahne sa nanovo.
-const DB_VERSION = 3;
+// v4: faktúra nesie dátum splatnosti, stav úhrady a sumu DPH — staršie záznamy
+// tie polia nemajú, upgrade preto starú cache premaže a stiahne sa nanovo.
+const DB_VERSION = 4;
 const INVOICES_STORE = "invoices";
 const SYNC_META_STORE = "syncMeta";
 

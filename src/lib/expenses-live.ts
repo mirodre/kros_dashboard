@@ -2,10 +2,10 @@ import type { Granularity, KpiCard } from "./mock-data";
 import type {
   AggregatedBreakdownPoint,
   AggregatedRevenuePoint,
-  ExpensePaymentStatus,
   ExpenseTagAllocation,
   NormalizedExpense
 } from "./kros-types";
+import { PAYMENT_STATUS_BY_CODE } from "./document-payment-status";
 import {
   buildBuckets,
   classifyPeriod,
@@ -46,14 +46,6 @@ export type ExpenseDueWatchlist = {
   overdueTotal: number;
   upcoming: NormalizedExpense[];
   upcomingTotal: number;
-};
-
-const EXPENSE_PAYMENT_STATUS_BY_CODE: Record<number, ExpensePaymentStatus> = {
-  0: "notPaid",
-  1: "fullyPaid",
-  2: "overPaid",
-  3: "partiallyPaid",
-  [-1]: "undefined"
 };
 
 const EXPENSE_DOCUMENT_TYPE_LABELS: Record<number, string> = {
@@ -276,7 +268,7 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         totalPrice: applySign(amounts.totalPrice),
         paymentStatus:
           paymentStatusCode !== undefined
-            ? EXPENSE_PAYMENT_STATUS_BY_CODE[paymentStatusCode] ?? "undefined"
+            ? PAYMENT_STATUS_BY_CODE[paymentStatusCode] ?? "undefined"
             : "undefined",
         paymentType: pickString(row, ["paymentType"]),
         hasAttachments: row.hasAttachments === true,
