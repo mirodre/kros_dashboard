@@ -146,22 +146,20 @@ function firstNonZeroNumber(...values: unknown[]) {
 }
 
 /**
- * Suma z hlavičky dokladu — legislatívna cena bez DPH. Ak je legislatívna
- * skupina vynulovaná (KROS ju pri časti výdavkov neplní), berieme sumu bez DPH
- * z documentPrices.
+ * Suma z hlavičky dokladu — legislatívna cena bez DPH, teda v účtovnej mene.
+ *
+ * Zámerne BEZ fallbacku na `documentPrices`: tá skupina je v mene dokladu, nie
+ * v eurách (podiel oboch skupín sa presne rovná `prices.exchangeRate`), a výdavky
+ * chodia aj v cudzej mene. Fallback tu kedysi bol a pri poľskom doklade by do
+ * eurového súčtu započítal zhruba štvornásobok, pri českom dvadsaťpäťnásobok.
  */
 function readHeaderTotalPrice(row: Record<string, unknown>) {
   const prices = row.prices;
   if (!prices || typeof prices !== "object") return 0;
-  const pricesRow = prices as Record<string, unknown>;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  if (!group || typeof group !== "object") return 0;
 
-  const readGroup = (group: unknown) =>
-    group && typeof group === "object" ? (group as Record<string, unknown>).totalPrice : undefined;
-
-  return firstNonZeroNumber(
-    readGroup(pricesRow.legislativePrices),
-    readGroup(pricesRow.documentPrices)
-  );
+  return getNumber((group as Record<string, unknown>).totalPrice) ?? 0;
 }
 
 type JournalLine = { tags: string[]; amount: number };
