@@ -15,7 +15,10 @@ import type {
  * Dátumy sú relatívne k `referenceDate`, aby demo nezostarlo: pevné dátumy by po
  * pár mesiacoch vypadli z okna grafu a demo by sa ukázalo prázdne.
  */
-const COMPANIES = ["Kros Trade", "Kros Servis"] as const;
+// Názvy zhodné s ostatnými demo zdrojmi (mock-data.ts, cashflow-mock-data.ts,
+// expenses-mock-data.ts) — inak by Domov pri prekliknutí na iný modul pôsobil,
+// že ukazuje inú firmu.
+const COMPANIES = ["Kros Trade", "Kros Services"] as const;
 const TAGS = ["Retail", "Projekty", "Réžia"] as const;
 
 function isoDate(date: Date) {

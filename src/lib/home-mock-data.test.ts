@@ -1,10 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHomeMockData } from "./home-mock-data";
 import { computeDuePositions, computeProfitSeries, computeVatEstimate } from "./home-live";
 
 const REFERENCE = new Date(2026, 8, 6);
 
 describe("getHomeMockData", () => {
+  // `computeProfitSeries` nemá parameter `referenceDate` — deleguje na
+  // `computeRevenueSeries`/`computeExpenseSeries`, ktoré si „dnes" berú z reálneho
+  // hodinového stroja cez `getDateRange()` (pozri period-buckets.ts, dashboard-live.ts).
+  // Fixtúry v tomto súbore sú dátované okolo REFERENCE (rok 2026); keby REFERENCE
+  // ostalo natvrdo a systémový čas nie, po prelome do roku 2027 by bucketovanie hľadalo
+  // „tento rok" = 2027 a žiadna fixtúra by doň nespadla — zisk by bol všade nula
+  // a test by zlyhal bez akejkoľvek regresie v kóde. Zamknutím systémového času na
+  // REFERENCE zostávajú fixtúra aj bucketovanie v tom istom roku nech test beží kedykoľvek.
+  // Neriešiť „jednoducho" REFERENCE = new Date() — časti dát (napr. neuhradené doklady
+  // v pásmach splatnosti) sú viazané na deň v mesiaci a strata kontroly nad rokom by
+  // znova otvorila presne tento problém.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REFERENCE);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("dáva doklady v aktuálnom aj minulom roku, nech je čo porovnávať", () => {
     const data = getHomeMockData(REFERENCE);
     const years = new Set(data.invoices.map((invoice) => invoice.issueDate.slice(0, 4)));

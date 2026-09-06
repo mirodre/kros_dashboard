@@ -11,12 +11,15 @@ type Props = {
   onFocusedPeriodChange?: (label: string | null) => void;
 };
 
-function DeltaBadge({ value }: { value: ProfitKpiValue }) {
+function DeltaBadge({ value, invert = false }: { value: ProfitKpiValue; invert?: boolean }) {
   // Bez vlaňajška percento neexistuje. Prázdny odznak je lepší než „+100 %",
   // ktoré by tvrdilo rast tam, kde sa nie je s čím porovnať.
   if (value.deltaPct === null) return null;
+  // Pri výdavkoch je pokles dobrá správa — `invert` otočí farby, aby menej
+  // minutých peňazí nesvietilo červeno (zisk a príjmy ostávajú bez otočenia).
+  const isGood = invert ? value.deltaPct <= 0 : value.deltaPct >= 0;
   return (
-    <span className={value.deltaPct >= 0 ? "delta up" : "delta down"}>
+    <span className={isGood ? "delta up" : "delta down"}>
       {formatDelta(value.deltaPct)}
     </span>
   );
@@ -50,7 +53,7 @@ export function ProfitDashboard({ kpis, points, focusedPeriod, onFocusedPeriodCh
           <div>
             <span className="profit-kpi-label">Výdavky</span>
             <strong>{formatCurrency(kpis.expense.current)}</strong>
-            <DeltaBadge value={kpis.expense} />
+            <DeltaBadge value={kpis.expense} invert />
           </div>
         </div>
       </article>
