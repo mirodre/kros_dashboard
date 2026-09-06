@@ -136,15 +136,6 @@ function normalizeTag(rawTag: unknown): string | null {
   return null;
 }
 
-/** Prvá nenulová hodnota — KROS niektoré cenové skupiny nechá vynulované. */
-function firstNonZeroNumber(...values: unknown[]) {
-  for (const value of values) {
-    const parsed = getNumber(value);
-    if (parsed !== undefined && parsed !== 0) return parsed;
-  }
-  return 0;
-}
-
 /**
  * Suma z hlavičky dokladu — legislatívna cena bez DPH, teda v účtovnej mene.
  *
@@ -180,7 +171,16 @@ function readHeaderVatAmount(row: Record<string, unknown>) {
 
 type JournalLine = { tags: string[]; amount: number };
 
-/** Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}). */
+/**
+ * Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}).
+ *
+ * Suma výhradne z `legislativeTotalPrice` — rovnaký dôvod ako pri
+ * `readHeaderTotalPrice`: `totalPrice` riadku je v mene dokladu, nie v eurách,
+ * a fallback naň by pri cudzej mene výdavok viacnásobne nadhodnotil. Tento
+ * fallback tu kedysi bol (odstránený z hlavičky, ale nie z riadkov) a keďže
+ * API dotiahne detail takmer ku každému výdavku, bola to práve táto cesta,
+ * ktorá o chybnú sumu reálne šla.
+ */
 function readJournalLines(row: Record<string, unknown>): JournalLine[] {
   const rawItems = Array.isArray(row.journalItems) ? row.journalItems : [];
 
@@ -190,7 +190,7 @@ function readJournalLines(row: Record<string, unknown>): JournalLine[] {
       tags: (Array.isArray(item.tags) ? item.tags : [])
         .map(normalizeTag)
         .filter((tag): tag is string => Boolean(tag)),
-      amount: firstNonZeroNumber(item.legislativeTotalPrice, item.totalPrice)
+      amount: getNumber(item.legislativeTotalPrice) ?? 0
     }));
 }
 

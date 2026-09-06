@@ -83,4 +83,18 @@ describe("normalizeExpenses — DPH", () => {
     expect(expense.totalPrice).toBe(-55.12);
     expect(expense.vatAmount).toBe(-12.68);
   });
+
+  it("riadok zaúčtovania NEPADÁ na svoj totalPrice — ten je v mene dokladu, nie v eurách", () => {
+    // Rovnaký dôvod ako pri hlavičke: `totalPrice` riadku je v mene dokladu, nie
+    // v eurách. Prvý riadok má vynulovanú legislatívnu sumu (KROS to vie nechať
+    // tak) a cudzomenový `totalPrice` — keby bol fallback, súčet by ho pripočítal
+    // a vyšiel by 72.9 namiesto 5.
+    const raw = rawExpense({
+      journalItems: [
+        { tags: ["Materiál"], legislativeTotalPrice: 0, totalPrice: 67.9 },
+        { tags: ["Réžia"], legislativeTotalPrice: 5, totalPrice: 5 }
+      ]
+    });
+    expect(normalizeExpenses([raw])[0].totalPrice).toBe(5);
+  });
 });
