@@ -22,6 +22,15 @@ function accountsWord(count: number) {
   return "účtov";
 }
 
+/**
+ * Lokál („na X účte/účtoch") pre aria-label donutu — iné pády ako `accountsWord`,
+ * ktoré sklonuje pre vetu „Celkovo X účtov". V lokáli má množné číslo jediný tvar
+ * bez ohľadu na počet, líši sa len jednotné vs. množné.
+ */
+function accountsWordLocative(count: number) {
+  return count === 1 ? "účte" : "účtoch";
+}
+
 export function HomeAccountsCard({ accounts, isPeriodFocused }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed("ui.collapsed.homeAccounts");
 
@@ -84,7 +93,7 @@ export function HomeAccountsCard({ accounts, isPeriodFocused }: Props) {
                     className="home-donut"
                     style={{ background: `conic-gradient(${stops.join(", ")})` }}
                     role="img"
-                    aria-label={`Rozdelenie zostatkov na ${positive.length} účtoch`}
+                    aria-label={`Rozdelenie zostatkov na ${positive.length} ${accountsWordLocative(positive.length)}`}
                   />
                 ) : null}
                 <DonutLegend ariaLabel="Zostatky na účtoch">
@@ -94,8 +103,8 @@ export function HomeAccountsCard({ accounts, isPeriodFocused }: Props) {
                     return (
                       <li key={account.id}>
                         <div
-                          className="cashflow-legend-item"
-                          style={{ "--legend-accent": accent, cursor: "default" } as React.CSSProperties}
+                          className="cashflow-legend-item home-legend-item"
+                          style={{ "--legend-accent": accent } as React.CSSProperties}
                         >
                           <span className="cashflow-legend-label">{account.name}</span>
                           <span className="cashflow-legend-value">{formatCurrency(account.amount)}</span>
