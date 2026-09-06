@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { ModuleSkeleton } from "@/components/module-skeleton";
 import type { VisibilityOption } from "@/components/category-visibility-button";
@@ -11,8 +11,7 @@ import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboar
 import { ExpenseVendorsSection } from "@/components/expense-vendors-section";
 import { RecentExpensesSection } from "@/components/recent-expenses-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
-import type { Granularity } from "@/lib/mock-data";
-import type { AggregatedBreakdownPoint, KrosConnection, NormalizedExpense } from "@/lib/kros-types";
+import type { AggregatedBreakdownPoint, NormalizedExpense } from "@/lib/kros-types";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { applyCompanyFilter } from "@/lib/preferences/company-filter";
@@ -38,7 +37,6 @@ import {
   computeExpenseTagStructure,
   computeExpenseVendorBreakdown,
   getFilteredRecentExpenses,
-  normalizeExpenses,
   scopeExpenseAmountsToTagFilters,
   withNormalizedTagShares
 } from "@/lib/expenses-live";
@@ -48,153 +46,16 @@ import {
   reconcileFocusedTags,
   type FocusedTag
 } from "@/lib/tag-focus";
-import { getDateRange, getBucketPeriodWindow } from "@/lib/period-buckets";
+import { getBucketPeriodWindow } from "@/lib/period-buckets";
 import { getMockExpenses } from "@/lib/expenses-mock-data";
-import { formatMonthKeyLabel, useSyncProgress, type SyncStep } from "@/lib/use-sync-progress";
-import { readNdjsonStream } from "@/lib/ndjson-stream";
-import {
-  expenseCompanyMetaKey,
-  expenseMonthMetaKey,
-  getCachedExpenses,
-  readExpenseSyncMeta,
-  upsertCachedExpenses,
-  writeExpenseSyncMeta
-} from "@/lib/expense-cache";
-
-const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
-
-type LiveDataRange = "ytd" | "history";
-
-type MonthSyncRange = { monthKey: string; from: string; to: string };
+import { expenseEngine } from "@/lib/sync/expense-engine";
+import { useSyncOrchestrator } from "@/lib/sync/use-sync-orchestrator";
 
 /**
- * Jeden krok sťahovania — buď chýbajúci mesiac firmy, alebo doklady zmenené od
- * posledného syncu. Plán krokov zostavíme pred prvým fetchom, aby progress bar
- * poznal celok a nemusel len nekonečne točiť.
+ * Engine array musí byť modulová konštanta, nie literál v tele komponentu —
+ * inak sa efekt v orchestrátore spustí pri každom rendere odznova.
  */
-type ExpenseSyncStep =
-  | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
-  | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
-
-/** Od koľkých krokov je sťahovanie „na dlho“ a patrí naň celá obrazovka. */
-const IMMERSIVE_STEP_THRESHOLD = 3;
-
-/** Krok sťahovania tak, ako ho vidí používateľ na obrazovke sťahovania. */
-function toSyncStep(step: ExpenseSyncStep): SyncStep {
-  if (step.kind === "month") {
-    return {
-      key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
-      group: step.connection.companyName,
-      label: formatMonthKeyLabel(step.monthRange.monthKey)
-    };
-  }
-
-  return {
-    key: `${step.connection.companyId}:changes`,
-    group: step.connection.companyName,
-    label: "zmenené doklady"
-  };
-}
-
-/** Riadky priebehu z `/api/kros/expenses` (NDJSON stream). */
-type ExpenseStreamEvent =
-  | { type: "progress"; phase: "list"; loaded?: number }
-  | { type: "progress"; phase: "details"; done?: number; total?: number }
-  | ExpenseResultEvent;
-
-type ExpenseResultEvent = { type: "result"; data?: unknown[]; errors?: { message?: string }[] };
-
-// Stránkovanie hlavičiek je proti doťahovaniu rozúčtovania krátke, ale nie
-// zanedbateľné — kus baru mu preto necháme.
-const LIST_PHASE_SHARE = 0.12;
-
-/** Podiel hotového v rámci jedného kroku + jeho popis pre progress bar. */
-function readStepProgress(event: ExpenseStreamEvent) {
-  if (event.type !== "progress") return null;
-
-  if (event.phase === "list") {
-    const loaded = event.loaded ?? 0;
-    return { fraction: LIST_PHASE_SHARE / 2, detail: `hľadám doklady (${loaded})` };
-  }
-
-  const total = event.total ?? 0;
-  const done = event.done ?? 0;
-  if (total === 0) return { fraction: 1, detail: "žiadne doklady" };
-  return {
-    fraction: LIST_PHASE_SHARE + (1 - LIST_PHASE_SHARE) * (done / total),
-    detail: `doklady ${done}/${total}`
-  };
-}
-
-function getLiveDataRange(granularity: Granularity): LiveDataRange {
-  return granularity === "year" ? "history" : "ytd";
-}
-
-function startOfDayIso(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString();
-}
-
-function endOfDayIso(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value.toISOString();
-}
-
-function monthKeyFromDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function buildMonthSyncRanges(fetchFrom: string, fetchTo: string) {
-  const start = new Date(fetchFrom);
-  const end = new Date(fetchTo);
-  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  const ranges: MonthSyncRange[] = [];
-
-  while (cursor <= end) {
-    const monthStart = new Date(cursor);
-    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-    const from = monthStart < start ? start : monthStart;
-    const to = monthEnd > end ? end : monthEnd;
-
-    ranges.push({
-      monthKey: monthKeyFromDate(cursor),
-      from: startOfDayIso(from),
-      to: endOfDayIso(to)
-    });
-
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return ranges;
-}
-
-function getMaxLastModified(expenses: NormalizedExpense[], fallback?: string) {
-  return expenses.reduce<string | undefined>((max, expense) => {
-    if (!expense.lastModifiedTimestamp) return max;
-    if (!max) return expense.lastModifiedTimestamp;
-    return new Date(expense.lastModifiedTimestamp).getTime() > new Date(max).getTime()
-      ? expense.lastModifiedTimestamp
-      : max;
-  }, fallback);
-}
-
-function withLastModifiedOverlap(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  date.setMinutes(date.getMinutes() - 5);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-  const milliseconds = date.getUTCMilliseconds();
-  const fraction =
-    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
-}
+const EXPENSE_ENGINES = [expenseEngine];
 
 /**
  * Doklady zúžené filtrom štítkov a focusom (rozkliknutými štítkami) — doklad musí niesť
@@ -239,22 +100,8 @@ export default function ExpensesPage() {
   const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
   // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
   const { connections, isLoading: isLoadingConnections } = useKrosConnections();
-  const [liveExpenses, setLiveExpenses] = useState<NormalizedExpense[]>([]);
-  const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
-  const [, setLiveError] = useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
-  // Kým nevieme, či ide o live alebo demo režim (a kým z cache neprídu prvé doklady),
-  // nekreslíme čísla — inak na obrazovke blikne demo suma a hneď ju prepíše skutočná.
-  const [hasResolvedFirstData, setHasResolvedFirstData] = useState(false);
-  const handledRefreshNonceRef = useRef(0);
-  const {
-    beginSync,
-    startStep,
-    advanceStep,
-    completeStep,
-    endSync
-  } = useSyncProgress();
+  const [tagRefreshNonce, setTagRefreshNonce] = useState(0);
 
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
@@ -274,241 +121,27 @@ export default function ExpensesPage() {
     setHasLoadedPersistedFilters(true);
   }, []);
 
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-
-    if (connections.length === 0) {
-      setLiveExpenses([]);
-      setHasResolvedFirstData(true);
-      endSync();
-      return;
-    }
-
-    if (syncConnections.length === 0) {
-      setLiveExpenses([]);
-      setIsLoadingLiveData(false);
-      setHasResolvedFirstData(true);
-      endSync();
-      return;
-    }
-
-    const abortController = new AbortController();
-    // Same flow as Biznis: hydrate from the persistent IndexedDB cache first; months
-    // without a completed sync get a full fetch, a manual refresh pulls only expenses
-    // changed since the stored per-company LastModifiedTimestamp.
-    const liveDataRange = getLiveDataRange(granularity);
-    const fetchRange = getDateRange(liveDataRange === "history" ? "year" : "month");
-    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
-    const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
-
-    const fetchExpenses = async (body: {
-      companyIds: number[];
-      deliveryDateFrom?: string;
-      deliveryDateTo?: string;
-      lastModifiedTimestamp?: string;
-    }) => {
-      const response = await fetch("/api/kros/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: abortController.signal
-      });
-
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(
-          payload?.details
-            ? `${payload?.error ?? "Nepodarilo sa načítať výdavky."} ${payload.details}`
-            : payload?.error ?? "Nepodarilo sa načítať výdavky."
-        );
-      }
-
-      // Dáta prídu posledným riadkom streamu, dovtedy chodí priebeh sťahovania.
-      const collected: { result: ExpenseResultEvent | null } = { result: null };
-      await readNdjsonStream(response.body, (raw) => {
-        const event = raw as ExpenseStreamEvent;
-        if (event?.type === "result") {
-          collected.result = event;
-          return;
-        }
-
-        const stepProgress = readStepProgress(event);
-        if (stepProgress) {
-          advanceStep(stepProgress.fraction, stepProgress.detail);
-        }
-      });
-
-      const payload = collected.result;
-      if (!payload) {
-        throw new Error("Nepodarilo sa načítať výdavky — sťahovanie sa nedokončilo.");
-      }
-      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
-      }
-      return Array.isArray(payload.data) ? payload.data : [];
-    };
-
-    const loadExpenses = async () => {
-      const cachedExpenses = await getCachedExpenses(syncCompanyIds);
-      if (!abortController.signal.aborted) {
-        // Prepočet dashboardu z dokladov je drahý. Ako transition ho React vie
-        // prerušiť, keď medzitým klikneš v menu — appka tak ostáva ovládateľná.
-        startTransition(() => setLiveExpenses(cachedExpenses));
-        setHasResolvedFirstData(true);
-      }
-
-      setLiveError(null);
-
-      try {
-        const monthRanges = buildMonthSyncRanges(fetchRange.fetchFrom, fetchRange.fetchTo);
-        let didFetch = false;
-        let didClearSyncLogs = false;
-        const clearSyncLogsOnce = async () => {
-          if (didClearSyncLogs) return;
-          didClearSyncLogs = true;
-          await fetch("/api/kros/logs", { method: "DELETE" });
-        };
-
-        // Najprv plán: čo všetko treba stiahnuť. Počet krokov je podklad pre
-        // progress bar, preto ho zisťujeme ešte pred prvým fetchom.
-        const steps: ExpenseSyncStep[] = [];
-        for (const connection of syncConnections) {
-          const missingMonthRanges: MonthSyncRange[] = [];
-          for (const monthRange of monthRanges) {
-            const monthMeta = await readExpenseSyncMeta(
-              expenseMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey)
-            );
-            if (!monthMeta?.completedAt) {
-              missingMonthRanges.push(monthRange);
-            }
-          }
-
-          if (missingMonthRanges.length > 0) {
-            for (const monthRange of missingMonthRanges) {
-              steps.push({ kind: "month", connection, monthRange });
-            }
-            continue;
-          }
-
-          if (!isManualRefresh) continue;
-
-          const companyMeta = await readExpenseSyncMeta(
-            expenseCompanyMetaKey(connection.companyId, liveDataRange)
-          );
-          if (!companyMeta?.lastModifiedTimestamp) continue;
-          steps.push({
-            kind: "changes",
-            connection,
-            lastModifiedTimestamp: companyMeta.lastModifiedTimestamp
-          });
-        }
-
-        if (abortController.signal.aborted) return;
-        // Bez dát na obrazovke (alebo pri práci na dlho) sťahujeme naplno,
-        // krátke dosynchronizovanie nad existujúcimi dátami stačí v hlavičke.
-        beginSync(
-          steps.map(toSyncStep),
-          cachedExpenses.length === 0 || steps.length >= IMMERSIVE_STEP_THRESHOLD
-        );
-        if (steps.length > 0) {
-          setIsLoadingLiveData(true);
-        }
-
-        for (const [index, step] of steps.entries()) {
-          if (abortController.signal.aborted) return;
-
-          const { connection } = step;
-          startStep(index);
-
-          await clearSyncLogsOnce();
-          const rawExpenses = await fetchExpenses(
-            step.kind === "month"
-              ? {
-                  companyIds: [connection.companyId],
-                  deliveryDateFrom: step.monthRange.from,
-                  deliveryDateTo: step.monthRange.to
-                }
-              : {
-                  companyIds: [connection.companyId],
-                  lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
-                }
-          );
-
-          const normalizedExpenses = normalizeExpenses(rawExpenses);
-          const companyExpenses = normalizedExpenses.filter(
-            (expense) =>
-              expense.companyId === connection.companyId || expense.companyName === connection.companyName
-          );
-          const completedAt = new Date().toISOString();
-          await upsertCachedExpenses(connection.companyId, companyExpenses);
-
-          if (step.kind === "month") {
-            await writeExpenseSyncMeta({
-              key: expenseMonthMetaKey(connection.companyId, liveDataRange, step.monthRange.monthKey),
-              companyId: connection.companyId,
-              range: liveDataRange,
-              monthKey: step.monthRange.monthKey,
-              completedAt
-            });
-          }
-
-          const companyMetaKey = expenseCompanyMetaKey(connection.companyId, liveDataRange);
-          const previousCompanyMeta = await readExpenseSyncMeta(companyMetaKey);
-          await writeExpenseSyncMeta({
-            key: companyMetaKey,
-            companyId: connection.companyId,
-            range: liveDataRange,
-            completedAt,
-            lastModifiedTimestamp: getMaxLastModified(
-              companyExpenses,
-              previousCompanyMeta?.lastModifiedTimestamp
-            )
-          });
-
-          didFetch = true;
-          completeStep();
-          const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
-          if (!abortController.signal.aborted) {
-            startTransition(() => setLiveExpenses(nextCachedExpenses));
-          }
-        }
-
-        if (didFetch) {
-          localStorage.setItem(LAST_SYNC_STORAGE_KEY, new Date().toISOString());
-        }
-      } catch (error) {
-        if (!abortController.signal.aborted) {
-          setLiveError(error instanceof Error ? error.message : "Načítanie live dát zlyhalo.");
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          handledRefreshNonceRef.current = refreshNonce;
-          setIsLoadingLiveData(false);
-          endSync();
-        }
-      }
-    };
-
-    loadExpenses();
-
-    return () => abortController.abort();
-  }, [
+  const {
+    data: { expenses: liveExpenses },
+    isSyncing: isLoadingLiveData,
+    hasResolvedFirstData,
+    refresh
+  } = useSyncOrchestrator(EXPENSE_ENGINES, {
     connections,
     syncConnections,
     granularity,
-    refreshNonce,
-    hasLoadedPersistedFilters,
-    beginSync,
-    startStep,
-    advanceStep,
-    completeStep,
-    endSync
-  ]);
+    enabled: hasLoadedPersistedFilters
+  });
+
+  const handleRefresh = () => {
+    setTagRefreshNonce((value) => value + 1);
+    refresh();
+  };
 
   const hasLiveMode = connections.length > 0;
   // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
   const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
-  const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
+  const tagCategoryIndex = useTagCategoryIndex(connections, tagRefreshNonce);
   const mockExpenses = useMemo(() => (hasLiveMode ? [] : getMockExpenses()), [hasLiveMode]);
   const expenses = hasLiveMode ? liveExpenses : mockExpenses;
   // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca: tento rok ten stĺpec, vlani
@@ -787,7 +420,7 @@ export default function ExpensesPage() {
       title="Výdavky"
       isSyncing={isLoadingLiveData}
       syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
-      onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      onRefresh={connections.length > 0 ? handleRefresh : undefined}
       categoryVisibility={{
         categoryOptions,
         sectionOptions,
