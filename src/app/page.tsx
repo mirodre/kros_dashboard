@@ -8,8 +8,14 @@ import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ProfitDashboard } from "@/components/profit-dashboard";
 import { HomeAccountsCard } from "@/components/home-accounts-card";
 import { HomeDueCard } from "@/components/home-due-card";
+import { HomeVatCard } from "@/components/home-vat-card";
 import type { VisibilityOption } from "@/components/category-visibility-button";
-import { computeDuePositions, computeProfitKpis, computeProfitSeries } from "@/lib/home-live";
+import {
+  computeDuePositions,
+  computeProfitKpis,
+  computeProfitSeries,
+  computeVatEstimate
+} from "@/lib/home-live";
 import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
 import { getBucketPeriodWindow } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
@@ -118,6 +124,20 @@ export default function HomePage() {
     [scopedInvoices, scopedExpenses, selectedCompanies]
   );
 
+  // Kalendárne mesiace vždy — bez ohľadu na prepínač obdobia. DPH sa podáva po
+  // mesiacoch a po týždňoch alebo rokoch je to číslo nezmysel. Zámerne `invoices`
+  // a `expenses`, nie `scopedInvoices`/`scopedExpenses` — filter štítkov sa na DPH
+  // neaplikuje, daň sa priraďuje dokladu ako celku.
+  const vatEstimate = useMemo(
+    () =>
+      computeVatEstimate({
+        invoices,
+        expenses,
+        selectedCompanies
+      }),
+    [invoices, expenses, selectedCompanies]
+  );
+
   // Účty sú stav k dnešku, nie tok za obdobie: granularita sem ide len preto, že ju
   // prehľad Financií vyžaduje na svoje vlastné série, ktoré Domov nepoužíva. Focus
   // stĺpca sa sem zámerne neposiela — karta ho ignoruje, nie sledovanie s omeškaním.
@@ -190,6 +210,9 @@ export default function HomePage() {
           )}
           {hiddenSections.includes(HOME_SECTIONS.accounts) ? null : (
             <HomeAccountsCard accounts={accounts} isPeriodFocused={Boolean(focusedPeriod)} />
+          )}
+          {hiddenSections.includes(HOME_SECTIONS.vat) ? null : (
+            <HomeVatCard estimate={vatEstimate} isPeriodFocused={Boolean(focusedPeriod)} />
           )}
         </>
       )}

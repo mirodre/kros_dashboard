@@ -3099,6 +3099,17 @@ body {
   text-decoration: none;
 }
 
+.vat-month {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.8rem;
+}
+
+.vat-month strong {
+  font-size: 1.35rem;
+}
+
 .due-row {
   margin-top: 0.9rem;
 }
