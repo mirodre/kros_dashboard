@@ -334,4 +334,28 @@ describe("computeVatEstimate", () => {
     });
     expect(result.previousMonth.monthKey).toBe("2025-12");
   });
+
+  it("doklad dodaný v minulom mesiaci ale vystavený v tomto ide do minulého, nie do tohto mesiac — dátum dodania je rozhodujúci", () => {
+    const invoiceLastMonthDelivered = { ...vatInvoice("2026-08-20", 100), issueDate: "2026-09-02" };
+    const result = vat([invoiceLastMonthDelivered], []);
+    expect(result.previousMonth.outputVat).toBe(100);
+    expect(result.currentMonth.outputVat).toBe(0);
+  });
+
+  it("výdavok dodaný v minulom mesiaci ale vystavený v tomto ide do minulého — dátum dodania je rozhodujúci aj pri výdavkoch", () => {
+    const expenseLastMonthDelivered = { ...vatExpense("2026-08-20", 50), issueDate: "2026-09-02" };
+    const result = vat([], [expenseLastMonthDelivered]);
+    expect(result.previousMonth.inputVat).toBe(50);
+    expect(result.currentMonth.inputVat).toBe(0);
+  });
+
+  it("zálohová faktúra sa vynecháva — výdavok sa nepočíta dvakrát (záloha plus finálna faktúra)", () => {
+    const invoice = vatInvoice("2026-09-02", 200);
+    const normalExpense = vatExpense("2026-09-03", 60);
+    const proformaExpense = vatExpense("2026-09-04", 40, 15);
+    const result = vat([invoice], [normalExpense, proformaExpense]);
+    expect(result.currentMonth.outputVat).toBe(200);
+    expect(result.currentMonth.inputVat).toBe(60);
+    expect(result.currentMonth.amount).toBe(140);
+  });
 });
