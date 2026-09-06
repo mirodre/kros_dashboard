@@ -1951,21 +1951,27 @@ Ikona domčeka patrí Domovu, nie Príjmom — Príjmy dostanú vlastnú. Nahra�
 
 - [ ] **Step 6: Rozšír mriežku menu na päť položiek**
 
-V `src/app/globals.css` na riadku 278 zmeň:
+**Pozor: `.mobile-liquid-nav` je v `globals.css` definované DVAKRÁT.** Raz na najvyššej úrovni (cca riadok 260) a znova celé v `@media (max-width: 760px)` (blok začína na cca riadku 2061). Na mobile vyhráva ten v media query — zmeniť len prvý výskyt by znamenalo, že sa na 375px nič nezmení a piata položka vytečie. To isté platí pre `.mobile-liquid-label`.
 
-```css
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+Over si to najprv:
+
+```bash
+grep -n "grid-template-columns: repeat(4" src/app/globals.css
+grep -n "mobile-liquid-label" src/app/globals.css
 ```
 
-na:
+V **oboch** výskytoch `grid-template-columns: repeat(4, minmax(0, 1fr));` vnútri `.mobile-liquid-nav` zmeň `4` na `5`. K tomu na najvyššej úrovni pridaj komentár:
 
 ```css
   /* Päť modulov: Domov, Príjmy, Výdavky, Financie, Nastavenia. Na 375px vychádza
-     ~71 px na položku, preto je popisok o kúsok menší než pri štyroch. */
+     ~71 px na položku, preto je popisok o kúsok menší než pri štyroch.
+     Pravidlo je zámerne aj v @media (max-width: 760px) — tam ho treba držať v zhode. */
   grid-template-columns: repeat(5, minmax(0, 1fr));
 ```
 
-Na riadku 344 zmeň `font-size: 0.72rem;` na `font-size: 0.66rem;`. To isté urob v druhom výskyte `.mobile-liquid-label` (cca riadok 2190, vnútri media query) — inak by sa na tej šírke pravidlo vrátilo na `0.72rem`.
+V **oboch** výskytoch `.mobile-liquid-label` zmeň `font-size: 0.72rem;` na `font-size: 0.66rem;`.
+
+Po zmene over, že v súbore už nie je žiadny `repeat(4` v pravidle menu ani `0.72rem` v `.mobile-liquid-label`.
 
 - [ ] **Step 7: Over typy, testy a build**
 
