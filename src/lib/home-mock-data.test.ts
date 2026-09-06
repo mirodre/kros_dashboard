@@ -74,4 +74,12 @@ describe("getHomeMockData", () => {
     expect(data.accounts.length).toBeGreaterThanOrEqual(2);
     expect(new Set(data.invoices.map((invoice) => invoice.companyName)).size).toBeGreaterThanOrEqual(2);
   });
+
+  it("demo obsahuje aspoň jeden výdavok rozúčtovaný na viac štítkov naraz", () => {
+    // Bez takého dokladu sa nedá v prehliadači overiť, že tok (graf, KPI) a
+    // "Zisk podľa štítkov" počítajú s rovnakou (alikvotnou) sumou — pozri
+    // scopeExpenseAmountsToTagFilters v page.tsx.
+    const data = getHomeMockData(REFERENCE);
+    expect(data.expenses.some((expense) => expense.allocations.length > 1)).toBe(true);
+  });
 });
