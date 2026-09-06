@@ -20,6 +20,7 @@ import {
   computeProfitTagBreakdown,
   computeVatEstimate
 } from "@/lib/home-live";
+import { scopeExpenseAmountsToTagFilters } from "@/lib/expenses-live";
 import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
 import { formatCurrency } from "@/lib/format";
 import { getBucketPeriodWindow } from "@/lib/period-buckets";
@@ -52,7 +53,7 @@ import { getHomeMockData } from "@/lib/home-mock-data";
 const HOME_ENGINES = [invoiceEngine, expenseEngine, cashflowEngine];
 
 /** Id pevných sekcií pre prepínač zobrazenia — prefix `section:` ako v ostatných moduloch. */
-export const HOME_SECTIONS = {
+const HOME_SECTIONS = {
   accounts: "section:accounts",
   receivables: "section:receivables",
   vat: "section:vat",
@@ -130,13 +131,19 @@ export default function HomePage() {
       .map((connection) => connection.companyId);
   }, [effectiveCompanies, connections]);
 
-  // Tri rozsahy dokladov, každý na iný účel:
+  // Štyri rozsahy dokladov, každý na iný účel:
   // 1) `invoices`/`expenses` (zo synchronizácie) — úplne neodfiltrované, použité nižšie pre
   //    `availableTagPoints`/`categoryOptions` a pre DPH, kde filter štítkov neplatí.
   // 2) `filterScopedInvoices`/`filterScopedExpenses` — len podľa Filtra štítkov, BEZ focusu.
   //    Vstup pre kategóriu focusnutého štítku v zozname nižšie: tá sa focusom nesmie zúžiť.
-  // 3) `scopedInvoices`/`scopedExpenses` — Filter štítkov AJ focus. Toto je „hlavný" rozsah:
-  //    graf, KPI, pohľadávky/záväzky a zisk podľa firiem správne zúžiť focusom majú.
+  // 3) `tagScopedInvoices`/`tagScopedExpenses` — Filter štítkov AJ focus, CELÉ sumy dokladov
+  //    (bez rozúčtovania). Toto je rozsah pre pohľadávky a záväzky: dodávateľovi dlžíš celú
+  //    faktúru bez ohľadu na to, ako si si ju interne rozúčtoval na štítky.
+  // 4) `flowScopedExpenses` — to isté doklady ako v (3), ale sumy zúžené na rozúčtovanie
+  //    patriace vybraným štítkom (`scopeExpenseAmountsToTagFilters`), presne ako v module
+  //    Výdavky. Toto je rozsah pre TOK — graf zisku, KPI a zisk podľa firiem. Bez neho by
+  //    faktúra rozúčtovaná na dva štítky prispela grafu CELOU sumou, kým „Zisk podľa štítkov"
+  //    pod ním len jej alikvotnou časťou — obe sekcie by o tom istom eure klamali inak.
   const filterScopedInvoices = useMemo(
     () => invoices.filter((invoice) => documentMatchesTagFilters(invoice.tags, categoryFilters)),
     [invoices, categoryFilters]
@@ -145,47 +152,53 @@ export default function HomePage() {
     () => expenses.filter((expense) => documentMatchesTagFilters(expense.tags, categoryFilters)),
     [expenses, categoryFilters]
   );
-  const scopedInvoices = useMemo(
+  const tagScopedInvoices = useMemo(
     () =>
       invoices.filter((invoice) =>
         documentMatchesTagFilters(invoice.tags, categoryFilters, focusedTag ? [focusedTag] : [])
       ),
     [invoices, categoryFilters, focusedTag]
   );
-  const scopedExpenses = useMemo(
+  const tagScopedExpenses = useMemo(
     () =>
       expenses.filter((expense) =>
         documentMatchesTagFilters(expense.tags, categoryFilters, focusedTag ? [focusedTag] : [])
       ),
     [expenses, categoryFilters, focusedTag]
   );
+  const flowScopedExpenses = useMemo(
+    () =>
+      scopeExpenseAmountsToTagFilters(tagScopedExpenses, categoryFilters, focusedTag ? [focusedTag] : []),
+    [tagScopedExpenses, categoryFilters, focusedTag]
+  );
 
   const points = useMemo(
     () =>
       computeProfitSeries({
-        invoices: scopedInvoices,
-        expenses: scopedExpenses,
+        invoices: tagScopedInvoices,
+        expenses: flowScopedExpenses,
         granularity,
         selectedTags: [],
         selectedCompanies: effectiveCompanies
       }),
-    [scopedInvoices, scopedExpenses, granularity, effectiveCompanies]
+    [tagScopedInvoices, flowScopedExpenses, granularity, effectiveCompanies]
   );
 
   const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
 
   // Neuhradené doklady k dnešku. Zámerne BEZ `periodWindow` — dlžoba nezaniká tým,
   // že vznikla vlani, a zúžiť ju na jeden stĺpec grafu by dalo číslo, ktoré nikoho
-  // nezaujíma.
+  // nezaujíma. Zámerne aj BEZ rozúčtovania (`tagScopedExpenses`, nie `flowScopedExpenses`) —
+  // dodávateľovi dlžíš celú faktúru bez ohľadu na to, ako si si ju interne rozúčtoval.
   const duePositions = useMemo(
     () =>
       computeDuePositions({
-        invoices: scopedInvoices,
-        expenses: scopedExpenses,
+        invoices: tagScopedInvoices,
+        expenses: tagScopedExpenses,
         selectedTags: [],
         selectedCompanies: effectiveCompanies
       }),
-    [scopedInvoices, scopedExpenses, effectiveCompanies]
+    [tagScopedInvoices, tagScopedExpenses, effectiveCompanies]
   );
 
   // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca. Po prepnutí obdobia
@@ -216,12 +229,12 @@ export default function HomePage() {
   const focusTagPoints = useMemo(
     () =>
       computeProfitTagBreakdown({
-        invoices: scopedInvoices,
-        expenses: scopedExpenses,
+        invoices: tagScopedInvoices,
+        expenses: tagScopedExpenses,
         selectedCompanies: effectiveCompanies,
         period: periodWindow ?? undefined
       }),
-    [scopedInvoices, scopedExpenses, effectiveCompanies, periodWindow]
+    [tagScopedInvoices, tagScopedExpenses, effectiveCompanies, periodWindow]
   );
 
   /**
@@ -253,13 +266,13 @@ export default function HomePage() {
   const companyPoints = useMemo(
     () =>
       computeProfitCompanyBreakdown({
-        invoices: scopedInvoices,
-        expenses: scopedExpenses,
+        invoices: tagScopedInvoices,
+        expenses: flowScopedExpenses,
         selectedTags: [],
         selectedCompanies,
         period: periodWindow ?? undefined
       }),
-    [scopedInvoices, scopedExpenses, selectedCompanies, periodWindow]
+    [tagScopedInvoices, flowScopedExpenses, selectedCompanies, periodWindow]
   );
 
   /** Zisk štítku ako bod rozpisu — `CategorizedTagsDashboard` číta `amount`. */
@@ -304,16 +317,18 @@ export default function HomePage() {
 
   // Kalendárne mesiace vždy — bez ohľadu na prepínač obdobia. DPH sa podáva po
   // mesiacoch a po týždňoch alebo rokoch je to číslo nezmysel. Zámerne `invoices`
-  // a `expenses`, nie `scopedInvoices`/`scopedExpenses` — filter štítkov sa na DPH
-  // neaplikuje, daň sa priraďuje dokladu ako celku.
+  // a `expenses`, nie `tagScopedInvoices`/`tagScopedExpenses` — filter štítkov sa na DPH
+  // neaplikuje, daň sa priraďuje dokladu ako celku. Firmu naopak rozklikom zúžiť ísť má —
+  // `effectiveCompanies`, nie `selectedCompanies` — rovnako ako pohľadávky/záväzky a účty
+  // pod tým istým rozkliknutím: tri karty rovnakého druhu musia mať rovnaké správanie.
   const vatEstimate = useMemo(
     () =>
       computeVatEstimate({
         invoices,
         expenses,
-        selectedCompanies
+        selectedCompanies: effectiveCompanies
       }),
-    [invoices, expenses, selectedCompanies]
+    [invoices, expenses, effectiveCompanies]
   );
 
   // Účty sú stav k dnešku, nie tok za obdobie: granularita sem ide len preto, že ju

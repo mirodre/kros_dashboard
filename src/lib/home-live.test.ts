@@ -232,6 +232,12 @@ describe("computeDuePositions", () => {
     expect(result.receivablesAvailable).toBe(true);
     expect(result.receivables.total).toBe(200);
   });
+
+  it("firma bez jedinej faktúry v scope naozaj nič nedlží — nie 'údaj nedostupný'", () => {
+    const result = positions([], []);
+    expect(result.receivablesAvailable).toBe(true);
+    expect(result.receivables.total).toBe(0);
+  });
 });
 
 /** 6. september 2026 — „tento mesiac" je 2026-09, „minulý" 2026-08. */
@@ -349,6 +355,18 @@ describe("computeVatEstimate", () => {
     const result = vat([], [expenseLastMonthDelivered]);
     expect(result.previousMonth.inputVat).toBe(50);
     expect(result.currentMonth.inputVat).toBe(0);
+  });
+
+  it("neprázdny výber firiem zúži odhad len na ne — presne tá trieda chyby, ktorú DPH karta mala (Important 3)", () => {
+    const companyAInvoice = { ...vatInvoice("2026-09-02", 200), companyName: "CompanyA" };
+    const companyBInvoice = { ...vatInvoice("2026-09-02", 900), companyName: "CompanyB" };
+    const result = computeVatEstimate({
+      invoices: [companyAInvoice, companyBInvoice],
+      expenses: [],
+      selectedCompanies: ["CompanyA"],
+      referenceDate: VAT_REFERENCE
+    });
+    expect(result.currentMonth.outputVat).toBe(200);
   });
 
   it("zálohová faktúra sa vynecháva — výdavok sa nepočíta dvakrát (záloha plus finálna faktúra)", () => {

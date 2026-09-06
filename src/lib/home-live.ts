@@ -204,10 +204,13 @@ function toPosition(
     bucket.count += 1;
   }
 
+  // Bez zaokrúhľovania jednotlivých pásiem — `formatCurrency` zaokrúhli až na
+  // zobrazenie. Zaokrúhliť každé pásmo zvlášť a potom sčítať by vedelo celok
+  // posunúť až o desiatky centov na pásmo.
   const bands = bandKeys.map((key) => ({
     key,
     label: BAND_LABELS[key],
-    total: Math.round(totals.get(key)?.total ?? 0),
+    total: totals.get(key)?.total ?? 0,
     count: totals.get(key)?.count ?? 0
   }));
 
@@ -246,9 +249,12 @@ export function computeDuePositions({
   const scopedInvoices = invoices.filter((invoice) =>
     passes(invoice.companyName, invoice.tags)
   );
-  const receivablesAvailable = scopedInvoices.some(
-    (invoice) => invoice.paymentStatus !== "undefined"
-  );
+  // Prázdny výber (firma bez jedinej faktúry vo výbere) naozaj nedlží nič — `.some()`
+  // nad prázdnym poľom vráti `false`, čo by tu tvrdilo nedostupný údaj tam, kde
+  // v skutočnosti niet čo dlžiť.
+  const receivablesAvailable =
+    scopedInvoices.length === 0 ||
+    scopedInvoices.some((invoice) => invoice.paymentStatus !== "undefined");
 
   const receivables = toPosition(
     scopedInvoices
