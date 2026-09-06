@@ -83,13 +83,6 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
           {(overdue || unpaid) && dueLabel ? (
             <p className="tag-sub">Splatnosť {dueLabel}</p>
           ) : null}
-          {expense.tags.length > 0 ? (
-            <div className="invoice-tags" aria-label="Štítky dokladu">
-              {expense.tags.map((tag) => (
-                <span key={tag}>{tag}</span>
-              ))}
-            </div>
-          ) : null}
         </div>
         <div className="tag-values movement-row-amount">
           <p className={expense.totalPrice < 0 ? "movement-amount-text up" : "movement-amount-text down"}>
@@ -98,6 +91,14 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
           <ExpenseScopeNote expense={expense} />
         </div>
       </div>
+      {/* Štítky sú pod sumou, nie v jej stĺpci — pás tak má celú šírku karty. */}
+      {expense.tags.length > 0 ? (
+        <div className="invoice-tags" aria-label="Štítky dokladu">
+          {expense.tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      ) : null}
     </li>
   );
 }
