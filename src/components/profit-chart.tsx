@@ -28,9 +28,19 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
   // začínali „odniekiaľ" a ich výška by nič neznamenala.
   const max = Math.max(0, ...values);
   const min = Math.min(0, ...values);
-  const span = max - min || 1;
+  const rawSpan = max - min;
+  /**
+   * Všetko na nule (firma bez dokladov, filter, ktorý nič neprepustí): stupnica
+   * nemá rozpätie. `|| 1` by nestačilo — posunulo by nulovú čiaru na vrch grafu,
+   * kým stĺpce by ostali dole, a os by si so stĺpcami protirečila. Nula preto ide
+   * naprostred a nulové stĺpce z nej vyrastú nulovou výškou.
+   *
+   * Invariant, ktorý musí platiť vždy: `100 - lineY(0) === zeroPct`.
+   */
+  const isFlat = rawSpan === 0;
+  const span = isFlat ? 1 : rawSpan;
   /** Kde leží nula, merané odspodu grafu. */
-  const zeroPct = ((0 - min) / span) * 100;
+  const zeroPct = isFlat ? 50 : ((0 - min) / span) * 100;
 
   const heightPct = (value: number) => (Math.abs(value) / span) * 100;
   const bottomPct = (value: number) => (value >= 0 ? zeroPct : zeroPct - heightPct(value));
@@ -40,7 +50,7 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
   // ohľadu na to, koľko ich je.
   const stepX = 100;
   const viewBoxWidth = points.length * stepX;
-  const lineY = (value: number) => ((max - value) / span) * 100;
+  const lineY = (value: number) => (isFlat ? 50 : ((max - value) / span) * 100);
   const linePoints = points
     .map((point, index) => `${index * stepX + stepX / 2},${lineY(point.profit)}`)
     .join(" ");
@@ -80,6 +90,8 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
       >
         {points.map((point, index) => {
           const isFocused = focusedPeriod === point.label;
+          const tooltipEdgeClass =
+            index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
           return (
             <button
               type="button"
@@ -91,7 +103,7 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
               onClick={() => onFocusedPeriodChange?.(isFocused ? null : point.label)}
             >
               {isFocused ? (
-                <div className="chart-tooltip chart-tooltip-inline" aria-live="polite">
+                <div className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`} aria-live="polite">
                   <p className="tooltip-label">{point.label}</p>
                   <div className="tooltip-values">
                     <span>Príjmy: {formatCurrency(point.income)}</span>

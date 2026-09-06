@@ -2907,6 +2907,13 @@ body {
   margin: 0;
 }
 
+/*
+ * Rovnaký dôvod ako pri `.bar-item.active`: `.profit-bar-item` má kvôli
+ * `animation-fill-mode: both` natrvalo nastavený `transform` zo vstupnej
+ * animácie, takže je vlastný stacking context. `z-index` na bublinu s číslami
+ * vnútri by sa preto porovnával len voči jej súrodencom, nie voči ostatným
+ * stĺpcom — zdvihnúť treba celý fokusnutý stĺpec.
+ */
 .profit-bar-item.is-period-focused {
   z-index: 30;
 }
