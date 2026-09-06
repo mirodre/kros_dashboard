@@ -2000,13 +2000,14 @@ git commit -m "feat(nav): Domov na koreni, Príjmy na /prijmy"
 
 ## Fáza 3 — normalizácia a bumpy cache
 
-### Task 8: Faktúry — splatnosť, stav úhrady, DPH a oprava sumy
+### Task 8: Faktúry — splatnosť, stav úhrady a DPH
 
-**Predpoklad:** `docs/superpowers/plans/2026-09-06-domov-kros-polia.md` z Task 1 existuje a je vyplnený. Ak nie, vráť sa k Task 1 — bez neho nevieš, ako sa polia volajú.
+**Predpoklad:** `docs/superpowers/plans/2026-09-06-domov-kros-polia.md` existuje a je vyplnený zo skutočných odpovedí KROS API. **Prečítaj si ho pred prvým krokom** — obsahuje presné cesty k poliam aj tri zistenia, ktoré menia pôvodný zámer tejto úlohy.
 
 **Files:**
 - Modify: `src/lib/kros-types.ts`
-- Modify: `src/lib/expenses-live.ts` (premenovanie typu)
+- Modify: `src/lib/expenses-live.ts` (premenovanie typu, import zdieľanej mapy)
+- Create: `src/lib/document-payment-status.ts`
 - Modify: `src/lib/dashboard-live.ts` (`normalizeInvoices`)
 - Modify: `src/lib/invoice-cache.ts` (`DB_VERSION` 3 → 4)
 - Test: `src/lib/dashboard-live.test.ts` (nový súbor)
@@ -2018,35 +2019,42 @@ git commit -m "feat(nav): Domov na koreni, Príjmy na /prijmy"
   - `NormalizedInvoice` navyše: `dueDate?: string`, `paymentStatus: DocumentPaymentStatus`, `vatAmount?: number`
   - `PAYMENT_STATUS_BY_CODE: Record<number, DocumentPaymentStatus>` v `src/lib/document-payment-status.ts`
 
+#### Čo sa oproti pôvodnému zámeru NEROBÍ
+
+Pôvodne mala táto úloha pridať fallback zo sumy v `legislativePrices` na `documentPrices`, ako to robia výdavky. **To sa nesmie urobiť.** Vzorka dokázala, že `documentPrices` je v mene dokladu a `legislativePrices` v eurách (pomer sa presne rovná `prices.exchangeRate`), a doklady chodia v EUR, CZK, PLN, GBP aj USD. Fallback by pri českej faktúre pripočítal do eurového súčtu 67 919 namiesto 2 695.
+
+Rovnako sa nepotvrdilo tvrdenie o „latentnej chybe": vo vzorke nie je ani jeden doklad s nulovou legislatívnou a nenulovou dokladovou sumou. Čítanie sumy teda ostáva ako je — **len z `legislativePrices`**.
+
+Dobropisy (`invoiceType: 1`) chodia z KROSu **už so záporným `totalPrice` aj `vatTotalPrice`**, takže `normalizeInvoices` nepotrebuje žiadnu logiku znamienok.
+
 - [ ] **Step 1: Premenuj `ExpensePaymentStatus` na `DocumentPaymentStatus`**
 
-Typ už nepatrí len výdavkom. V `src/lib/kros-types.ts` na riadku 37 premenuj a uprav komentár; potom oprav 4 miesta, ktoré ho používajú:
+Typ už nepatrí len výdavkom — vzorka potvrdila, že faktúry používajú tie isté kódy. V `src/lib/kros-types.ts` premenuj typ a uprav jeho komentár; potom oprav všetky miesta, ktoré ho používajú:
 
 ```bash
 grep -rn "ExpensePaymentStatus" src/
 ```
 
-Očakávané výskyty: `src/lib/kros-types.ts` (definícia + `NormalizedExpense.paymentStatus`), `src/lib/expenses-live.ts` (import + `EXPENSE_PAYMENT_STATUS_BY_CODE`).
+Očakávané výskyty: definícia a `NormalizedExpense.paymentStatus` v `kros-types.ts`, import a `EXPENSE_PAYMENT_STATUS_BY_CODE` v `expenses-live.ts`.
 
 - [ ] **Step 2: Vytiahni mapovanie kódov do zdieľaného modulu**
 
-Vytvor `src/lib/document-payment-status.ts` a presuň doň `EXPENSE_PAYMENT_STATUS_BY_CODE` z `src/lib/expenses-live.ts:51` (doslovne, aj s hodnotami):
+Vytvor `src/lib/document-payment-status.ts` a presuň doň obsah `EXPENSE_PAYMENT_STATUS_BY_CODE` z `src/lib/expenses-live.ts` (doslovne, aj s hodnotami — sú to `0` notPaid, `1` fullyPaid, `2` overPaid, `3` partiallyPaid, `-1` undefined):
 
 ```ts
 import type { DocumentPaymentStatus } from "./kros-types";
 
 /**
- * Kódy stavu úhrady z KROS API. Faktúry aj výdavky používajú to isté číselníkovanie,
- * preto mapa žije mimo oboch modulov — dve kópie by sa časom rozišli.
+ * Kódy stavu úhrady z KROS API. Vzorka odpovedí potvrdila, že faktúry aj výdavky
+ * používajú to isté číselníkovanie, preto mapa žije mimo oboch modulov —
+ * dve kópie by sa časom rozišli.
  */
 export const PAYMENT_STATUS_BY_CODE: Record<number, DocumentPaymentStatus> = {
   // sem presuň obsah pôvodnej EXPENSE_PAYMENT_STATUS_BY_CODE
 };
 ```
 
-V `src/lib/expenses-live.ts` nahraď lokálnu konštantu importom `PAYMENT_STATUS_BY_CODE` a uprav jej použitie na riadku 279.
-
-**Ak z Task 1 vyplynulo, že faktúry kódujú stav úhrady inak než výdavky**, nechaj dve mapy a v `document-payment-status.ts` exportuj obe (`PAYMENT_STATUS_BY_CODE`, `INVOICE_PAYMENT_STATUS_BY_CODE`) — vynútená zhoda tam, kde ju API nemá, by ticho vyrábala zlé stavy.
+V `src/lib/expenses-live.ts` nahraď lokálnu konštantu importom `PAYMENT_STATUS_BY_CODE` a uprav miesto, kde sa používa.
 
 - [ ] **Step 3: Rozšír `NormalizedInvoice`**
 
@@ -2057,140 +2065,175 @@ V `src/lib/kros-types.ts` doplň do `NormalizedInvoice`:
   dueDate?: string;
   paymentStatus: DocumentPaymentStatus;
   /**
-   * DPH z dokladu. `undefined` znamená, že ju KROS nevrátil — a to je iná správa
-   * než nula. Odhad DPH preto pri `undefined` ukáže „Údaj z KROS nedostupný",
-   * nie 0 €.
+   * DPH z dokladu v EUR (`prices.legislativePrices.vatTotalPrice`). Dobropis ju
+   * nesie už zápornú, takže sa nikde neotáča znamienko. `undefined` znamená,
+   * že ju KROS nevrátil — a to je iná správa než nula.
    */
   vatAmount?: number;
 ```
 
 - [ ] **Step 4: Napíš padajúci test normalizácie**
 
-Vytvor `src/lib/dashboard-live.test.ts`. **Tvary `prices` a názvy polí vezmi z `2026-09-06-domov-kros-polia.md`** — tento test je jediné miesto, kde je skutočný tvar payloadu zapísaný v kóde.
+Vytvor `src/lib/dashboard-live.test.ts`. Tvary zodpovedajú skutočnej odpovedi KROS API:
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { normalizeInvoices } from "./dashboard-live";
 
-/** Hlavička faktúry v tvare, aký naozaj vracia KROS — pozri 2026-09-06-domov-kros-polia.md. */
+/** Hlavička faktúry v tvare, aký naozaj vracia KROS. */
 function rawInvoice(overrides: Record<string, unknown> = {}) {
   return {
     id: "inv-1",
-    issueDate: "2026-08-01",
-    deliveryDate: "2026-08-01",
+    issueDate: "2026-08-01T00:00:00",
+    deliveryDate: "2026-08-01T00:00:00",
+    dueDate: "2026-08-31T00:00:00",
+    invoiceType: 0,
+    paymentStatus: 1,
     __company: "Kros Trade",
     __companyId: 1,
-    prices: { legislativePrices: { totalPrice: 100 } },
+    prices: {
+      documentPrices: { totalPrice: 100, vatTotalPrice: 20 },
+      legislativePrices: { totalPrice: 100, vatTotalPrice: 20 },
+      exchangeRate: 1,
+      currency: "EUR"
+    },
     ...overrides
   };
 }
 
-describe("normalizeInvoices — suma", () => {
-  it("berie legislatívnu sumu, keď je vyplnená", () => {
+describe("normalizeInvoices — suma a mena", () => {
+  it("berie legislatívnu sumu, ktorá je v eurách", () => {
     expect(normalizeInvoices([rawInvoice()])[0].totalPrice).toBe(100);
   });
 
-  it("vynulovanú legislatívnu skupinu nahradí documentPrices", () => {
+  it("cudziu menu NEPREPOČÍTAVA z documentPrices — tá je v mene dokladu", () => {
+    // Česká faktúra: 67 919,39 CZK = 2 695 EUR. Do súčtu patrí eurová hodnota.
     const raw = rawInvoice({
-      prices: { legislativePrices: { totalPrice: 0 }, documentPrices: { totalPrice: 250 } }
+      prices: {
+        documentPrices: { totalPrice: 67919.39, vatTotalPrice: 0 },
+        legislativePrices: { totalPrice: 2695, vatTotalPrice: 0 },
+        exchangeRate: 25.202,
+        currency: "CZK"
+      }
     });
-    expect(normalizeInvoices([raw])[0].totalPrice).toBe(250);
+    expect(normalizeInvoices([raw])[0].totalPrice).toBe(2695);
   });
 
-  it("doklad úplne bez cien dá nulu, nie NaN", () => {
+  it("doklad bez cien dá nulu, nie NaN", () => {
     expect(normalizeInvoices([rawInvoice({ prices: {} })])[0].totalPrice).toBe(0);
   });
 });
 
 describe("normalizeInvoices — splatnosť a stav úhrady", () => {
   it("prevezme dátum splatnosti", () => {
-    const raw = rawInvoice({ dueDate: "2026-08-31" });
-    expect(normalizeInvoices([raw])[0].dueDate).toBe("2026-08-31");
+    expect(normalizeInvoices([rawInvoice()])[0].dueDate).toBe("2026-08-31T00:00:00");
+  });
+
+  it("mapuje kód stavu úhrady", () => {
+    expect(normalizeInvoices([rawInvoice({ paymentStatus: 0 })])[0].paymentStatus).toBe("notPaid");
+    expect(normalizeInvoices([rawInvoice({ paymentStatus: 1 })])[0].paymentStatus).toBe("fullyPaid");
+    expect(normalizeInvoices([rawInvoice({ paymentStatus: 3 })])[0].paymentStatus).toBe(
+      "partiallyPaid"
+    );
   });
 
   it("faktúra bez stavu úhrady dostane 'undefined', nie 'notPaid'", () => {
-    expect(normalizeInvoices([rawInvoice()])[0].paymentStatus).toBe("undefined");
+    const raw = rawInvoice();
+    delete (raw as Record<string, unknown>).paymentStatus;
+    expect(normalizeInvoices([raw])[0].paymentStatus).toBe("undefined");
+  });
+
+  it("neznámy kód dostane 'undefined', nie tichý fallback na zaplatené", () => {
+    expect(normalizeInvoices([rawInvoice({ paymentStatus: 99 })])[0].paymentStatus).toBe(
+      "undefined"
+    );
   });
 });
 
 describe("normalizeInvoices — DPH", () => {
-  it("chýbajúca DPH ostane undefined, nie nula", () => {
-    expect(normalizeInvoices([rawInvoice()])[0].vatAmount).toBeUndefined();
+  it("berie DPH z legislatívnych cien", () => {
+    expect(normalizeInvoices([rawInvoice()])[0].vatAmount).toBe(20);
   });
 
-  it("nulová DPH je nula — doklad v prenesenej daňovej povinnosti nie je chýbajúci údaj", () => {
-    const raw = rawInvoice({ prices: { legislativePrices: { totalPrice: 100, vatAmount: 0 } } });
+  it("chýbajúca DPH ostane undefined, nie nula", () => {
+    const raw = rawInvoice({
+      prices: { legislativePrices: { totalPrice: 100 }, exchangeRate: 1, currency: "EUR" }
+    });
+    expect(normalizeInvoices([raw])[0].vatAmount).toBeUndefined();
+  });
+
+  it("nulová DPH je nula — oslobodené plnenie nie je chýbajúci údaj", () => {
+    const raw = rawInvoice({
+      prices: {
+        legislativePrices: { totalPrice: 100, vatTotalPrice: 0 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
+    });
     expect(normalizeInvoices([raw])[0].vatAmount).toBe(0);
+  });
+
+  it("dobropis nesie zápornú sumu aj zápornú DPH — znamienko sa nikde neotáča", () => {
+    const raw = rawInvoice({
+      invoiceType: 1,
+      prices: {
+        legislativePrices: { totalPrice: -40.65, vatTotalPrice: -9.35 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
+    });
+    const invoice = normalizeInvoices([raw])[0];
+    expect(invoice.totalPrice).toBe(-40.65);
+    expect(invoice.vatAmount).toBe(-9.35);
   });
 });
 ```
 
-Do testu doplň ešte prípad, kde `dueDate` a `paymentStatus` prídu pod skutočnými názvami z Task 1, a nech tvrdí konkrétnu hodnotu.
-
 - [ ] **Step 5: Spusti test a over, že padá**
 
 Run: `npx vitest run src/lib/dashboard-live.test.ts`
-Expected: FAIL — nový test na `documentPrices` fallback padne (dnešný kód číta len `legislativePrices`), rovnako testy na `dueDate`, `paymentStatus` a `vatAmount`.
+Expected: FAIL — testy na `dueDate`, `paymentStatus` a `vatAmount` padnú, lebo tie polia dnes `normalizeInvoices` nečíta.
 
 - [ ] **Step 6: Uprav `normalizeInvoices`**
 
-V `src/lib/dashboard-live.ts` nahraď dnešné čítanie sumy:
+V `src/lib/dashboard-live.ts` nahraď dnešné čítanie sumy jasnejším prístupom k cenovej skupine. Suma sa **naďalej berie len z `legislativePrices`** — pribúda len čitateľnosť a DPH:
 
 ```ts
-      const totalPrice =
-        Number(
-          (row.prices as Record<string, unknown> | undefined)?.legislativePrices &&
-            ((row.prices as Record<string, unknown>).legislativePrices as Record<string, unknown>).totalPrice
-        ) || 0;
-```
-
-za čítanie cez cenové skupiny s fallbackom. Toto je oprava latentnej chyby: KROS `legislativePrices` pri časti dokladov nevyplní a doteraz taká faktúra ticho padala na nulu — vo výdavkoch je rovnaký fallback už dávno.
-
-```ts
-/** Prvá nenulová hodnota — KROS niektoré cenové skupiny nechá vynulované. */
-function firstNonZeroNumber(...values: unknown[]) {
-  for (const value of values) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed !== 0) return parsed;
-  }
-  return 0;
-}
-
-function priceGroup(row: Record<string, unknown>, group: string) {
+/**
+ * Cenová skupina dokladu. `legislativePrices` je v účtovnej mene (EUR),
+ * `documentPrices` v mene dokladu — preto analytiky čítajú výhradne
+ * legislatívnu skupinu. Fallback medzi nimi by miešal meny: česká faktúra
+ * má v dokladových cenách 67 919 CZK tam, kde legislatívne 2 695 EUR.
+ */
+function legislativePrices(row: Record<string, unknown>) {
   const prices = row.prices;
   if (!prices || typeof prices !== "object") return undefined;
-  const value = (prices as Record<string, unknown>)[group];
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  return group && typeof group === "object" ? (group as Record<string, unknown>) : undefined;
+}
+
+function readNumber(value: unknown) {
+  const parsed = Number(value);
+  return value !== undefined && value !== null && Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /**
- * Suma bez DPH. Legislatívna skupina má prednosť; keď ju KROS nevyplní, berie sa
- * z documentPrices. Bez toho fallbacku časť tržieb ticho vypadne na nulu.
- */
-function readInvoiceTotalPrice(row: Record<string, unknown>) {
-  return firstNonZeroNumber(
-    priceGroup(row, "legislativePrices")?.totalPrice,
-    priceGroup(row, "documentPrices")?.totalPrice
-  );
-}
-
-/**
- * DPH z dokladu. `undefined` = KROS pole nevrátil vôbec; nula je platná hodnota
- * (prenesená daňová povinnosť, oslobodené plnenie) a nesmie sa s tým zamieňať.
+ * DPH z dokladu. `undefined` = KROS pole nevrátil; nula je platná hodnota
+ * (oslobodené plnenie, prenesená daňová povinnosť) a nesmie sa s tým zamieňať.
+ * Dobropis nesie hodnotu už zápornú, takže sa znamienko neotáča.
  */
 function readInvoiceVatAmount(row: Record<string, unknown>) {
-  for (const group of ["legislativePrices", "documentPrices"] as const) {
-    const raw = priceGroup(row, group)?.vatAmount;
-    const parsed = Number(raw);
-    if (raw !== undefined && raw !== null && Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
+  return readNumber(legislativePrices(row)?.vatTotalPrice);
+}
+
+function readPaymentStatus(row: Record<string, unknown>): DocumentPaymentStatus {
+  const code = readNumber(row.paymentStatus);
+  if (code === undefined) return "undefined";
+  return PAYMENT_STATUS_BY_CODE[code] ?? "undefined";
 }
 ```
 
-Ak sa DPH podľa Task 1 volá inak než `vatAmount` alebo leží inde, uprav `readInvoiceVatAmount` podľa zisteného tvaru.
-
-V tele `normalizeInvoices` nahraď výpočet `totalPrice` volaním `readInvoiceTotalPrice(row)` a do vráteného objektu doplň:
+Výpočet `totalPrice` nahraď za `readNumber(legislativePrices(row)?.totalPrice) ?? 0` a do vráteného objektu doplň:
 
 ```ts
         dueDate: readString(row, ["dueDate"]) ?? undefined,
@@ -2198,29 +2241,20 @@ V tele `normalizeInvoices` nahraď výpočet `totalPrice` volaním `readInvoiceT
         vatAmount: readInvoiceVatAmount(row),
 ```
 
-s pomocnou funkciou:
-
-```ts
-function readPaymentStatus(row: Record<string, unknown>): DocumentPaymentStatus {
-  const code = Number(row.paymentStatus);
-  if (!Number.isFinite(code)) return "undefined";
-  return PAYMENT_STATUS_BY_CODE[code] ?? "undefined";
-}
-```
+Nezabudni na importy `DocumentPaymentStatus` a `PAYMENT_STATUS_BY_CODE`.
 
 - [ ] **Step 7: Spusti test a over, že prechádza**
 
 Run: `npx vitest run src/lib/dashboard-live.test.ts`
-Expected: PASS.
+Expected: PASS, 12 testov.
 
 - [ ] **Step 8: Zvýš verziu cache faktúr — jedným editom**
 
 V `src/lib/invoice-cache.ts` nahraď komentár aj konštantu **naraz, jednou úpravou súboru**. Rozdelený edit by pri bežiacom HMR nechal živú stránku vykonať medzistav a cache by sa premazala dvakrát.
 
 ```ts
-// v4: faktúra nesie dátum splatnosti, stav úhrady a sumu DPH a suma bez DPH
-// má fallback na documentPrices — staršie záznamy tie polia nemajú, upgrade
-// preto starú cache premaže a stiahne sa nanovo.
+// v4: faktúra nesie dátum splatnosti, stav úhrady a sumu DPH — staršie záznamy
+// tie polia nemajú, upgrade preto starú cache premaže a stiahne sa nanovo.
 const DB_VERSION = 4;
 ```
 
@@ -2231,12 +2265,14 @@ Expected: bez chýb, všetky testy PASS.
 
 ```bash
 git add src/lib
-git commit -m "feat(invoices): splatnosť, stav úhrady a DPH; oprava sumy bez legislatívnych cien"
+git commit -m "feat(invoices): splatnosť, stav úhrady a DPH z legislatívnych cien"
 ```
 
 ---
 
 ### Task 9: Výdavky — DPH
+
+**Predpoklad:** prečítaj `docs/superpowers/plans/2026-09-06-domov-kros-polia.md`.
 
 **Files:**
 - Modify: `src/lib/kros-types.ts` (`NormalizedExpense`)
@@ -2245,7 +2281,7 @@ git commit -m "feat(invoices): splatnosť, stav úhrady a DPH; oprava sumy bez l
 - Test: `src/lib/expenses-live.test.ts` (nový súbor)
 
 **Interfaces:**
-- Consumes: `firstNonZeroNumber` a `readHeaderTotalPrice` už existujú v `src/lib/expenses-live.ts`.
+- Consumes: `NormalizedExpense` z `@/lib/kros-types`.
 - Produces: `NormalizedExpense.vatAmount?: number`.
 
 - [ ] **Step 1: Rozšír `NormalizedExpense`**
@@ -2254,9 +2290,9 @@ V `src/lib/kros-types.ts` doplň do `NormalizedExpense`:
 
 ```ts
   /**
-   * DPH z hlavičky dokladu. `undefined` = KROS ju nevrátil (iná správa než nula).
-   * Znamienko sa NEotáča ani pri dobropise — odhad DPH si vstupnú daň odpočítava
-   * sám a dvojité otočenie by ju pripočítalo.
+   * DPH z hlavičky dokladu v EUR (`prices.legislativePrices.vatTotalPrice`).
+   * Dobropis ju nesie už zápornú, rovnako ako sumu — znamienko sa nikde
+   * neotáča. `undefined` = KROS ju nevrátil (iná správa než nula).
    */
   vatAmount?: number;
 ```
@@ -2272,38 +2308,55 @@ import { normalizeExpenses } from "./expenses-live";
 function rawExpense(overrides: Record<string, unknown> = {}) {
   return {
     id: "exp-1",
-    issueDate: "2026-08-01",
+    issueDate: "2026-08-01T00:00:00",
     documentType: 10,
     __company: "Kros Trade",
     __companyId: 1,
-    prices: { legislativePrices: { totalPrice: 100 } },
+    prices: {
+      documentPrices: { totalPrice: 3.53, vatTotalPrice: 0.67 },
+      legislativePrices: { totalPrice: 3.53, vatTotalPrice: 0.67 },
+      exchangeRate: 1,
+      currency: "EUR"
+    },
     ...overrides
   };
 }
 
 describe("normalizeExpenses — DPH", () => {
-  it("chýbajúca DPH ostane undefined, nie nula", () => {
-    expect(normalizeExpenses([rawExpense()])[0].vatAmount).toBeUndefined();
+  it("berie DPH z legislatívnych cien", () => {
+    expect(normalizeExpenses([rawExpense()])[0].vatAmount).toBe(0.67);
   });
 
-  it("prevezme DPH z legislatívnej skupiny", () => {
-    const raw = rawExpense({ prices: { legislativePrices: { totalPrice: 100, vatAmount: 20 } } });
-    expect(normalizeExpenses([raw])[0].vatAmount).toBe(20);
+  it("chýbajúca DPH ostane undefined, nie nula", () => {
+    const raw = rawExpense({
+      prices: { legislativePrices: { totalPrice: 3.53 }, exchangeRate: 1, currency: "EUR" }
+    });
+    expect(normalizeExpenses([raw])[0].vatAmount).toBeUndefined();
   });
 
   it("nulová DPH je nula, nie chýbajúci údaj", () => {
-    const raw = rawExpense({ prices: { legislativePrices: { totalPrice: 100, vatAmount: 0 } } });
+    const raw = rawExpense({
+      prices: {
+        legislativePrices: { totalPrice: 3.53, vatTotalPrice: 0 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
+    });
     expect(normalizeExpenses([raw])[0].vatAmount).toBe(0);
   });
 
-  it("dobropisu neotáča znamienko DPH — to si odhad rieši sám", () => {
+  it("dobropis nesie zápornú sumu aj zápornú DPH tak, ako prišli z KROSu", () => {
     const raw = rawExpense({
       documentType: 17,
-      prices: { legislativePrices: { totalPrice: 100, vatAmount: 20 } }
+      prices: {
+        legislativePrices: { totalPrice: -55.12, vatTotalPrice: -12.68 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
     });
     const expense = normalizeExpenses([raw])[0];
-    expect(expense.totalPrice).toBeLessThan(0);
-    expect(expense.vatAmount).toBe(20);
+    expect(expense.totalPrice).toBe(-55.12);
+    expect(expense.vatAmount).toBe(-12.68);
   });
 });
 ```
@@ -2319,29 +2372,23 @@ V `src/lib/expenses-live.ts` pridaj vedľa `readHeaderTotalPrice`:
 
 ```ts
 /**
- * DPH z hlavičky dokladu. Na rozdiel od súm sa NEskladá z riadkov zaúčtovania —
- * daň sa priraďuje dokladu ako celku a rozpočítať ju na štítky by bol odhad,
- * ktorý by sa tváril ako číslo z účtovníctva.
+ * DPH z hlavičky dokladu, z legislatívnych cien (EUR). Na rozdiel od súm sa
+ * NESKLADÁ z riadkov zaúčtovania — daň sa priraďuje dokladu ako celku
+ * a rozpočítať ju na štítky by bol odhad, ktorý by sa tváril ako číslo
+ * z účtovníctva. Znamienko sa neotáča: dobropis prichádza už záporný.
  */
 function readHeaderVatAmount(row: Record<string, unknown>) {
   const prices = row.prices;
   if (!prices || typeof prices !== "object") return undefined;
-  const pricesRow = prices as Record<string, unknown>;
-
-  for (const group of ["legislativePrices", "documentPrices"] as const) {
-    const value = pricesRow[group];
-    if (!value || typeof value !== "object") continue;
-    const raw = (value as Record<string, unknown>).vatAmount;
-    const parsed = Number(raw);
-    if (raw !== undefined && raw !== null && Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  if (!group || typeof group !== "object") return undefined;
+  const raw = (group as Record<string, unknown>).vatTotalPrice;
+  const parsed = Number(raw);
+  return raw !== undefined && raw !== null && Number.isFinite(parsed) ? parsed : undefined;
 }
 ```
 
-Do vráteného objektu v `normalizeExpenses` doplň `vatAmount: readHeaderVatAmount(row),` — **mimo** `applySign`, aby dobropis DPH neotočil.
-
-Ak sa DPH podľa Task 1 volá inak, uprav názov poľa podľa zisteného tvaru.
+Do vráteného objektu v `normalizeExpenses` doplň `vatAmount: readHeaderVatAmount(row),` — **mimo** `applySign`.
 
 - [ ] **Step 5: Spusti test a over, že prechádza**
 
@@ -2369,11 +2416,6 @@ git commit -m "feat(expenses): doklad nesie sumu DPH"
 ```
 
 ---
-
-## Fáza 4 — `home-live.ts`
-
-Čisté funkcie nad poľami dokladov. Žiadny React, žiadne IndexedDB — všetko sa dá otestovať priamo.
-
 ### Task 10: Séria a KPI zisku
 
 **Files:**
@@ -2955,34 +2997,26 @@ git commit -m "feat(home): pohľadávky a záväzky po pásmach splatnosti"
 
 ### Task 12: Odhad DPH
 
+**Predpoklad:** prečítaj `docs/superpowers/plans/2026-09-06-domov-kros-polia.md`, najmä bod o znamienkach.
+
 **Files:**
-- Modify: `src/lib/expenses-live.ts` (nový export `isExpenseCreditNote`)
 - Modify: `src/lib/home-live.ts`
 - Modify: `src/lib/home-live.test.ts`
 
 **Interfaces:**
 - Consumes: `getInvoiceAnalyticsDate` z `@/lib/dashboard-live`; `getExpenseAnalyticsDate`, `countsTowardsSpend` z `@/lib/expenses-live`; `parseDocumentDate` z `@/lib/document-date`; `monthKeyFromDate` z `@/lib/invoice-cache`.
 - Produces:
-  - `isExpenseCreditNote(expense: NormalizedExpense): boolean` v `expenses-live`
   - `type VatMonthEstimate = { monthKey: string; amount: number | null; outputVat: number; inputVat: number }`
   - `type VatEstimate = { previousMonth: VatMonthEstimate; currentMonth: VatMonthEstimate }`
   - `computeVatEstimate(input: { invoices; expenses; selectedCompanies: string[]; referenceDate?: Date }): VatEstimate`
 
-- [ ] **Step 1: Vystav rozpoznanie dobropisu**
+#### Znamienka: nič sa neotáča
 
-V `src/lib/expenses-live.ts` je konštanta `RECEIVED_CREDIT_NOTE` (typ dokladu 17) dnes len lokálna. Pridaj vedľa `countsTowardsSpend` export:
+Pôvodný zámer bol pri dobropise odpočítať DPH cez `-expense.vatAmount`. **To by bola chyba.** Vzorka odpovedí KROS API dokázala, že dobropis nesie zápornú DPH už z API (výdavkový dobropis: `totalPrice -55.12`, `vatTotalPrice -12.68`; faktúrový: `-40.65` / `-9.35`). Otočenie znamienka by zápornú daň zmenilo na kladnú a vstupnú DPH pri dobropise **zvýšilo** namiesto zníženia.
 
-```ts
-/**
- * Prijatý dobropis. Suma dokladu má už otočené znamienko, DPH nie — odhad dane si
- * ju musí odpočítať sám, inak by dvojité otočenie daň pripočítalo.
- */
-export function isExpenseCreditNote(expense: NormalizedExpense) {
-  return expense.documentType === RECEIVED_CREDIT_NOTE;
-}
-```
+DPH sa preto len sčítava. Žiadny `isExpenseCreditNote`, žiadna práca so znamienkom.
 
-- [ ] **Step 2: Napíš padajúci test**
+- [ ] **Step 1: Napíš padajúci test**
 
 Doplň do `src/lib/home-live.test.ts`:
 
@@ -3054,9 +3088,16 @@ describe("computeVatEstimate", () => {
     expect(result.previousMonth.outputVat).toBe(0);
   });
 
-  it("dobropis vstupnú daň znižuje, nie zvyšuje", () => {
-    const result = vat([], [vatExpense("2026-09-03", 60), vatExpense("2026-09-04", 20, 17)]);
+  it("dobropis vstupnú daň znižuje — prichádza už so záporným znamienkom", () => {
+    // KROS vracia pri dobropise zápornú DPH, takže stačí sčítať. Otočenie
+    // znamienka by daň pripočítalo namiesto odpočítania.
+    const result = vat([], [vatExpense("2026-09-03", 60), vatExpense("2026-09-04", -20, 17)]);
     expect(result.currentMonth.inputVat).toBe(40);
+  });
+
+  it("faktúrový dobropis znižuje daň na výstupe", () => {
+    const result = vat([vatInvoice("2026-09-02", 200), vatInvoice("2026-09-05", -50)], []);
+    expect(result.currentMonth.outputVat).toBe(150);
   });
 
   it("bez jediného dokladu s DPH je odhad null, nie nula", () => {
@@ -3096,7 +3137,7 @@ Expected: FAIL — `computeVatEstimate is not a function`.
 
 ```ts
 import { getInvoiceAnalyticsDate } from "./dashboard-live";
-import { getExpenseAnalyticsDate, isExpenseCreditNote } from "./expenses-live";
+import { getExpenseAnalyticsDate } from "./expenses-live";
 import { monthKeyFromDate } from "./invoice-cache";
 
 export type VatMonthEstimate = {
@@ -3170,7 +3211,8 @@ export function computeVatEstimate({
     if (!countsTowardsSpend(expense)) continue;
     const bucket = bucketFor(getExpenseAnalyticsDate(expense), expense.companyName);
     if (!bucket || expense.vatAmount === undefined) continue;
-    bucket.input += isExpenseCreditNote(expense) ? -expense.vatAmount : expense.vatAmount;
+    // Bez otáčania znamienka: dobropis nesie zápornú DPH už z KROSu.
+    bucket.input += expense.vatAmount;
     bucket.hasAny = true;
   }
 

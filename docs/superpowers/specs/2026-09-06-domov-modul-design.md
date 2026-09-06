@@ -258,12 +258,22 @@ sú naopak spoločné, ako doteraz naprieč modulmi.
 `NormalizedInvoice` dostane `paymentStatus`, `dueDate` a sumu DPH.
 `NormalizedExpense` dostane sumu DPH.
 
-Pri faktúrach sa **opraví latentná chyba**, ktorú táto práca odhalila:
-`normalizeInvoices` číta sumu len z `legislativePrices.totalPrice`. Vo výdavkoch
-sa presne to ukázalo ako nespoľahlivé (KROS tú skupinu časti dokladov nevyplní),
-preto tam už je fallback na `documentPrices` cez `firstNonZeroNumber`. Na faktúrach
-fallback chýba, takže niektoré tržby môžu byť dnes ticho nula. Verzia cache sa
-aj tak dvíha, oprava nestojí nič navyše.
+**Oprava z 2026-09-06:** pôvodne tu stálo, že sa opraví „latentná chyba" —
+že `normalizeInvoices` číta sumu len z `legislativePrices` a mal by mať fallback
+na `documentPrices`, ako ho majú výdavky. Skutočné odpovede KROS API to vyvrátili
+(pozri [2026-09-06-domov-kros-polia.md](../plans/2026-09-06-domov-kros-polia.md)):
+
+- Vo vzorke 100 faktúr a 100 výdavkov **nie je ani jeden doklad**, kde by bola
+  legislatívna suma nulová a dokladová nenulová. Chyba nemá oporu.
+- `documentPrices` je v **mene dokladu**, `legislativePrices` v **eurách** — podiel
+  sa presne rovná `prices.exchangeRate`. Doklady chodia v EUR, CZK, PLN, GBP a USD.
+  Fallback by pri českej faktúre pripočítal do eurového súčtu 67 919 namiesto 2 695.
+
+Suma sa preto naďalej číta **výhradne z `legislativePrices`** a fallback sa nerobí.
+To isté platí pre DPH (`legislativePrices.vatTotalPrice`).
+
+Dobropisy chodia z KROSu **už so záporným znamienkom** na oboch stranách, vrátane
+DPH. Normalizácia ani odhad DPH preto so znamienkami nič nerobia.
 
 Verzie cache: faktúry `DB_VERSION` 3 → 4, výdavky 8 → 9. Obidve sa menia **jedným
 atomickým editom na súbor** — pri HMR by rozdelený edit nechal živú stránku vykonať
@@ -272,16 +282,19 @@ medzistav a cache by sa premazala dvakrát.
 Dôsledok pre ľudí: jednorazový plný re-sync po nasadení. Je to vedomá cena za
 pohľadávky a DPH.
 
-## Neistota v dátach
+## Neistota v dátach — vyriešená 2026-09-06
 
-Názvy polí pre `paymentStatus`, `dueDate` a DPH na faktúrach **nie sú overené**.
-`IntegrationApiGuide.md` pokrýva len súhlasový flow, nie dátové endpointy,
-a `runtime-logs/kros-api-log.json` neobsahuje ani jeden skutočný payload faktúry
-(logujú sa len chyby).
+Názvy polí sú overené na skutočných odpovediach KROS API, ktoré dodal používateľ.
+Zistenia: [2026-09-06-domov-kros-polia.md](../plans/2026-09-06-domov-kros-polia.md).
 
-Preto sa práca začne krokom, ktorý to zistí (fáza 0). Kým sa pole nepotvrdí,
-sekcia zobrazí **„Údaj z KROS nedostupný", nie nulu** — chýbajúci údaj a nulová
-suma sú dve rôzne správy a zamieňať ich pri peniazoch sa nesmie.
+Všetky tri potrebné polia existujú: `dueDate` (na faktúrach 100/100, na výdavkoch
+chýba v 17/100), `paymentStatus` ako číselný kód s **rovnakým číselníkom** ako
+výdavky, a DPH ako `prices.legislativePrices.vatTotalPrice` (nie `vatAmount`,
+ako plán pôvodne predpokladal).
+
+Vetva „**Údaj z KROS nedostupný**" v sekciách Pohľadávky a DPH ostáva — vzorka je
+z jednej firmy a prvej stránky, takže je to obrana, nie mŕtvy kód. Chýbajúci údaj
+a nulová suma sú dve rôzne správy a zamieňať ich pri peniazoch sa nesmie.
 
 To isté platí pre demo režim: Domov bez prepojenia ukáže `DemoDataBanner`
 a poskladá prehľad z troch existujúcich mock zdrojov (`mock-data.ts`,
