@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeProfitKpis, computeProfitSeries, type ProfitPoint } from "./home-live";
+import { computeDuePositions, computeProfitKpis, computeProfitSeries, type ProfitPoint } from "./home-live";
 import type { NormalizedExpense, NormalizedInvoice } from "./kros-types";
 
 const NOW = new Date();
@@ -123,5 +123,105 @@ describe("computeProfitKpis", () => {
     const kpis = computeProfitKpis([]);
     expect(kpis.periodLabel).toBeNull();
     expect(kpis.profit.current).toBe(0);
+  });
+});
+
+const REFERENCE = new Date("2026-09-06T12:00:00Z");
+
+function unpaidInvoice(dueDate: string, totalPrice: number): NormalizedInvoice {
+  return {
+    id: `inv-${dueDate}-${totalPrice}`,
+    companyName: "Kros Trade",
+    issueDate: "2026-01-01",
+    dueDate,
+    totalPrice,
+    paymentStatus: "notPaid",
+    tags: ["Retail"]
+  };
+}
+
+function unpaidExpense(dueDate: string, totalPrice: number): NormalizedExpense {
+  return {
+    id: `exp-${dueDate}-${totalPrice}`,
+    companyName: "Kros Trade",
+    documentType: 10,
+    issueDate: "2026-01-01",
+    dueDate,
+    totalPrice,
+    paymentStatus: "notPaid",
+    hasAttachments: false,
+    tags: ["Retail"],
+    allocations: [{ tags: ["Retail"], amount: totalPrice }]
+  };
+}
+
+function positions(invoices: NormalizedInvoice[], expenses: NormalizedExpense[]) {
+  return computeDuePositions({
+    invoices,
+    expenses,
+    selectedTags: [],
+    selectedCompanies: [],
+    referenceDate: REFERENCE
+  });
+}
+
+describe("computeDuePositions", () => {
+  it("uhradené doklady sa nerátajú", () => {
+    const paid = { ...unpaidInvoice("2026-09-30", 500), paymentStatus: "fullyPaid" as const };
+    expect(positions([paid], []).receivables.total).toBe(0);
+  });
+
+  it("faktúra pred splatnosťou ide do pásma 'v splatnosti'", () => {
+    const result = positions([unpaidInvoice("2026-09-30", 500)], []);
+    expect(result.receivables.total).toBe(500);
+    expect(result.receivables.bands.find((band) => band.key === "due")?.total).toBe(500);
+  });
+
+  it("faktúra 10 dní po splatnosti ide do pásma 'po splatnosti', nie do 60+", () => {
+    const result = positions([unpaidInvoice("2026-08-27", 500)], []);
+    expect(result.receivables.bands.find((band) => band.key === "overdue")?.total).toBe(500);
+    expect(result.receivables.bands.find((band) => band.key === "overdue60")?.total).toBe(0);
+  });
+
+  it("faktúra viac než 60 dní po splatnosti ide do vlastného pásma", () => {
+    const result = positions([unpaidInvoice("2026-06-01", 500)], []);
+    expect(result.receivables.bands.find((band) => band.key === "overdue60")?.total).toBe(500);
+    expect(result.receivables.bands.find((band) => band.key === "overdue")?.total).toBe(0);
+  });
+
+  it("presne 60 dní ešte nie je 60+ — hranica sa nesmie prekrývať", () => {
+    const result = positions([unpaidInvoice("2026-07-08", 500)], []);
+    expect(result.receivables.bands.find((band) => band.key === "overdue60")?.total).toBe(0);
+  });
+
+  it("faktúra bez splatnosti sa ráta do celku, ale ako 'v splatnosti'", () => {
+    const noDue = { ...unpaidInvoice("2026-09-30", 500), dueDate: undefined };
+    const result = positions([noDue], []);
+    expect(result.receivables.total).toBe(500);
+    expect(result.receivables.bands.find((band) => band.key === "due")?.total).toBe(500);
+  });
+
+  it("záväzky majú len dve pásma — 60+ je otázka pre pohľadávky, nie pre vlastné dlhy", () => {
+    const result = positions([], [unpaidExpense("2026-06-01", 300)]);
+    expect(result.payables.bands.map((band) => band.key)).toEqual(["due", "overdue"]);
+    expect(result.payables.total).toBe(300);
+  });
+
+  it("čistá pozícia je dostať mínus zaplatiť", () => {
+    const result = positions([unpaidInvoice("2026-09-30", 900)], [unpaidExpense("2026-09-30", 400)]);
+    expect(result.net).toBe(500);
+  });
+
+  it("faktúry bez stavu úhrady znamenajú nedostupné pohľadávky, nie nulové", () => {
+    const unknown = { ...unpaidInvoice("2026-09-30", 500), paymentStatus: "undefined" as const };
+    const result = positions([unknown], []);
+    expect(result.receivablesAvailable).toBe(false);
+  });
+
+  it("aspoň jedna faktúra so známym stavom stačí na to, aby sa pohľadávky ukázali", () => {
+    const unknown = { ...unpaidInvoice("2026-09-30", 500), paymentStatus: "undefined" as const };
+    const result = positions([unknown, unpaidInvoice("2026-09-30", 200)], []);
+    expect(result.receivablesAvailable).toBe(true);
+    expect(result.receivables.total).toBe(200);
   });
 });
