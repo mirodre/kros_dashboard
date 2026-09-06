@@ -46,3 +46,41 @@ describe("normalizeExpenses — suma a mena", () => {
     expect(normalizeExpenses([rawExpense({ prices: {} })])[0].totalPrice).toBe(0);
   });
 });
+
+describe("normalizeExpenses — DPH", () => {
+  it("berie DPH z legislatívnych cien", () => {
+    expect(normalizeExpenses([rawExpense()])[0].vatAmount).toBe(0.67);
+  });
+
+  it("chýbajúca DPH ostane undefined, nie nula", () => {
+    const raw = rawExpense({
+      prices: { legislativePrices: { totalPrice: 3.53 }, exchangeRate: 1, currency: "EUR" }
+    });
+    expect(normalizeExpenses([raw])[0].vatAmount).toBeUndefined();
+  });
+
+  it("nulová DPH je nula, nie chýbajúci údaj", () => {
+    const raw = rawExpense({
+      prices: {
+        legislativePrices: { totalPrice: 3.53, vatTotalPrice: 0 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
+    });
+    expect(normalizeExpenses([raw])[0].vatAmount).toBe(0);
+  });
+
+  it("dobropis nesie zápornú sumu aj zápornú DPH tak, ako prišli z KROSu", () => {
+    const raw = rawExpense({
+      documentType: 17,
+      prices: {
+        legislativePrices: { totalPrice: -55.12, vatTotalPrice: -12.68 },
+        exchangeRate: 1,
+        currency: "EUR"
+      }
+    });
+    const expense = normalizeExpenses([raw])[0];
+    expect(expense.totalPrice).toBe(-55.12);
+    expect(expense.vatAmount).toBe(-12.68);
+  });
+});

@@ -94,6 +94,12 @@ export type NormalizedExpense = {
   tags: string[];
   /** Rozúčtovanie sumy na štítky; súčet `amount` dáva `totalPrice`. */
   allocations: ExpenseTagAllocation[];
+  /**
+   * DPH z hlavičky dokladu v EUR (`prices.legislativePrices.vatTotalPrice`).
+   * Dobropis ju nesie už zápornú, rovnako ako sumu — znamienko sa nikde
+   * neotáča. `undefined` = KROS ju nevrátil (iná správa než nula).
+   */
+  vatAmount?: number;
 };
 
 export type NormalizedPaymentAccount = {

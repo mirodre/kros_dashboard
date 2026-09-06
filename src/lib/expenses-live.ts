@@ -162,6 +162,22 @@ function readHeaderTotalPrice(row: Record<string, unknown>) {
   return getNumber((group as Record<string, unknown>).totalPrice) ?? 0;
 }
 
+/**
+ * DPH z hlavičky dokladu, z legislatívnych cien (EUR). Na rozdiel od súm sa
+ * NESKLADÁ z riadkov zaúčtovania — daň sa priraďuje dokladu ako celku
+ * a rozpočítať ju na štítky by bol odhad, ktorý by sa tváril ako číslo
+ * z účtovníctva. Znamienko sa neotáča: dobropis prichádza už záporný.
+ */
+function readHeaderVatAmount(row: Record<string, unknown>) {
+  const prices = row.prices;
+  if (!prices || typeof prices !== "object") return undefined;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  if (!group || typeof group !== "object") return undefined;
+  const raw = (group as Record<string, unknown>).vatTotalPrice;
+  const parsed = Number(raw);
+  return raw !== undefined && raw !== null && Number.isFinite(parsed) ? parsed : undefined;
+}
+
 type JournalLine = { tags: string[]; amount: number };
 
 /** Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}). */
@@ -271,7 +287,8 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         paymentType: pickString(row, ["paymentType"]),
         hasAttachments: row.hasAttachments === true,
         tags: collectAllocationTags(allocations),
-        allocations
+        allocations,
+        vatAmount: readHeaderVatAmount(row)
       } satisfies NormalizedExpense;
     })
     .filter((expense): expense is NormalizedExpense => Boolean(expense));
