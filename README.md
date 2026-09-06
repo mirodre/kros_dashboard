@@ -2,13 +2,37 @@
 
 Mobilný dashboard pre KROS (tržby, štítky, firmy, cashflow). Prístup k dátam je viazaný na prepojenie s KROS (výmena OAuth tokenov) — pozri [Live napojenie na KROS](#live-napojenie-na-kros-fáza-b). Prepojenie aj filtre patria **firme**, nie zariadeniu: kto sa prihlási, vidí to isté na telefóne aj na notebooku.
 
-Frontend-first prototyp pre mobilný dashboard:
-- Dashboard 1: Vývoj tržieb
-- Dashboard 2: Tržby podľa štítkov
-- Dashboard 3: Tržby podľa firiem
-- Revolut-like swipe KPI karty
-- Filter granularít: týždeň / mesiac / rok
-- PWA manifest pripravený
+Moduly:
+
+| Cesta | Modul | Čo ukazuje |
+|---|---|---|
+| `/` | **Domov** | Zisk firmy, pohľadávky a záväzky, peniaze na účtoch, odhad DPH, zisk podľa štítkov a firiem |
+| `/prijmy` | Príjmy | Vývoj tržieb, tržby podľa štítkov a podľa firiem |
+| `/expenses` | Výdavky | Štruktúra výdavkov, dodávatelia, splatnosti |
+| `/cashflow` | Financie | Účty, pohyby, cashflow |
+
+Ďalej: Revolut-like swipe KPI karty, filter granularít (týždeň / mesiac / rok), PWA manifest.
+
+**Domov je výcuc z ostatných modulov, nie ďalší zdroj dát.** Skladá čísla, ktoré inde
+nie sú — zisk vzniká až spojením príjmov a výdavkov — ale nesťahuje nič navyše:
+pozri [Zdieľané sťahovanie](#zdieľané-sťahovanie).
+
+## Zdieľané sťahovanie
+
+Sťahovanie dát z KROS API žije v `src/lib/sync/`: tri „enginy" (faktúry, výdavky,
+platby) a jeden orchestrátor nad nimi. Modul si vypýta jeden engine, Domov všetky tri.
+
+Zdrojom pravdy o tom, čo je už stiahnuté, je `syncMeta` v IndexedDB — **nie stav
+stránky**. Keď Domov dotiahne august faktúr, plánovač faktúr na `/prijmy` ten mesiac
+už nezaradí a stránka ho len prečíta z cache. Platí to aj opačne a aj medzi kartami
+prehliadača, takže rovnaké dáta sa nikdy nesťahujú dvakrát.
+
+Engine vie len naplánovať kroky a jeden vykonať; ukazovateľ priebehu, prerušenie
+a značku posledného syncu vlastní orchestrátor. Preto môžu tri domény bežať za sebou
+pod jedným progress barom bez toho, aby si ho navzájom prepisovali.
+
+Plánovače (`plan()`) sú exportované samostatne a majú testy — je to jediné miesto,
+ktoré rozhoduje, či sa niečo stiahne druhýkrát.
 
 ## Prihlásenie
 

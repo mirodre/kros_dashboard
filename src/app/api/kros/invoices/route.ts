@@ -128,20 +128,6 @@ async function fetchCompanyInvoices(
       : [];
     aggregated.push(...items);
 
-    // Dočasná diagnostika (KROS_LOG_SAMPLE_PAYLOAD): potrebujeme zistiť, ako sa
-    // v odpovedi volajú polia splatnosti, stavu úhrady a DPH. Odstrániť, keď to
-    // bude zapísané v docs/superpowers/plans/2026-09-06-domov-kros-polia.md.
-    if (process.env.KROS_LOG_SAMPLE_PAYLOAD && skip === 0 && items.length > 0) {
-      await appendKrosLog({
-        direction: "response",
-        endpoint: "/api/invoices",
-        method: "GET",
-        companyName: company.companyName,
-        message: "VZORKA: prvá faktúra zo stránky",
-        payload: items[0]
-      });
-    }
-
     await appendKrosLog({
       direction: "response",
       endpoint: "/api/invoices",
