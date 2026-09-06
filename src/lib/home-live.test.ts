@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   computeDuePositions,
+  computeProfitCompanyBreakdown,
   computeProfitKpis,
   computeProfitSeries,
+  computeProfitTagBreakdown,
   computeVatEstimate,
   type ProfitPoint
 } from "./home-live";
@@ -357,5 +359,102 @@ describe("computeVatEstimate", () => {
     expect(result.currentMonth.outputVat).toBe(200);
     expect(result.currentMonth.inputVat).toBe(60);
     expect(result.currentMonth.amount).toBe(140);
+  });
+});
+
+function taggedInvoice(date: string, totalPrice: number, tags: string[]): NormalizedInvoice {
+  return { ...invoice(date, totalPrice), id: `inv-${date}-${tags.join("-")}`, tags };
+}
+
+function taggedExpense(date: string, totalPrice: number, tags: string[]): NormalizedExpense {
+  return {
+    ...expense(date, totalPrice),
+    id: `exp-${date}-${tags.join("-")}`,
+    tags,
+    allocations: [{ tags, amount: totalPrice }]
+  };
+}
+
+describe("computeProfitTagBreakdown", () => {
+  const date = firstDayOf(CURRENT_YEAR, NOW.getMonth());
+
+  it("zisk štítku je jeho príjmy mínus jeho výdavky", () => {
+    const points = computeProfitTagBreakdown({
+      invoices: [taggedInvoice(date, 1000, ["Retail"])],
+      expenses: [taggedExpense(date, 300, ["Retail"])],
+      selectedCompanies: []
+    });
+    const retail = points.find((point) => point.name === "Retail");
+    expect(retail).toMatchObject({ income: 1000, expense: 300, profit: 700 });
+  });
+
+  it("štítok len s výdavkami má záporný zisk a v zozname ostáva", () => {
+    const points = computeProfitTagBreakdown({
+      invoices: [],
+      expenses: [taggedExpense(date, 400, ["Réžia"])],
+      selectedCompanies: []
+    });
+    expect(points.find((point) => point.name === "Réžia")).toMatchObject({
+      income: 0,
+      expense: 400,
+      profit: -400
+    });
+  });
+
+  it("štítok len s príjmami sa nestratí", () => {
+    const points = computeProfitTagBreakdown({
+      invoices: [taggedInvoice(date, 500, ["Projekty"])],
+      expenses: [],
+      selectedCompanies: []
+    });
+    expect(points.find((point) => point.name === "Projekty")?.profit).toBe(500);
+  });
+
+  it("faktúra s dvoma štítkami sa započíta celá do oboch — priznaná nepresnosť", () => {
+    const points = computeProfitTagBreakdown({
+      invoices: [taggedInvoice(date, 600, ["Retail", "Projekty"])],
+      expenses: [],
+      selectedCompanies: []
+    });
+    expect(points.find((point) => point.name === "Retail")?.income).toBe(600);
+    expect(points.find((point) => point.name === "Projekty")?.income).toBe(600);
+  });
+
+  it("zoradené od najziskovejšieho", () => {
+    const points = computeProfitTagBreakdown({
+      invoices: [taggedInvoice(date, 1000, ["A"]), taggedInvoice(date, 200, ["B"])],
+      expenses: [],
+      selectedCompanies: []
+    });
+    expect(points.map((point) => point.name)).toEqual(["A", "B"]);
+  });
+});
+
+describe("computeProfitCompanyBreakdown", () => {
+  const date = firstDayOf(CURRENT_YEAR, NOW.getMonth());
+
+  it("zisk firmy je jej príjmy mínus jej výdavky", () => {
+    const points = computeProfitCompanyBreakdown({
+      invoices: [invoice(date, 900)],
+      expenses: [expense(date, 200)],
+      selectedTags: [],
+      selectedCompanies: []
+    });
+    expect(points.find((point) => point.name === "Kros Trade")).toMatchObject({
+      income: 900,
+      expense: 200,
+      profit: 700
+    });
+  });
+
+  it("firma len s výdavkami sa v zozname objaví", () => {
+    const onlySpend: NormalizedExpense = { ...expense(date, 300), companyName: "Kros Servis" };
+    const points = computeProfitCompanyBreakdown({
+      invoices: [],
+      expenses: [onlySpend],
+      selectedTags: [],
+      selectedCompanies: []
+    });
+    expect(points.find((point) => point.name === "Kros Servis")?.profit).toBe(-300);
   });
 });

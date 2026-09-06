@@ -1,6 +1,13 @@
-import { computeRevenueSeries, getInvoiceAnalyticsDate } from "./dashboard-live";
 import {
+  computeCompanyBreakdown,
+  computeRevenueSeries,
+  computeTagBreakdown,
+  getInvoiceAnalyticsDate
+} from "./dashboard-live";
+import {
+  computeExpenseCompanyBreakdown,
   computeExpenseSeries,
+  computeExpenseTagBreakdown,
   countsTowardsSpend,
   getExpenseAnalyticsDate,
   isExpenseUnpaid
@@ -9,7 +16,8 @@ import { parseDocumentDate } from "./document-date";
 import { getDeltaPct } from "./format";
 import { monthKeyFromDate } from "./invoice-cache";
 import type { Granularity } from "./mock-data";
-import type { NormalizedExpense, NormalizedInvoice } from "./kros-types";
+import type { AggregatedBreakdownPoint, NormalizedExpense, NormalizedInvoice } from "./kros-types";
+import type { PeriodWindow } from "./period-buckets";
 
 /**
  * Jeden stĺpec grafu Domova. Na rozdiel od modulov nenesie „tento rok vs. vlani",
@@ -361,4 +369,92 @@ export function computeVatEstimate({
   };
 
   return { previousMonth: toEstimate(previousKey), currentMonth: toEstimate(currentKey) };
+}
+
+/**
+ * Jeden riadok rozpisu zisku. Nesie aj obe zložky, lebo samotný zisk sa bez nich
+ * nedá prečítať — „−400 €" je iná správa pri štítku bez príjmov než pri štítku,
+ * ktorý zarobil 10 000 a minul 10 400.
+ */
+export type ProfitBreakdownPoint = {
+  name: string;
+  income: number;
+  expense: number;
+  profit: number;
+  previousProfit: number;
+};
+
+/**
+ * Spojí príjmovú a výdavkovú stranu podľa názvu. Zjednotenie, nie prienik: štítok
+ * alebo firma, ktorá má len jednu stranu, musí byť v zozname vidieť — inak by
+ * čisté nákladové stredisko z prehľadu zmizlo.
+ */
+function mergeBreakdowns(
+  incomePoints: AggregatedBreakdownPoint[],
+  expensePoints: AggregatedBreakdownPoint[]
+): ProfitBreakdownPoint[] {
+  const incomeByName = new Map(incomePoints.map((point) => [point.name, point]));
+  const expenseByName = new Map(expensePoints.map((point) => [point.name, point]));
+  const names = new Set([...incomeByName.keys(), ...expenseByName.keys()]);
+
+  return Array.from(names)
+    .map((name) => {
+      const income = incomeByName.get(name);
+      const expense = expenseByName.get(name);
+      const incomeAmount = income?.amount ?? 0;
+      const expenseAmount = expense?.amount ?? 0;
+      return {
+        name,
+        income: incomeAmount,
+        expense: expenseAmount,
+        profit: incomeAmount - expenseAmount,
+        previousProfit: (income?.previousAmount ?? 0) - (expense?.previousAmount ?? 0)
+      };
+    })
+    .sort((a, b) => b.profit - a.profit);
+}
+
+/**
+ * Zisk na štítok.
+ *
+ * POZOR na asymetriu, ktorú tu nemáme ako odstrániť: faktúra s viacerými štítkami
+ * sa započíta CELÁ do každého z nich (tak počíta `computeTagBreakdown`), kým výdavok
+ * sa rozdelí podľa rozúčtovania. Súčet riadkov preto nedá celkový zisk a pri
+ * viacštítkových faktúrach je nadhodnotený. Sekcia to musí povedať textom —
+ * predstierať presnosť, ktorú dáta nemajú, je horšie než ju priznať.
+ */
+export function computeProfitTagBreakdown({
+  invoices,
+  expenses,
+  selectedCompanies,
+  period
+}: {
+  invoices: NormalizedInvoice[];
+  expenses: NormalizedExpense[];
+  selectedCompanies: string[];
+  period?: PeriodWindow;
+}): ProfitBreakdownPoint[] {
+  return mergeBreakdowns(
+    computeTagBreakdown(invoices, selectedCompanies, period),
+    computeExpenseTagBreakdown(expenses, selectedCompanies, period)
+  );
+}
+
+export function computeProfitCompanyBreakdown({
+  invoices,
+  expenses,
+  selectedTags,
+  selectedCompanies,
+  period
+}: {
+  invoices: NormalizedInvoice[];
+  expenses: NormalizedExpense[];
+  selectedTags: string[];
+  selectedCompanies: string[];
+  period?: PeriodWindow;
+}): ProfitBreakdownPoint[] {
+  return mergeBreakdowns(
+    computeCompanyBreakdown(invoices, selectedTags, selectedCompanies, period),
+    computeExpenseCompanyBreakdown(expenses, selectedTags, selectedCompanies, period)
+  );
 }
