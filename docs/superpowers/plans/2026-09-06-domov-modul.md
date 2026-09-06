@@ -986,13 +986,15 @@ export const invoiceEngine: SyncEngine<InvoiceSyncStep> = {
   describe(step) {
     if (step.kind === "month") {
       return {
-        key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
+        key: `invoices:${step.connection.companyId}:${step.monthRange.monthKey}`,
         group: step.connection.companyName,
-        label: formatMonthKeyLabel(step.monthRange.monthKey)
+        // Doména je v popise zámerne: na Domove bežia faktúry aj výdavky za sebou
+        // a bez nej by obrazovka sťahovania ukázala dvakrát ten istý riadok.
+        label: `faktúry — ${formatMonthKeyLabel(step.monthRange.monthKey)}`
       };
     }
     return {
-      key: `${step.connection.companyId}:changes`,
+      key: `invoices:${step.connection.companyId}:changes`,
       group: step.connection.companyName,
       label: "zmenené faktúry"
     };
@@ -1381,13 +1383,15 @@ export const expenseEngine: SyncEngine<ExpenseSyncStep> = {
   describe(step) {
     if (step.kind === "month") {
       return {
-        key: `${step.connection.companyId}:${step.monthRange.monthKey}`,
+        key: `expenses:${step.connection.companyId}:${step.monthRange.monthKey}`,
         group: step.connection.companyName,
-        label: formatMonthKeyLabel(step.monthRange.monthKey)
+        // Doména je v popise zámerne: na Domove bežia faktúry aj výdavky za sebou
+        // a bez nej by obrazovka sťahovania ukázala dvakrát ten istý riadok.
+        label: `výdavky — ${formatMonthKeyLabel(step.monthRange.monthKey)}`
       };
     }
     return {
-      key: `${step.connection.companyId}:changes`,
+      key: `expenses:${step.connection.companyId}:changes`,
       group: step.connection.companyName,
       label: "zmenené výdavky"
     };
