@@ -7,8 +7,9 @@ import { DemoDataBanner } from "@/components/demo-data-banner";
 import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ProfitDashboard } from "@/components/profit-dashboard";
 import { HomeAccountsCard } from "@/components/home-accounts-card";
+import { HomeDueCard } from "@/components/home-due-card";
 import type { VisibilityOption } from "@/components/category-visibility-button";
-import { computeProfitKpis, computeProfitSeries } from "@/lib/home-live";
+import { computeDuePositions, computeProfitKpis, computeProfitSeries } from "@/lib/home-live";
 import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
 import { getBucketPeriodWindow } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
@@ -103,6 +104,20 @@ export default function HomePage() {
 
   const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
 
+  // Neuhradené doklady k dnešku. Zámerne BEZ `periodWindow` — dlžoba nezaniká tým,
+  // že vznikla vlani, a zúžiť ju na jeden stĺpec grafu by dalo číslo, ktoré nikoho
+  // nezaujíma.
+  const duePositions = useMemo(
+    () =>
+      computeDuePositions({
+        invoices: scopedInvoices,
+        expenses: scopedExpenses,
+        selectedTags: [],
+        selectedCompanies
+      }),
+    [scopedInvoices, scopedExpenses, selectedCompanies]
+  );
+
   // Účty sú stav k dnešku, nie tok za obdobie: granularita sem ide len preto, že ju
   // prehľad Financií vyžaduje na svoje vlastné série, ktoré Domov nepoužíva. Focus
   // stĺpca sa sem zámerne neposiela — karta ho ignoruje, nie sledovanie s omeškaním.
@@ -170,6 +185,9 @@ export default function HomePage() {
             focusedPeriod={hasLiveMode ? focusedPeriod : null}
             onFocusedPeriodChange={hasLiveMode ? setFocusedPeriod : undefined}
           />
+          {hiddenSections.includes(HOME_SECTIONS.receivables) ? null : (
+            <HomeDueCard positions={duePositions} isPeriodFocused={Boolean(focusedPeriod)} />
+          )}
           {hiddenSections.includes(HOME_SECTIONS.accounts) ? null : (
             <HomeAccountsCard accounts={accounts} isPeriodFocused={Boolean(focusedPeriod)} />
           )}
