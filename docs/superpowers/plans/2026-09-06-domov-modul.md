@@ -4084,7 +4084,7 @@ export default function HomePage() {
     () => [
       { id: HOME_SECTIONS.receivables, label: "Pohľadávky a záväzky" },
       { id: HOME_SECTIONS.accounts, label: "Peniaze na účtoch" },
-      { id: HOME_SECTIONS.vat, label: "Predpokladaný odhad DPH" },
+      { id: HOME_SECTIONS.vat, label: "Predpokladaná DPH" },
       { id: HOME_SECTIONS.companies, label: "Zisk podľa firiem", filterCount: selectedCompanies.length }
     ],
     [selectedCompanies]
@@ -4650,7 +4650,7 @@ export function HomeVatCard({ estimate, isPeriodFocused }: Props) {
             <span className={`panel-collapse-chevron${collapsed ? " collapsed" : ""}`} aria-hidden="true">
               ▾
             </span>
-            <h3>Predpokladaný odhad DPH</h3>
+            <h3>Predpokladaná DPH</h3>
           </button>
         </header>
 
@@ -4722,7 +4722,7 @@ Expected: bez chýb.
 
 ```bash
 git add src/components/home-vat-card.tsx src/app/page.tsx src/app/globals.css
-git commit -m "feat(home): karta Predpokladaný odhad DPH"
+git commit -m "feat(home): karta Predpokladaná DPH"
 ```
 
 ---

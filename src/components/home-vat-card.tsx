@@ -63,7 +63,7 @@ export function HomeVatCard({ estimate, hasIgnoredFilters, limitedToCompanyCount
     <section className="dashboard-body">
       <article className="panel">
         <header className="panel-head">
-          <h3>Predpokladaný odhad DPH</h3>
+          <h3>Predpokladaná DPH</h3>
         </header>
 
         {/* Tento mesiac je to, čo firmu ešte len čaká — dostane hlavičku karty. */}
@@ -95,13 +95,12 @@ export function HomeVatCard({ estimate, hasIgnoredFilters, limitedToCompanyCount
           )}
         </div>
 
-        {hasIgnoredFilters ? (
+        {hasIgnoredFilters && limitedToCompanyCount > 0 ? (
           <p className="tag-filter-help">
-            {limitedToCompanyCount > 0
-              ? // „Zo všetkých dokladov" by tu bola lož: firmy mimo uloženého filtra sa
-                // nesťahujú, takže ich doklady appka nemá z čoho započítať.
-                "Odhad počíta zo všetkých dokladov vybraných firiem — rozkliknuté obdobie, firma ani štítok sa sem neprenášajú."
-              : "Odhad počíta zo všetkých dokladov — filtre ani rozkliknuté obdobie sa sem neprenášajú."}
+            {/* „Zo všetkých dokladov" by tu bola lož: firmy mimo uloženého filtra sa
+                nesťahujú, takže ich doklady appka nemá z čoho započítať. */}
+            Odhad počíta zo všetkých dokladov vybraných firiem — rozkliknuté obdobie, firma ani
+            štítok sa sem neprenášajú.
           </p>
         ) : null}
       </article>

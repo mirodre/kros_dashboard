@@ -172,7 +172,7 @@ Súčet zostatkov, „Celkovo N účtov", donut s legendou, v rohu preklik `Fina
 Zdroj: `computeCashflowOverviewFromLiveData`, `donut-legend.tsx`,
 `use-donut-entrance.ts` — všetko hotové.
 
-### 4. Predpokladaný odhad DPH
+### 4. Predpokladaná DPH
 
 Minulý mesiac a tento mesiac. DPH na výstupe (faktúry) − DPH na vstupe (výdavky),
 plus vysvetľujúca veta, že ide o odhad z dokladov v systéme.

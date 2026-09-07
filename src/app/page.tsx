@@ -379,7 +379,7 @@ export default function HomePage() {
         label: "Peniaze na účtoch",
         filterCount: selectedAccountIds.length
       },
-      { id: HOME_SECTIONS.vat, label: "Predpokladaný odhad DPH" },
+      { id: HOME_SECTIONS.vat, label: "Predpokladaná DPH" },
       { id: HOME_SECTIONS.companies, label: "Zisk podľa firiem", filterCount: selectedCompanies.length }
     ],
     [selectedCompanies, selectedAccountIds]
