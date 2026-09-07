@@ -1,8 +1,10 @@
+/**
+ * Prepojená firma tak, ako ju vidí prehliadač. Token tu ZÁMERNE nie je: od fázy 2 žije
+ * šifrovaný v databáze a klient posiela len `companyId`.
+ */
 export type KrosConnection = {
   companyId: number;
   companyName: string;
-  token: string;
-  webhookSecret?: string;
   connectedAt: string;
 };
 
@@ -18,6 +20,15 @@ export type NormalizedInvoice = {
   lastModifiedTimestamp?: string;
   totalPrice: number;
   tags: string[];
+  /** Dátum splatnosti — bez neho sa faktúra nedá zaradiť medzi po splatnosti. */
+  dueDate?: string;
+  paymentStatus: DocumentPaymentStatus;
+  /**
+   * DPH z dokladu v EUR (`prices.legislativePrices.vatTotalPrice`). Dobropis ju
+   * nesie už zápornú, takže sa nikde neotáča znamienko. `undefined` znamená,
+   * že ju KROS nevrátil — a to je iná správa než nula.
+   */
+  vatAmount?: number;
 };
 
 export type AggregatedRevenuePoint = {
@@ -32,7 +43,12 @@ export type AggregatedBreakdownPoint = {
   previousAmount: number;
 };
 
-export type ExpensePaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
+/**
+ * Kód stavu úhrady dokladu z KROS API. Faktúry aj výdavky používajú tie isté
+ * číselné kódy (0 notPaid, 1 fullyPaid, 2 overPaid, 3 partiallyPaid), preto je
+ * typ spoločný pre oba doklady, nielen pre výdavky.
+ */
+export type DocumentPaymentStatus = "notPaid" | "fullyPaid" | "overPaid" | "partiallyPaid" | "undefined";
 
 /**
  * Jedna položka rozúčtovania výdavku na štítky. Vzniká z riadkov journalItems
@@ -65,13 +81,25 @@ export type NormalizedExpense = {
    * pozri readExpenseAmounts v expenses-live.ts.
    */
   totalPrice: number;
-  paymentStatus: ExpensePaymentStatus;
+  /**
+   * Suma celého dokladu pred zúžením na aktívny filter štítkov. Vyplní ju až
+   * `scopeExpenseAmountsToTagFilters`, a to len keď sa `totalPrice` naozaj zúžila —
+   * zoznamy dokladov tak vedia ukázať, z akého celku je zobrazená časť.
+   */
+  documentTotalPrice?: number;
+  paymentStatus: DocumentPaymentStatus;
   paymentType?: string;
   hasAttachments: boolean;
   /** Zjednotenie štítkov zo všetkých rozúčtovaní — na filtrovanie dokladov. */
   tags: string[];
   /** Rozúčtovanie sumy na štítky; súčet `amount` dáva `totalPrice`. */
   allocations: ExpenseTagAllocation[];
+  /**
+   * DPH z hlavičky dokladu v EUR (`prices.legislativePrices.vatTotalPrice`).
+   * Dobropis ju nesie už zápornú, rovnako ako sumu — znamienko sa nikde
+   * neotáča. `undefined` = KROS ju nevrátil (iná správa než nula).
+   */
+  vatAmount?: number;
 };
 
 export type NormalizedPaymentAccount = {

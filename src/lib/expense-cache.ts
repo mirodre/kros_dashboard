@@ -6,10 +6,9 @@ import type { NormalizedExpense } from "./kros-types";
  * incremental refresh via LastModifiedTimestamp.
  */
 const DB_NAME = "kros_dashboard_expenses_cache";
-// v8: sumy sú legislatívne bez DPH (totalPrice) a doklad nesie rozúčtovanie na
-// štítky z journalItems (detail /api/expenses/{id}) — staršie záznamy tieto polia
-// nemajú, upgrade preto starú cache premaže a stiahne sa nanovo.
-const DB_VERSION = 8;
+// v9: doklad nesie sumu DPH — staršie záznamy ju nemajú, upgrade preto starú
+// cache premaže a stiahne sa nanovo.
+const DB_VERSION = 9;
 const EXPENSES_STORE = "expenses";
 const SYNC_META_STORE = "syncMeta";
 

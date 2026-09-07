@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { getPool } from "@/lib/db/pool";
 import { appendKrosLog } from "@/lib/kros-logs";
-import { consumeOAuthState } from "@/lib/kros-oauth-state";
+import { postgresConnectionRepository } from "@/lib/kros-connections";
+import { oauthStateStore } from "@/lib/kros-oauth-state";
+import { scopeFromBinding } from "@/lib/preferences/scope";
 
 type CallbackCompany = {
   companyId: number;
@@ -47,29 +50,20 @@ function parseCompanies(formData: FormData) {
     );
 }
 
-function renderCallbackPage(payload: { state: string | null; companies: CallbackCompany[] }) {
-  const safePayload = JSON.stringify(payload).replace(/</g, "\\u003c");
-  const settingsUrl = "/settings?kros_post_result=1";
-
-  return `<!DOCTYPE html>
-<html lang="sk">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dokončujem prepojenie...</title>
-  </head>
-  <body style="font-family: Inter, Arial, sans-serif; background:#0a0d16; color:#eef3ff; margin:0; display:flex; min-height:100vh; align-items:center; justify-content:center;">
-    <p>Dokončujem prepojenie s KROS...</p>
-    <script>
-      try {
-        sessionStorage.setItem("kros_post_result", '${safePayload}');
-      } catch (error) {
-        console.error(error);
-      }
-      window.location.replace("${settingsUrl}");
-    </script>
-  </body>
-</html>`;
+/**
+ * Presmerovanie s RELATÍVNOU adresou, zámerne bez hostiteľa.
+ *
+ * `NextResponse.redirect(new URL(cesta, request.url))` tu nefunguje: za reverznou proxy je
+ * `request.url` vnútorná adresa kontajnera (`http://localhost:3000/...`), takže prehliadač
+ * dostane `Location: http://localhost:3000/settings` a skončí na „nepodarilo sa pripojiť na
+ * server". Presne to sa stalo pri prvom ostrom prepojení s KROS.
+ *
+ * Relatívnu `Location` povoľuje RFC 7231 a prehliadač si ju doplní podľa adresy, na ktorú
+ * sám poslal request — teda podľa verejnej domény. Žiadna premenná s verejným originom na to
+ * netreba.
+ */
+function redirectTo(path: string, status: 303 | 302 = 303): NextResponse {
+  return new NextResponse(null, { status, headers: { Location: path, "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -78,24 +72,56 @@ export async function POST(request: Request) {
     const state = String(formData.get("state") ?? "") || null;
     const companies = parseCompanies(formData);
 
-    if (!state || !(await consumeOAuthState(state))) {
+    const pool = getPool();
+    if (!pool) {
+      await appendKrosLog({
+        direction: "error",
+        endpoint: "/kros/callback",
+        method: "POST",
+        message: "Callback odmietnutý: appka nemá databázu, prepojenie sa nemá kam uložiť"
+      });
+      return redirectTo("/settings?kros_post_result=error&reason=db");
+    }
+
+    // `state` je jediné, čo o odosielateľovi vieme: cross-site POST z KROS neposiela
+    // session cookie. Väzba na firmu vznikla pri jeho vydaní v `/api/kros/oauth-state`.
+    const binding = state ? await oauthStateStore(pool).consume(state, new Date()) : null;
+
+    if (!binding) {
       await appendKrosLog({
         direction: "error",
         endpoint: "/kros/callback",
         method: "POST",
         message: "Callback odmietnutý: neplatný alebo expirovaný state parameter"
       });
-      return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url));
+      return redirectTo("/settings?kros_post_result=error&reason=state");
     }
+
+    if (companies.length === 0) {
+      // KROS poslal callback bez použiteľnej firmy — tichý „úspech" by človeku ukázal
+      // prázdny dashboard bez vysvetlenia.
+      await appendKrosLog({
+        direction: "error",
+        endpoint: "/kros/callback",
+        method: "POST",
+        message: "Callback bez firiem: nie je čo prepojiť"
+      });
+      return redirectTo("/settings?kros_post_result=error&reason=empty");
+    }
+
+    await postgresConnectionRepository(pool).save(
+      scopeFromBinding(binding.tenantId, binding.userSub),
+      companies
+    );
 
     await appendKrosLog({
       direction: "response",
       endpoint: "/kros/callback",
       method: "POST",
       status: 200,
-      message: `POST callback prijatý: firmy=${companies.length}${state ? ", state je prítomný" : ""}`,
+      message: `POST callback prijatý: firmy=${companies.length}, uložené pre tenanta ${binding.tenantId}`,
       payload: {
-        state,
+        // Token v logu nemá čo robiť — telá odpovedí sa tu pri chybách zapisujú na disk.
         companies: companies.map((company) => ({
           companyId: company.companyId,
           companyName: company.companyName
@@ -103,12 +129,11 @@ export async function POST(request: Request) {
       }
     });
 
-    return new NextResponse(renderCallbackPage({ state, companies }), {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store"
-      }
-    });
+    // 303, aby prehliadač pokračoval GET-om: výsledok už je v databáze, prehliadač
+    // nepotrebuje niesť nič. Do fázy 2 sa tu vracala HTML stránka, ktorá zoznam firiem aj
+    // s tokenmi preniesla cez `sessionStorage` do `/settings`.
+    return redirectTo("/settings?kros_post_result=1");
+
   } catch (error) {
     await appendKrosLog({
       direction: "error",
@@ -117,10 +142,12 @@ export async function POST(request: Request) {
       message: `Spracovanie callbacku zlyhalo: ${error instanceof Error ? error.message : "Neznáma chyba"}`
     });
 
-    return NextResponse.redirect(new URL("/settings?kros_post_result=error", request.url));
+    // Sem spadne aj chýbajúci `KROS_TOKEN_KEY`: šifrovanie tokenu hodí výnimku. Bez dôvodu
+    // v URL by to vyzeralo rovnako ako vypršaný `state` a hľadalo by sa to v logu servera.
+    return redirectTo("/settings?kros_post_result=error&reason=save");
   }
 }
 
-export async function GET(request: Request) {
-  return NextResponse.redirect(new URL("/settings", request.url));
+export async function GET() {
+  return redirectTo("/settings", 302);
 }

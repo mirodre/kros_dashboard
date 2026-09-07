@@ -1,113 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { signOutAction } from "@/app/actions/sign-out";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
+import { SheetOverlay } from "@/components/sheet-overlay";
+import { TenantDefaultsCard } from "@/components/tenant-defaults-card";
+import { clearLocalDataCacheKeys } from "@/lib/cache-clear";
 import { clearCashflowCache } from "@/lib/cashflow-cache";
 import { clearExpenseCache } from "@/lib/expense-cache";
 import { clearInvoiceCache } from "@/lib/invoice-cache";
-import { clearPendingState, readConnections, readPendingState, writeConnections } from "@/lib/kros-storage";
 import { startKrosConnect } from "@/lib/kros-connect";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import type { KrosConnection } from "@/lib/kros-types";
-import type { KrosApiLogEntry } from "@/lib/kros-logs";
 
-const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
+/** Dôvody, s ktorými sa `/kros/callback` vracia, preložené do vety pre človeka. */
+function connectErrorMessage(reason: string | null): string {
+  if (reason === "state") return "Prepojenie vypršalo alebo bolo prerušené. Skús to prosím znova.";
+  if (reason === "empty") return "KROS nevrátil žiadnu firmu — v súhlase treba vybrať aspoň jednu.";
+  if (reason === "db") return "Server nemá pripojenú databázu, prepojenie sa nemá kam uložiť.";
+  if (reason === "save") return "Prepojenie sa nepodarilo uložiť. Podrobnosť je v zázname servera.";
+  return "Prepojenie sa nepodarilo dokončiť. Skús to znova.";
+}
 
 export default function SettingsPage() {
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
-  const [, setPendingState] = useState<string | null>(null);
+  const { connections, isLoading: isLoadingConnections, error: connectionsError, refresh, disconnect } =
+    useKrosConnections();
   const [statusMessage, setStatusMessage] = useState("Pre napojenie klikni na Prepojiť s KROS.");
-  const [logs, setLogs] = useState<KrosApiLogEntry[]>([]);
-  const [selectedLog, setSelectedLog] = useState<KrosApiLogEntry | null>(null);
   const [companyToDisconnect, setCompanyToDisconnect] = useState<KrosConnection | null>(null);
   const [isCacheClearOpen, setIsCacheClearOpen] = useState(false);
 
   useEffect(() => {
-    setConnections(readConnections());
-    setPendingState(readPendingState());
-    void refreshLogs();
-  }, []);
-
-  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (!params.get("kros_post_result")) {
-      return;
-    }
+    const result = params.get("kros_post_result");
+    if (!result) return;
 
-    const rawResult = sessionStorage.getItem("kros_post_result");
-    if (!rawResult) {
-      setStatusMessage("KROS vrátil prázdnu odpoveď pre POST prepojenie.");
-      params.delete("kros_post_result");
-      window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
-      return;
-    }
+    // Prepojenie zapísal `/kros/callback` rovno do databázy — prehliadač už žiadny zoznam
+    // firiem ani token nedostáva, len správu, ako to dopadlo. Dôvod zlyhania nesie URL,
+    // aby sa nemusel hľadať v logu servera.
+    setStatusMessage(result === "error" ? connectErrorMessage(params.get("reason")) : "Prepojenie hotové. Firmy vidia všetci vo firme.");
+    void refresh();
 
-    try {
-      const parsed = JSON.parse(rawResult) as {
-        state?: string | null;
-        companies?: Array<{
-          companyId: number;
-          companyName: string;
-          token: string;
-          webhookSecret?: string;
-        }>;
-      };
-      const storedState = readPendingState();
-      if (storedState && parsed.state && storedState !== parsed.state) {
-        setStatusMessage("Prepojenie odmietnuté: nesedí bezpečnostný parameter state.");
-      } else {
-        const mappedConnections: KrosConnection[] = Array.isArray(parsed.companies)
-          ? parsed.companies
-              .filter(
-                (company) =>
-                  typeof company.companyId === "number" &&
-                  typeof company.companyName === "string" &&
-                  typeof company.token === "string" &&
-                  company.companyName.length > 0 &&
-                  company.token.length > 0
-              )
-              .map((company) => ({
-                companyId: company.companyId,
-                companyName: company.companyName,
-                token: company.token,
-                webhookSecret: company.webhookSecret,
-                connectedAt: new Date().toISOString()
-              }))
-          : [];
-
-        setConnections(mappedConnections);
-        writeConnections(mappedConnections);
-        clearPendingState();
-        setPendingState(null);
-        setStatusMessage(`Prepojenie hotové: ${mappedConnections.length} firiem.`);
-      }
-    } catch {
-      setStatusMessage("KROS vrátil neplatnú odpoveď pre POST prepojenie.");
-    } finally {
-      sessionStorage.removeItem("kros_post_result");
-      params.delete("kros_post_result");
-      window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
-    }
-  }, []);
-
-  const refreshLogs = async () => {
-    const response = await fetch("/api/kros/logs");
-    const payload = await response.json();
-    const raw = Array.isArray(payload?.data) ? payload.data : [];
-    setLogs(
-      [...raw].sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-    );
-  };
+    params.delete("kros_post_result");
+    params.delete("reason");
+    window.history.replaceState({}, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+  }, [refresh]);
 
   const handleConnectClick = async () => {
-    await startKrosConnect({
-      onStatus: (message) => {
-        setStatusMessage(message);
-        setPendingState(readPendingState());
-      }
-    });
+    await startKrosConnect({ onStatus: setStatusMessage });
   };
 
   const handleDisconnectCompany = (companyId: number) => {
@@ -117,35 +57,29 @@ export default function SettingsPage() {
     }
   };
 
-  const confirmDisconnectCompany = () => {
+  const confirmDisconnectCompany = async () => {
     if (!companyToDisconnect) return;
 
-    const nextConnections = connections.filter(
-      (connection) => connection.companyId !== companyToDisconnect.companyId
-    );
-    setConnections(nextConnections);
-    writeConnections(nextConnections);
+    const company = companyToDisconnect;
     setCompanyToDisconnect(null);
-    if (nextConnections.length === 0) {
-      clearPendingState();
-      setPendingState(null);
-      setStatusMessage("Prepojenie bolo odpojené.");
-      return;
-    }
 
-    setStatusMessage(`Firma bola odpojená. Aktívne prepojenia: ${nextConnections.length}.`);
-  };
-
-  const handleClearLogs = async () => {
-    await fetch("/api/kros/logs", { method: "DELETE" });
-    await refreshLogs();
+    // Odpojenie platí pre celú firmu, nielen pre toto zariadenie — preto to potvrdzovací
+    // dialóg hovorí a preto sa výsledok načíta zo servera, nie z lokálneho stavu.
+    const ok = await disconnect(company.companyId);
+    setStatusMessage(
+      ok
+        ? `Firma ${company.companyName} bola odpojená pre všetkých vo firme.`
+        : "Odpojenie sa nepodarilo. Skús to znova."
+    );
   };
 
   const handleClearInvoiceCache = async () => {
     await clearInvoiceCache();
     await clearCashflowCache();
     await clearExpenseCache();
-    localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
+    // Zoznam mazaných kľúčov je v `src/lib/cache-clear.ts` a stráži ho test: filtre sa tu
+    // mazať nesmú, hoci ležia v tom istom `localStorage` ako stav synchronizácie.
+    clearLocalDataCacheKeys(localStorage);
     setIsCacheClearOpen(false);
     setStatusMessage(
       "Lokálna cache faktúr (Príjmy), dokladov (Výdavky) a platieb (Financie) bola vymazaná. Prehľady sa pri ďalšom otvorení načítajú odznova."
@@ -156,10 +90,14 @@ export default function SettingsPage() {
     <DashboardShell title="Nastavenia">
       <KrosConnectionCard
         connections={connections}
-        statusMessage={statusMessage}
+        statusMessage={connectionsError ?? (isLoadingConnections ? "Načítavam prepojenia..." : statusMessage)}
         onConnectClick={handleConnectClick}
         onDisconnectCompany={handleDisconnectCompany}
       />
+
+      {/* Až za prepojením: bez firiem v KROSe nie je čo filtrovať, a karta sa navyše
+          ukáže len vo firme, kde appku otvorilo viac ľudí. */}
+      <TenantDefaultsCard />
 
       <section className="dashboard-body">
         <article className="panel">
@@ -176,84 +114,25 @@ export default function SettingsPage() {
         </article>
       </section>
 
-      <section className="dashboard-body">
+      <section className="dashboard-body mobile-only-settings">
         <article className="panel">
           <header className="panel-head">
-            <h3>Záznamy API</h3>
-            <div className="filters-inline">
-              <button type="button" className="secondary-button" onClick={handleClearLogs}>
-                Vymazať záznamy
+            <h3>Účet</h3>
+            <form action={signOutAction}>
+              <button type="submit" className="danger-button">
+                Odhlásiť sa
               </button>
-            </div>
+            </form>
           </header>
-
-          {logs.length === 0 ? (
-            <p className="tag-sub">Zatiaľ nie sú dostupné žiadne záznamy API komunikácie.</p>
-          ) : (
-            <ul className="tag-list">
-              {logs.map((log) => (
-                <li key={log.id}>
-                  <div>
-                    <p className="tag-name">
-                      [{log.direction.toUpperCase()}] {log.method} {log.endpoint}
-                    </p>
-                    <p className="tag-sub">
-                      {new Date(log.timestamp).toLocaleString("sk-SK")}
-                      {log.companyName ? ` • Firma: ${log.companyName}` : ""}
-                      {typeof log.status === "number" ? ` • HTTP ${log.status}` : ""}
-                    </p>
-                  </div>
-                  <div className="tag-values">
-                    <p className="log-message">{log.message ?? "-"}</p>
-                    <button type="button" className="secondary-button" onClick={() => setSelectedLog(log)}>
-                      Detail
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <p className="tag-sub">
+            Odhlási ťa z prehľadov aj z prihlasovacej služby KROS na tomto zariadení. Lokálne uložené dáta v prehliadači
+            zostanú, prihlásiť sa môžeš kedykoľvek znova.
+          </p>
         </article>
       </section>
 
-      {selectedLog ? (
-        <div className="tag-filter-overlay" onClick={() => setSelectedLog(null)} role="presentation">
-          <div
-            className="tag-filter-sheet"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Detail záznamu"
-          >
-            <header className="tag-filter-head">
-              <h4>Detail záznamu</h4>
-              <button type="button" className="filter-close" onClick={() => setSelectedLog(null)}>
-                Zavrieť
-              </button>
-            </header>
-            <p className="tag-sub">
-              {new Date(selectedLog.timestamp).toLocaleString("sk-SK")} • {selectedLog.method}{" "}
-              {selectedLog.endpoint}
-            </p>
-            <pre className="log-detail-pre">
-              {JSON.stringify(
-                {
-                  direction: selectedLog.direction,
-                  status: selectedLog.status,
-                  companyName: selectedLog.companyName,
-                  message: selectedLog.message,
-                  payload: selectedLog.payload ?? null
-                },
-                null,
-                2
-              )}
-            </pre>
-          </div>
-        </div>
-      ) : null}
-
       {companyToDisconnect ? (
-        <div className="tag-filter-overlay" onClick={() => setCompanyToDisconnect(null)} role="presentation">
+        <SheetOverlay onClose={() => setCompanyToDisconnect(null)}>
           <div
             className="confirm-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -264,6 +143,7 @@ export default function SettingsPage() {
             <h4>Zrušiť prepojenie?</h4>
             <p className="tag-sub">
               Naozaj chceš zrušiť prepojenie firmy <strong>{companyToDisconnect.companyName}</strong>?
+              Odpojíš ju <strong>všetkým vo firme</strong> a späť sa dá len novým súhlasom v KROS.
             </p>
             <div className="tag-filter-actions">
               <button type="button" className="secondary-button" onClick={() => setCompanyToDisconnect(null)}>
@@ -274,11 +154,11 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
 
       {isCacheClearOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsCacheClearOpen(false)} role="presentation">
+        <SheetOverlay onClose={() => setIsCacheClearOpen(false)}>
           <div
             className="confirm-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -300,7 +180,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </DashboardShell>
   );

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { formatCurrency, formatDelta, getDeltaPct } from "@/lib/format";
+import { FilterIconButton } from "./filter-icon-button";
+import { SheetOverlay } from "./sheet-overlay";
 
 type BreakdownItem = {
   name: string;
@@ -13,40 +15,43 @@ type Props = {
   title: string;
   filterLabel: string;
   dialogTitle: string;
-  dialogHelp: string;
   ariaLabelPrefix: string;
   items: BreakdownItem[];
   selectedItems: string[];
   availableItemNames?: string[];
-  focusedItem: string | null;
+  /** Focusnuté (rozkliknuté) riadky. Viac riadkov = drill-down podľa všetkých. */
+  focusedItems: string[];
   onSelectionChange: (items: string[]) => void;
-  onFocusedItemChange: (item: string | null) => void;
-  isLoading?: boolean;
+  onFocusedItemsChange: (items: string[]) => void;
   /** Pri výdavkoch je rast zlá správa — otočí farby delty (nárast = červená). */
   invertDeltaColor?: boolean;
   /** Ak je true, sekciu ide zbaliť (schovať zoznam). */
   collapsible?: boolean;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /**
+   * Doplnkový riadok pod sumou. Domov ním ukazuje, z čoho zisk vznikol
+   * („24 850 € − 17 320 €"); moduly, ktoré ukazujú jednu veličinu, ho neposielajú.
+   */
+  renderMeta?: (item: BreakdownItem) => React.ReactNode;
 };
 
 export function FilterableBreakdownSection({
   title,
   filterLabel,
   dialogTitle,
-  dialogHelp,
   ariaLabelPrefix,
   items,
   selectedItems,
   availableItemNames,
-  focusedItem,
+  focusedItems,
   onSelectionChange,
-  onFocusedItemChange,
-  isLoading = false,
+  onFocusedItemsChange,
   invertDeltaColor = false,
   collapsible = false,
   collapsed = false,
-  onCollapsedChange
+  onCollapsedChange,
+  renderMeta
 }: Props) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>(selectedItems);
@@ -87,16 +92,18 @@ export function FilterableBreakdownSection({
   const resetFilter = () => {
     setPendingSelection([]);
     onSelectionChange([]);
-    onFocusedItemChange(null);
+    onFocusedItemsChange([]);
     closeFilter();
   };
 
+  // Klik pridá riadok k focusu, ďalší klik ho z focusu vyhodí — poradie klikov
+  // ostáva zachované, aby si ho volajúci vedel prečítať (napr. „posledný vyhráva“).
   const handleItemClick = (itemName: string) => {
-    if (focusedItem === itemName) {
-      onFocusedItemChange(null);
-      return;
-    }
-    onFocusedItemChange(itemName);
+    onFocusedItemsChange(
+      focusedItems.includes(itemName)
+        ? focusedItems.filter((name) => name !== itemName)
+        : [...focusedItems, itemName]
+    );
   };
 
   const toggleCollapsed = () => {
@@ -104,8 +111,8 @@ export function FilterableBreakdownSection({
   };
 
   return (
-    <section className={isFilterOpen ? "dashboard-body overlay-open" : "dashboard-body"}>
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+    <section className="dashboard-body">
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           {collapsible ? (
             <button
@@ -123,29 +130,19 @@ export function FilterableBreakdownSection({
           ) : (
             <h3>{title}</h3>
           )}
-          <button type="button" className="secondary-button" onClick={openFilter}>
-            {filterLabel}
-            {selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}
-          </button>
+          <FilterIconButton
+            label={filterLabel}
+            activeCount={selectedItems.length}
+            onClick={openFilter}
+          />
         </header>
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={index}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
             <ul className="tag-list">
               {filteredItems.map((item) => {
                 const delta = getDeltaPct(item.amount, item.previousAmount);
-                const isActive = focusedItem === item.name;
+                const isActive = focusedItems.includes(item.name);
                 const share = shareTotal > 0 ? Math.max(item.amount, 0) / shareTotal : 0;
 
                 return (
@@ -164,6 +161,7 @@ export function FilterableBreakdownSection({
                     </div>
                     <div className="tag-values">
                       <p>{formatCurrency(item.amount)}</p>
+                      {renderMeta ? <small className="breakdown-meta">{renderMeta(item)}</small> : null}
                       {delta !== null ? (
                         <p
                           className={
@@ -189,7 +187,7 @@ export function FilterableBreakdownSection({
       </article>
 
       {isFilterOpen ? (
-        <div className="tag-filter-overlay" onClick={closeFilter} role="presentation">
+        <SheetOverlay onClose={closeFilter}>
           <div
             className="tag-filter-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -203,8 +201,6 @@ export function FilterableBreakdownSection({
                 Zavrieť
               </button>
             </header>
-
-            <p className="tag-filter-help">{dialogHelp}</p>
 
             <div className="tag-filter-options">
               {availableNames.map((itemName) => {
@@ -231,7 +227,7 @@ export function FilterableBreakdownSection({
               </button>
             </footer>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

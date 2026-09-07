@@ -1,34 +1,29 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  clearSyncProgressForOwner,
+  getServerSyncProgressSnapshot,
+  getSyncProgressSnapshot,
+  subscribeToSyncProgress,
+  updateSyncProgress,
+  writeSyncProgress
+} from "@/lib/sync-progress-store";
+import type { SyncProgress, SyncStep } from "@/lib/sync-progress-types";
 
-/**
- * Priebeh sťahovania dát z KROS API. Sync beží po krokoch (firma × mesiac,
- * prípadne firma × druh dát), ktoré poznáme ešte pred prvým fetchom — progress
- * bar preto ukazuje reálny podiel hotového, nie nekonečný loader.
- */
-export type SyncProgress = {
-  /** Počet dokončených krokov. */
-  done: number;
-  /** Celkový počet naplánovaných krokov. */
-  total: number;
-  /** Čo sa práve sťahuje, napr. „Firma s.r.o. · august 2026“. */
-  label?: string;
-  /** Podiel rozrobeného kroku (0–1) — priebeh vnútri mesiaca. */
-  stepFraction?: number;
-  /** Bližší popis rozrobeného kroku, napr. „rozúčtovanie 38/214“. */
-  detail?: string;
-  /** Odhad zvyšného času; chýba, kým sa nedá rozumne spočítať. */
-  etaSeconds?: number;
-};
+export type { SyncProgress, SyncStep };
 
 const MONTH_LABEL_FORMAT = new Intl.DateTimeFormat("sk-SK", { month: "long", year: "numeric" });
 
-/** `2026-08` → `august 2026` — popis práve sťahovaného mesiaca. */
-export function formatMonthKeyLabel(monthKey: string) {
+function parseMonthKey(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number);
-  if (!year || !month) return monthKey;
-  return MONTH_LABEL_FORMAT.format(new Date(year, month - 1, 1));
+  return year && month ? new Date(year, month - 1, 1) : null;
+}
+
+/** `2026-08` → `august 2026`. */
+export function formatMonthKeyLabel(monthKey: string) {
+  const date = parseMonthKey(monthKey);
+  return date ? MONTH_LABEL_FORMAT.format(date) : monthKey;
 }
 
 /** Zvyšný čas do konca sťahovania; `null`, kým sa nedá odhadnúť. */
@@ -38,54 +33,93 @@ export function formatSyncEta(etaSeconds: number | undefined) {
   return `~ ${Math.ceil(etaSeconds / 60)} min`;
 }
 
+/** Podiel hotovej práce (0–1) vrátane rozrobeného kroku. */
+export function getSyncFraction(progress: SyncProgress) {
+  if (progress.steps.length === 0) return 0;
+  return Math.min(1, (progress.doneCount + progress.stepFraction) / progress.steps.length);
+}
+
+/** Aktuálny priebeh sťahovania — pre komponenty, ktoré ho zobrazujú. */
+export function useSyncProgressValue() {
+  return useSyncExternalStore(
+    subscribeToSyncProgress,
+    getSyncProgressSnapshot,
+    getServerSyncProgressSnapshot
+  );
+}
+
+/**
+ * Ovládanie priebehu pre stránku, ktorá dáta sťahuje. Zámerne nevracia samotný
+ * priebeh: stránka ho nepotrebuje vykresliť (robí to `DashboardShell`) a keby
+ * ho čítala, každý krok sťahovania by opäť prekresľoval celý modul.
+ */
 export function useSyncProgress() {
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const ownerRef = useRef<object>({});
   const startedAtRef = useRef(0);
 
-  /** Otvorí progress bar na známy počet krokov; `total` 0 ho skryje. */
-  const beginSync = useCallback((total: number) => {
+  /** Otvorí sťahovanie na známy plán krokov; prázdny plán ho zavrie. */
+  const beginSync = useCallback((steps: SyncStep[], immersive: boolean) => {
     startedAtRef.current = Date.now();
-    setProgress(total > 0 ? { done: 0, total } : null);
+    writeSyncProgress(
+      ownerRef.current,
+      steps.length > 0
+        ? { steps, activeIndex: -1, doneCount: 0, stepFraction: 0, immersive }
+        : null
+    );
   }, []);
 
-  const startStep = useCallback((label: string) => {
-    setProgress((prev) => (prev ? { ...prev, label, stepFraction: 0, detail: undefined } : prev));
+  const startStep = useCallback((index: number) => {
+    updateSyncProgress(ownerRef.current, (prev) => ({
+      ...prev,
+      activeIndex: index,
+      stepFraction: 0,
+      detail: undefined
+    }));
   }, []);
 
   /**
    * Priebeh vnútri rozrobeného kroku — sťahovanie výdavkov ho hlási streamom,
-   * takže bar sa hýbe aj počas dlhého mesiaca.
+   * takže sa progress hýbe aj počas dlhého mesiaca.
    */
   const advanceStep = useCallback((fraction: number, detail?: string) => {
-    setProgress((prev) => {
-      if (!prev) return prev;
+    updateSyncProgress(ownerRef.current, (prev) => {
       const stepFraction = Math.min(Math.max(fraction, 0), 1);
       return {
         ...prev,
         stepFraction,
         detail,
-        etaSeconds: estimateEta(prev.done + stepFraction, prev.total, startedAtRef.current)
+        etaSeconds: estimateEta(
+          prev.doneCount + stepFraction,
+          prev.steps.length,
+          startedAtRef.current
+        )
       };
     });
   }, []);
 
   const completeStep = useCallback(() => {
-    setProgress((prev) => {
-      if (!prev) return prev;
-      const done = Math.min(prev.done + 1, prev.total);
+    updateSyncProgress(ownerRef.current, (prev) => {
+      const doneCount = Math.min(prev.doneCount + 1, prev.steps.length);
       return {
         ...prev,
-        done,
+        doneCount,
         stepFraction: 0,
         detail: undefined,
-        etaSeconds: estimateEta(done, prev.total, startedAtRef.current)
+        etaSeconds: estimateEta(doneCount, prev.steps.length, startedAtRef.current)
       };
     });
   }, []);
 
-  const endSync = useCallback(() => setProgress(null), []);
+  const endSync = useCallback(() => writeSyncProgress(ownerRef.current, null), []);
 
-  return { progress, beginSync, startStep, advanceStep, completeStep, endSync };
+  // Odchod na iný modul priebeh zavrie — inak by na novej stránke ostal visieť
+  // ukazovateľ zo sťahovania, ktoré sme opustili.
+  useEffect(() => {
+    const owner = ownerRef.current;
+    return () => clearSyncProgressForOwner(owner);
+  }, []);
+
+  return { beginSync, startStep, advanceStep, completeStep, endSync };
 }
 
 /**

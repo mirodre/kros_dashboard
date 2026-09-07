@@ -17,6 +17,19 @@ function formatDueDate(expense: NormalizedExpense) {
   return due.toLocaleDateString("sk-SK");
 }
 
+/**
+ * Popisok pod sumou, keď je doklad rozúčtovaný a filter z neho berie len časť —
+ * bez neho by riadok tvrdil, že celý doklad je za menej, než na ňom naozaj je.
+ */
+export function ExpenseScopeNote({ expense }: { expense: NormalizedExpense }) {
+  if (expense.documentTotalPrice === undefined) return null;
+  return (
+    <p className="tag-sub expense-scope-note">
+      z dokladu {formatCurrencyPrecise(Math.abs(expense.documentTotalPrice))}
+    </p>
+  );
+}
+
 /** Riadok výdavkového dokladu — zdieľaný sekciou Posledné výdavky a sheetom splatností. */
 export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
   const issueDate = parseDocumentDate(expense.issueDate);
@@ -70,37 +83,38 @@ export function ExpenseRow({ expense }: { expense: NormalizedExpense }) {
           {(overdue || unpaid) && dueLabel ? (
             <p className="tag-sub">Splatnosť {dueLabel}</p>
           ) : null}
-          {expense.tags.length > 0 ? (
-            <div className="invoice-tags" aria-label="Štítky dokladu">
-              {expense.tags.map((tag) => (
-                <span key={tag}>{tag}</span>
-              ))}
-            </div>
-          ) : null}
         </div>
         <div className="tag-values movement-row-amount">
           <p className={expense.totalPrice < 0 ? "movement-amount-text up" : "movement-amount-text down"}>
             {formatCurrencyPrecise(-expense.totalPrice)}
           </p>
+          <ExpenseScopeNote expense={expense} />
         </div>
       </div>
+      {/* Štítky sú pod sumou, nie v jej stĺpci — pás tak má celú šírku karty. */}
+      {expense.tags.length > 0 ? (
+        <div className="invoice-tags" aria-label="Štítky dokladu">
+          {expense.tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      ) : null}
     </li>
   );
 }
 
 type Props = {
   expenses: NormalizedExpense[];
-  isLoading?: boolean;
 };
 
-export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
+export function RecentExpensesSection({ expenses }: Props) {
   const [collapsed, setCollapsed] = usePersistedCollapsed(
-    "kros_dashboard_collapsed_recent_expenses"
+    "ui.collapsed.recentExpenses"
   );
 
   return (
     <section className="dashboard-body">
-      <article className={`panel panel-with-skeleton${collapsed ? " panel-collapsed" : ""}`}>
+      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
         <header className="panel-head">
           <button
             type="button"
@@ -118,22 +132,11 @@ export function RecentExpensesSection({ expenses, isLoading = false }: Props) {
 
         {!collapsed ? (
           <>
-            {isLoading ? (
-              <div className="dashboard-skeleton-overlay list-skeleton" aria-live="polite">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div className="skeleton-list-row" key={`expense-skeleton-${index}`}>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && expenses.length === 0 ? (
+            {expenses.length === 0 ? (
               <p className="tag-filter-help">V tomto výbere zatiaľ nemáme žiadne výdavky.</p>
             ) : null}
 
-            {!isLoading && expenses.length > 0 ? (
+            {expenses.length > 0 ? (
               <ul className="tag-list">
                 {expenses.map((expense) => (
                   <ExpenseRow key={`${expense.companyId ?? expense.companyName}-${expense.id}`} expense={expense} />

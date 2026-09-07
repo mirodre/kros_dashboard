@@ -2,13 +2,27 @@ import type { Granularity, KpiCard } from "./mock-data";
 import type {
   AggregatedBreakdownPoint,
   AggregatedRevenuePoint,
-  ExpensePaymentStatus,
   ExpenseTagAllocation,
   NormalizedExpense
 } from "./kros-types";
-import { getDateRange } from "./dashboard-live";
+import { PAYMENT_STATUS_BY_CODE } from "./document-payment-status";
+import {
+  buildBuckets,
+  classifyPeriod,
+  formatPeriodLabel,
+  getBucketRange,
+  getDateRange,
+  toBucketKey,
+  type PeriodWindow
+} from "./period-buckets";
 import { getDocumentDateTime, isValidDocumentDate, parseDocumentDate } from "./document-date";
-import { UNCATEGORIZED_CATEGORY } from "./tag-categories";
+import {
+  EMPTY_TAG_CATEGORY_INDEX,
+  UNCATEGORIZED_CATEGORY,
+  tagFilterKey,
+  type TagCategoryFilters,
+  type TagCategoryIndex
+} from "./tag-categories";
 
 /** Podiel štítku na výdavkoch v aktuálnom období — podklad pre donut Štruktúra výdavkov. */
 export type ExpenseTagSlice = {
@@ -32,14 +46,6 @@ export type ExpenseDueWatchlist = {
   overdueTotal: number;
   upcoming: NormalizedExpense[];
   upcomingTotal: number;
-};
-
-const EXPENSE_PAYMENT_STATUS_BY_CODE: Record<number, ExpensePaymentStatus> = {
-  0: "notPaid",
-  1: "fullyPaid",
-  2: "overPaid",
-  3: "partiallyPaid",
-  [-1]: "undefined"
 };
 
 const EXPENSE_DOCUMENT_TYPE_LABELS: Record<number, string> = {
@@ -130,37 +136,51 @@ function normalizeTag(rawTag: unknown): string | null {
   return null;
 }
 
-/** Prvá nenulová hodnota — KROS niektoré cenové skupiny nechá vynulované. */
-function firstNonZeroNumber(...values: unknown[]) {
-  for (const value of values) {
-    const parsed = getNumber(value);
-    if (parsed !== undefined && parsed !== 0) return parsed;
-  }
-  return 0;
-}
-
 /**
- * Suma z hlavičky dokladu — legislatívna cena bez DPH. Ak je legislatívna
- * skupina vynulovaná (KROS ju pri časti výdavkov neplní), berieme sumu bez DPH
- * z documentPrices.
+ * Suma z hlavičky dokladu — legislatívna cena bez DPH, teda v účtovnej mene.
+ *
+ * Zámerne BEZ fallbacku na `documentPrices`: tá skupina je v mene dokladu, nie
+ * v eurách (podiel oboch skupín sa presne rovná `prices.exchangeRate`), a výdavky
+ * chodia aj v cudzej mene. Fallback tu kedysi bol a pri poľskom doklade by do
+ * eurového súčtu započítal zhruba štvornásobok, pri českom dvadsaťpäťnásobok.
  */
 function readHeaderTotalPrice(row: Record<string, unknown>) {
   const prices = row.prices;
   if (!prices || typeof prices !== "object") return 0;
-  const pricesRow = prices as Record<string, unknown>;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  if (!group || typeof group !== "object") return 0;
 
-  const readGroup = (group: unknown) =>
-    group && typeof group === "object" ? (group as Record<string, unknown>).totalPrice : undefined;
+  return getNumber((group as Record<string, unknown>).totalPrice) ?? 0;
+}
 
-  return firstNonZeroNumber(
-    readGroup(pricesRow.legislativePrices),
-    readGroup(pricesRow.documentPrices)
-  );
+/**
+ * DPH z hlavičky dokladu, z legislatívnych cien (EUR). Na rozdiel od súm sa
+ * NESKLADÁ z riadkov zaúčtovania — daň sa priraďuje dokladu ako celku
+ * a rozpočítať ju na štítky by bol odhad, ktorý by sa tváril ako číslo
+ * z účtovníctva. Znamienko sa neotáča: dobropis prichádza už záporný.
+ */
+function readHeaderVatAmount(row: Record<string, unknown>) {
+  const prices = row.prices;
+  if (!prices || typeof prices !== "object") return undefined;
+  const group = (prices as Record<string, unknown>).legislativePrices;
+  if (!group || typeof group !== "object") return undefined;
+  const raw = (group as Record<string, unknown>).vatTotalPrice;
+  const parsed = Number(raw);
+  return raw !== undefined && raw !== null && Number.isFinite(parsed) ? parsed : undefined;
 }
 
 type JournalLine = { tags: string[]; amount: number };
 
-/** Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}). */
+/**
+ * Riadky zaúčtovania z detailu dokladu (/api/expenses/{id}).
+ *
+ * Suma výhradne z `legislativeTotalPrice` — rovnaký dôvod ako pri
+ * `readHeaderTotalPrice`: `totalPrice` riadku je v mene dokladu, nie v eurách,
+ * a fallback naň by pri cudzej mene výdavok viacnásobne nadhodnotil. Tento
+ * fallback tu kedysi bol (odstránený z hlavičky, ale nie z riadkov) a keďže
+ * API dotiahne detail takmer ku každému výdavku, bola to práve táto cesta,
+ * ktorá o chybnú sumu reálne šla.
+ */
 function readJournalLines(row: Record<string, unknown>): JournalLine[] {
   const rawItems = Array.isArray(row.journalItems) ? row.journalItems : [];
 
@@ -170,7 +190,7 @@ function readJournalLines(row: Record<string, unknown>): JournalLine[] {
       tags: (Array.isArray(item.tags) ? item.tags : [])
         .map(normalizeTag)
         .filter((tag): tag is string => Boolean(tag)),
-      amount: firstNonZeroNumber(item.legislativeTotalPrice, item.totalPrice)
+      amount: getNumber(item.legislativeTotalPrice) ?? 0
     }));
 }
 
@@ -262,39 +282,105 @@ export function normalizeExpenses(rawExpenses: unknown[]): NormalizedExpense[] {
         totalPrice: applySign(amounts.totalPrice),
         paymentStatus:
           paymentStatusCode !== undefined
-            ? EXPENSE_PAYMENT_STATUS_BY_CODE[paymentStatusCode] ?? "undefined"
+            ? PAYMENT_STATUS_BY_CODE[paymentStatusCode] ?? "undefined"
             : "undefined",
         paymentType: pickString(row, ["paymentType"]),
         hasAttachments: row.hasAttachments === true,
         tags: collectAllocationTags(allocations),
-        allocations
+        allocations,
+        vatAmount: readHeaderVatAmount(row)
       } satisfies NormalizedExpense;
     })
     .filter((expense): expense is NormalizedExpense => Boolean(expense));
 }
 
+/** Jedna podmienka na riadok rozúčtovania — povolené štítky v rámci jednej kategórie. */
+type AllocationConstraint = { category: string; tags: Set<string> };
+
+function lowerTag(tag: string) {
+  return tag.trim().toLowerCase();
+}
+
 /**
- * Zúži sumy dokladov na rozúčtovania, ktoré nesú niektorý z aktívnych štítkov —
- * KPI, graf aj dodávatelia tak ukazujú len časť dokladu patriacu zvolenému
- * štítku. Bez aktívnych štítkov ostávajú doklady nezmenené.
+ * Podmienky pre riadky rozúčtovania: každá kategória s aktívnym filtrom a každá
+ * kategória s rozkliknutým štítkom je vlastná podmienka. V rámci kategórie stačí
+ * jeden zo štítkov (OR), kategórie sa spájajú cez AND — rovnako ako pri dokladoch.
  */
-export function scopeExpenseAmountsToTags(
+function buildAllocationConstraints(
+  filters: TagCategoryFilters,
+  focusedTags: string[],
+  index: TagCategoryIndex
+): AllocationConstraint[] {
+  const constraints: AllocationConstraint[] = [];
+
+  for (const [category, tags] of Object.entries(filters)) {
+    if (tags.length === 0) continue;
+    constraints.push({ category, tags: new Set(tags.map(lowerTag)) });
+  }
+
+  // Focus je samostatná podmienka nad filtrom — rozkliknutý štítok teda zúži riadky
+  // aj vtedy, keď je filter kategórie širší.
+  const focusByCategory = new Map<string, string[]>();
+  for (const tag of focusedTags) {
+    const category = tagFilterKey(index, tag);
+    focusByCategory.set(category, [...(focusByCategory.get(category) ?? []), tag]);
+  }
+  for (const [category, tags] of focusByCategory) {
+    constraints.push({ category, tags: new Set(tags.map(lowerTag)) });
+  }
+
+  return constraints;
+}
+
+/**
+ * Riadok prejde podmienkou, keď nesie niektorý z jej štítkov — alebo keď v tejto
+ * kategórii nemá štítok žiadny. Nerozlíšený riadok totiž patrí celému dokladu
+ * (KROS ho v tejto dimenzii nerozúčtoval), takže ho filter kategórie nesmie zahodiť.
+ */
+function allocationPassesConstraint(
+  allocation: ExpenseTagAllocation,
+  constraint: AllocationConstraint,
+  index: TagCategoryIndex
+) {
+  let touchesCategory = false;
+
+  for (const tag of allocation.tags) {
+    if (constraint.tags.has(lowerTag(tag))) return true;
+    if (tagFilterKey(index, tag) === constraint.category) touchesCategory = true;
+  }
+
+  return !touchesCategory;
+}
+
+/**
+ * Zúži sumy dokladov na riadky rozúčtovania (journalItems), ktoré prejdú aktívnym
+ * filtrom štítkov a rozkliknutými štítkami. Graf, KPI, dodávatelia aj zoznamy dokladov
+ * tak ukazujú rovnaké číslo — len tú časť dokladu, ktorá patrí do výberu. Pôvodná suma
+ * celého dokladu ostáva v `documentTotalPrice`, nech sa dá v zozname ukázať kontext.
+ * Bez aktívneho filtra aj bez focusu ostávajú doklady nezmenené.
+ */
+export function scopeExpenseAmountsToTagFilters(
   expenses: NormalizedExpense[],
-  tags: string[]
+  filters: TagCategoryFilters,
+  focusedTags: string[],
+  index: TagCategoryIndex = EMPTY_TAG_CATEGORY_INDEX
 ): NormalizedExpense[] {
-  if (tags.length === 0) return expenses;
-  const tagSet = new Set(tags.map((tag) => tag.trim().toLowerCase()));
+  const constraints = buildAllocationConstraints(filters, focusedTags, index);
+  if (constraints.length === 0) return expenses;
 
   return expenses.map((expense) => {
-    if (expense.allocations.length < 2) return expense;
     const matching = expense.allocations.filter((allocation) =>
-      allocation.tags.some((tag) => tagSet.has(tag.trim().toLowerCase()))
+      constraints.every((constraint) => allocationPassesConstraint(allocation, constraint, index))
     );
+    // Žiadny riadok nesedí (doklad prešiel len zjednotením štítkov naprieč riadkami)
+    // alebo sedia všetky — v oboch prípadoch niet čo zužovať.
     if (matching.length === 0 || matching.length === expense.allocations.length) return expense;
 
     return {
       ...expense,
       totalPrice: matching.reduce((sum, allocation) => sum + allocation.amount, 0),
+      documentTotalPrice: expense.documentTotalPrice ?? expense.totalPrice,
+      tags: collectAllocationTags(matching),
       allocations: matching
     };
   });
@@ -322,90 +408,6 @@ function buildExpenseFilter({ selectedTags, selectedCompanies }: FilterInput) {
     const tagPass = tagSet.size === 0 || expense.tags.some((tag) => tagSet.has(tag));
     return companyPass && tagPass;
   };
-}
-
-function getWeekOfYear(date: Date) {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  normalized.setDate(normalized.getDate() + 3 - ((normalized.getDay() + 6) % 7));
-  const firstThursday = new Date(normalized.getFullYear(), 0, 4);
-  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7));
-  return (
-    1 +
-    Math.round((normalized.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000))
-  );
-}
-
-type BucketDef = { key: string; label: string };
-
-function buildBuckets(granularity: Granularity, now: Date): BucketDef[] {
-  const currentYear = now.getFullYear();
-
-  if (granularity === "month") {
-    return Array.from({ length: now.getMonth() + 1 }, (_, idx) => ({
-      key: `m-${idx + 1}`,
-      label: new Date(currentYear, idx, 1).toLocaleString("sk-SK", { month: "short" })
-    }));
-  }
-
-  if (granularity === "week") {
-    const currentWeek = getWeekOfYear(now);
-    return Array.from({ length: currentWeek }, (_, idx) => ({
-      key: `w-${idx + 1}`,
-      label: `T${idx + 1}`
-    }));
-  }
-
-  return Array.from({ length: 5 }, (_, idx) => {
-    const year = currentYear - 4 + idx;
-    return { key: `y-${year}`, label: String(year) };
-  });
-}
-
-function toBucketKey(date: Date, granularity: Granularity) {
-  if (granularity === "month") return `m-${date.getMonth() + 1}`;
-  if (granularity === "week") return `w-${getWeekOfYear(date)}`;
-  return `y-${date.getFullYear()}`;
-}
-
-function getIsoWeekStart(year: number, week: number) {
-  const simple = new Date(year, 0, 4 + (week - 1) * 7);
-  const day = (simple.getDay() + 6) % 7;
-  simple.setDate(simple.getDate() - day);
-  simple.setHours(0, 0, 0, 0);
-  return simple;
-}
-
-function getBucketRange(key: string, granularity: Granularity, year: number, maxTo: Date) {
-  if (granularity === "week") {
-    const week = Number(key.replace("w-", ""));
-    const from = getIsoWeekStart(year, week);
-    const to = new Date(from);
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  if (granularity === "month") {
-    const month = Number(key.replace("m-", "")) - 1;
-    const from = new Date(year, month, 1);
-    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
-    return { from, to: to > maxTo ? maxTo : to };
-  }
-
-  const bucketYear = Number(key.replace("y-", ""));
-  const from = new Date(bucketYear, 0, 1);
-  const to = new Date(bucketYear, 11, 31, 23, 59, 59, 999);
-  return { from, to: to > maxTo ? maxTo : to };
-}
-
-function formatPeriodLabel(from: Date, to: Date) {
-  const formatter = new Intl.DateTimeFormat("sk-SK", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric"
-  });
-  return `${formatter.format(from)} - ${formatter.format(to)}`;
 }
 
 type ComputeInput = FilterInput & {
@@ -545,9 +547,15 @@ export function computeComparableExpenseYtdTotals({
 export function computeExpenseKpis(
   points: AggregatedRevenuePoint[],
   ytdTotals: { current: number; previous: number },
-  dueWatchlist: ExpenseDueWatchlist
+  dueWatchlist: ExpenseDueWatchlist,
+  focusedPeriod?: string | null
 ): KpiCard[] {
-  const currentBucket = points.length > 0 ? points[points.length - 1] : null;
+  // Klik do grafu prepne prvé KPI na vybraný stĺpec — inak by číslo nad grafom
+  // ukazovalo posledné obdobie, kým graf aj sekcie pod ním to focusnuté.
+  const focusedBucket = focusedPeriod
+    ? points.find((point) => point.label === focusedPeriod) ?? null
+    : null;
+  const currentBucket = focusedBucket ?? (points.length > 0 ? points[points.length - 1] : null);
   const currentPeriodCurrent = currentBucket?.current ?? 0;
   const currentPeriodPrevious = currentBucket?.previous ?? 0;
 
@@ -561,7 +569,7 @@ export function computeExpenseKpis(
 
   return [
     {
-      title: "Výdavky v aktuálnom období",
+      title: focusedBucket ? "Výdavky vo vybranom období" : "Výdavky v aktuálnom období",
       currentValue: Math.round(currentPeriodCurrent),
       previousValue: Math.round(currentPeriodPrevious),
       deltaPct: delta(currentPeriodCurrent, currentPeriodPrevious)
@@ -596,11 +604,12 @@ export function computeExpenseKpis(
 export function computeExpenseTagStructure(
   expenses: NormalizedExpense[],
   selectedTags: string[],
-  selectedCompanies: string[]
+  selectedCompanies: string[],
+  period?: PeriodWindow
 ): ExpenseTagSlice[] {
   const tagSet = new Set(selectedTags);
   const companySet = new Set(selectedCompanies);
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
   const map = new Map<string, { current: number; previous: number; documentCount: number }>();
 
   for (const expense of expenses) {
@@ -609,12 +618,7 @@ export function computeExpenseTagStructure(
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     // Sumy berieme z rozúčtovania — na štítok padá len jeho časť dokladu,
@@ -648,12 +652,27 @@ export function computeExpenseTagStructure(
     .sort((a, b) => b.amount - a.amount);
 }
 
+/**
+ * Podiely prepočítané na súčet výsekov, ktoré v grafe naozaj sú. `computeExpenseTagStructure`
+ * počíta `share` z celku pred odfiltrovaním štítkov mimo Filtra štítkov, takže po ňom by
+ * podiely nedávali 100 %. Záporné sumy (dobropisy) do celku nejdú.
+ */
+export function withNormalizedTagShares(slices: ExpenseTagSlice[]): ExpenseTagSlice[] {
+  const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
+
+  return slices.map((slice) => ({
+    ...slice,
+    share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
+  }));
+}
+
 export function computeExpenseTagBreakdown(
   expenses: NormalizedExpense[],
-  selectedCompanies: string[]
+  selectedCompanies: string[],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   // Zoznam vo Filtri štítkov musí ukazovať všetky štítky, preto sem filter neposielame.
-  return computeExpenseTagStructure(expenses, [], selectedCompanies).map((slice) => ({
+  return computeExpenseTagStructure(expenses, [], selectedCompanies, period).map((slice) => ({
     name: slice.name,
     amount: slice.amount,
     previousAmount: slice.previousAmount
@@ -663,23 +682,19 @@ export function computeExpenseTagBreakdown(
 export function computeExpenseCompanyBreakdown(
   expenses: NormalizedExpense[],
   selectedTags: string[],
-  selectedCompanies: string[] = []
+  selectedCompanies: string[] = [],
+  period?: PeriodWindow
 ): AggregatedBreakdownPoint[] {
   const filterPass = buildExpenseFilter({ selectedTags, selectedCompanies });
   const map = new Map<string, { current: number; previous: number }>();
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
 
   for (const expense of expenses) {
     if (!countsTowardsSpend(expense) || !filterPass(expense)) continue;
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     const bucket = map.get(expense.companyName) ?? { current: 0, previous: 0 };
@@ -699,10 +714,11 @@ export function computeExpenseVendorBreakdown(
   expenses: NormalizedExpense[],
   selectedTags: string[],
   selectedCompanies: string[],
-  limit = 8
+  limit = 8,
+  period?: PeriodWindow
 ): ExpenseVendorPoint[] {
   const filterPass = buildExpenseFilter({ selectedTags, selectedCompanies });
-  const range = getDateRange("month");
+  const range = period ?? getDateRange("month");
   const map = new Map<string, { current: number; previous: number; documentCount: number }>();
 
   for (const expense of expenses) {
@@ -710,12 +726,7 @@ export function computeExpenseVendorBreakdown(
 
     const expenseDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
     if (!expenseDate) continue;
-    let yearBucket: "current" | "previous" | null = null;
-    if (expenseDate >= range.currentFrom && expenseDate <= range.currentTo) {
-      yearBucket = "current";
-    } else if (expenseDate >= range.previousFrom && expenseDate <= range.previousTo) {
-      yearBucket = "previous";
-    }
+    const yearBucket = classifyPeriod(expenseDate, range);
     if (!yearBucket) continue;
 
     const vendor = expense.partnerName ?? "Neznámy dodávateľ";
@@ -783,6 +794,8 @@ export function getFilteredRecentExpenses(
     selectedTags: string[];
     selectedCompanies: string[];
     limit?: number;
+    /** Focus stĺpca grafu: zoznam sa zúži na doklady z toho obdobia (nie aj vlaňajšie). */
+    period?: PeriodWindow;
   }
 ): NormalizedExpense[] {
   const range = getDateRange(options.granularity);
@@ -794,7 +807,17 @@ export function getFilteredRecentExpenses(
       const expenseDate = parseDocumentDate(expense.issueDate);
       if (!expenseDate) return false;
       const inWindow = expenseDate >= range.previousFrom && expenseDate <= range.currentTo;
-      return inWindow && filterPass(expense);
+      // Obdobie sa meria dátumom, ktorým doklad padá do stĺpca grafu (DUZP), aby v zozname
+      // boli tie isté doklady, aké sa v stĺpci sčítali — zoradenie ostáva podľa vystavenia.
+      const analyticsDate = parseDocumentDate(getExpenseAnalyticsDate(expense));
+      const periodPass =
+        !options.period ||
+        Boolean(
+          analyticsDate &&
+            analyticsDate >= options.period.currentFrom &&
+            analyticsDate <= options.period.currentTo
+        );
+      return inWindow && periodPass && filterPass(expense);
     })
     .slice()
     .sort((a, b) => {

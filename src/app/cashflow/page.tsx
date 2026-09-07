@@ -1,82 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CashflowDashboard } from "@/components/cashflow-dashboard";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ModuleSkeleton } from "@/components/module-skeleton";
+import type { VisibilityOption } from "@/components/category-visibility-button";
 import { DemoDataBanner } from "@/components/demo-data-banner";
+import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { CASHFLOW_MOCK_COMPANIES, getCashflowOverview } from "@/lib/cashflow-mock-data";
-import {
-  computeCashflowOverviewFromLiveData,
-  normalizePaymentAccounts,
-  normalizePaymentTransactions
-} from "@/lib/cashflow-live";
-import { useSyncProgress } from "@/lib/use-sync-progress";
-import {
-  cashflowCompanyMetaKey,
-  getCachedPaymentAccounts,
-  getCachedPaymentTransactions,
-  readCashflowSyncMeta,
-  replaceCachedPaymentAccounts,
-  upsertCachedPaymentTransactions,
-  writeCashflowSyncMeta
-} from "@/lib/cashflow-cache";
-import { readConnections } from "@/lib/kros-storage";
-import type {
-  KrosConnection,
-  NormalizedPaymentAccount,
-  NormalizedPaymentTransaction
-} from "@/lib/kros-types";
-import type { Granularity } from "@/lib/mock-data";
+import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
+import { useKrosConnections } from "@/lib/use-kros-connections";
+import { usePreference } from "@/lib/use-preference";
+import { applyCompanyFilter } from "@/lib/preferences/company-filter";
+import { cashflowEngine } from "@/lib/sync/cashflow-engine";
+import { useSyncOrchestrator } from "@/lib/sync/use-sync-orchestrator";
 
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_cashflow_selected_companies";
+/**
+ * Engine array musí byť modulová konštanta, nie literál v tele komponentu —
+ * inak sa efekt v orchestrátore spustí pri každom rendere odznova.
+ */
+const CASHFLOW_ENGINES = [cashflowEngine];
 
-declare global {
-  // eslint-disable-next-line no-var -- globalThis typing requires `var`
-  var __krosDashboardGranularity: Granularity | undefined;
-}
-
-function getMaxLastModified(transactions: NormalizedPaymentTransaction[], fallback?: string) {
-  return transactions.reduce<string | undefined>((max, transaction) => {
-    if (!transaction.lastModifiedTimestamp) return max;
-    if (!max) return transaction.lastModifiedTimestamp;
-    return new Date(transaction.lastModifiedTimestamp).getTime() > new Date(max).getTime()
-      ? transaction.lastModifiedTimestamp
-      : max;
-  }, fallback);
-}
-
-function withLastModifiedOverlap(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  date.setMinutes(date.getMinutes() - 5);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-  const milliseconds = date.getUTCMilliseconds();
-  const fraction =
-    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
-}
+/** Id pevných sekcií pre prepínač zobrazenia — prefix `section:` ako v ostatných moduloch. */
+const CASHFLOW_SECTIONS = {
+  companies: "section:companies"
+} as const;
 
 export default function CashflowPage() {
-  const [granularity] = useState<Granularity>(
-    globalThis.__krosDashboardGranularity ?? "month"
-  );
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  // Granularitu Financie len čítajú (vlastný prepínač nemajú), ale je to to isté osobné
+  // nastavenie ako na ostatných prehľadoch — teraz už prežije aj reload.
+  const [granularity] = usePreference("ui.granularity");
+  const [selectedCompanies, setSelectedCompanies] = usePreference("cashflow.companies");
+  const [hiddenSections, setHiddenSections] = usePreference("ui.cashflowHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
+  // Prepojenia sú firemné a žijú na serveri.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
-  const [liveAccounts, setLiveAccounts] = useState<NormalizedPaymentAccount[]>([]);
-  const [liveTransactions, setLiveTransactions] = useState<NormalizedPaymentTransaction[]>([]);
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const handledRefreshNonceRef = useRef(0);
-  const { progress: syncProgress, beginSync, startStep, completeStep, endSync } = useSyncProgress();
 
   const preferredCompanyNames = useMemo(
     () =>
@@ -99,220 +59,46 @@ export default function CashflowPage() {
   }, [focusedCompany, normalizedSelectedCompanies, preferredCompanySet]);
 
   /**
-   * Same idea as Biznis: empty selection = all connected companies; otherwise only selected names.
-   * If the user has a non-empty persisted selection but no name matches current connections, sync nothing
-   * (do not fall back to loading every firm).
+   * Id-čka len ZVOLENÝCH firiem, nie všetkého, čo sa stiahlo.
+   *
+   * `selectedCompanyIds` je záložné párovanie k výberu podľa mena — keď sa firma v KROSe
+   * premenuje, výber podľa mena by ju nenašiel. Kým sme tam posielali všetky
+   * synchronizované firmy, tá podmienka prepustila každý účet a rozkliknutá firma prehľad
+   * nezúžila: filter fungoval len preto, že sám zúžil zoznam sťahovaných firiem.
    */
-  const syncConnections = useMemo(() => {
-    if (selectedCompanies.length === 0) return connections;
-    if (normalizedSelectedCompanies.length === 0) return [];
-    const selectedSet = new Set(normalizedSelectedCompanies);
-    return connections.filter((connection) => selectedSet.has(connection.companyName));
-  }, [connections, selectedCompanies, normalizedSelectedCompanies]);
+  const selectedCompanyIds = useMemo(() => {
+    if (effectiveCompanies.length === 0) return [];
+    const selected = new Set(effectiveCompanies);
+    return connections
+      .filter((connection) => selected.has(connection.companyName))
+      .map((connection) => connection.companyId);
+  }, [effectiveCompanies, connections]);
 
+  // Prázdny výber = všetky prepojené firmy; inak prienik. Neprázdny výber bez prieniku
+  // nesťahuje nič a povie to hláškou — nespadne späť na sťahovanie všetkých firiem.
+  const companyFilter = useMemo(
+    () => applyCompanyFilter(connections, selectedCompanies, (connection) => connection.companyName),
+    [connections, selectedCompanies]
+  );
+  const syncConnections = companyFilter.companies;
+
+  // Prvý render beží ešte pred pripojením k store-u, takže sa sťahovanie odkladá o tik.
   useEffect(() => {
-    setConnections(readConnections());
+    setHasLoadedPersistedFilters(true);
   }, []);
 
-  useEffect(() => {
-    try {
-      const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
-      if (rawCompanies) {
-        const parsedCompanies = JSON.parse(rawCompanies) as string[];
-        if (Array.isArray(parsedCompanies)) {
-          setSelectedCompanies(parsedCompanies);
-        }
-      }
-    } catch {
-      // Ignore invalid persisted filter payload.
-    } finally {
-      setHasLoadedPersistedFilters(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(COMPANY_FILTER_STORAGE_KEY, JSON.stringify(selectedCompanies));
-  }, [hasLoadedPersistedFilters, selectedCompanies]);
-
-  useEffect(() => {
-    globalThis.__krosDashboardGranularity = granularity;
-  }, [granularity]);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-
-    if (connections.length === 0) {
-      setLiveAccounts([]);
-      setLiveTransactions([]);
-      setLiveError(null);
-      endSync();
-      return;
-    }
-
-    if (syncConnections.length === 0) {
-      setLiveAccounts([]);
-      setLiveTransactions([]);
-      setLiveError(null);
-      setIsLoadingLiveData(false);
-      endSync();
-      return;
-    }
-
-    const abortController = new AbortController();
-    // Same flow as Biznis: hydrate from the persistent IndexedDB cache first; companies
-    // without a completed sync get a full fetch, a manual refresh pulls only payments
-    // changed since the stored per-company LastModifiedTimestamp.
-    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
-    const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
-
-    const fetchAccounts = async (companies: KrosConnection[]) => {
-      const response = await fetch("/api/kros/payments/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companies }),
-        signal: abortController.signal
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error("Nepodarilo sa načítať payments dáta.");
-      }
-      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
-        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
-      }
-      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
-    };
-
-    const fetchPayments = async (body: {
-      companies: KrosConnection[];
-      lastModifiedTimestamp?: string;
-    }) => {
-      const response = await fetch("/api/kros/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: abortController.signal
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error("Nepodarilo sa načítať payments dáta.");
-      }
-      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
-        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
-      }
-      return Array.isArray(payload?.data) ? (payload.data as unknown[]) : [];
-    };
-
-    const refreshFromCache = async () => {
-      const [cachedAccounts, cachedTransactions] = await Promise.all([
-        getCachedPaymentAccounts(syncCompanyIds),
-        getCachedPaymentTransactions(syncCompanyIds)
-      ]);
-      if (!abortController.signal.aborted) {
-        setLiveAccounts(cachedAccounts);
-        setLiveTransactions(cachedTransactions);
-      }
-    };
-
-    const loadCashflowData = async () => {
-      await refreshFromCache();
-      setLiveError(null);
-
-      try {
-        // Najprv plán: ktoré firmy treba stiahnuť. Každá má dva kroky (účty +
-        // pohyby), takže progress bar pozná celok pred prvým fetchom.
-        const pendingConnections: {
-          connection: KrosConnection;
-          needsFullSync: boolean;
-          lastModifiedTimestamp?: string;
-        }[] = [];
-        for (const connection of syncConnections) {
-          const meta = await readCashflowSyncMeta(cashflowCompanyMetaKey(connection.companyId));
-          const needsFullSync = !meta?.completedAt;
-          if (!needsFullSync && !isManualRefresh) continue;
-          pendingConnections.push({
-            connection,
-            needsFullSync,
-            lastModifiedTimestamp: meta?.lastModifiedTimestamp
-          });
-        }
-
-        if (abortController.signal.aborted) return;
-        beginSync(pendingConnections.length * 2);
-        if (pendingConnections.length > 0) {
-          setIsLoadingLiveData(true);
-        }
-
-        for (const { connection, needsFullSync, lastModifiedTimestamp } of pendingConnections) {
-          if (abortController.signal.aborted) return;
-
-          const metaKey = cashflowCompanyMetaKey(connection.companyId);
-          startStep(`${connection.companyName} · bankové účty`);
-
-          // Account list and balances are small and change over time — always fetch in full.
-          const rawAccounts = await fetchAccounts([connection]);
-          const companyAccounts = normalizePaymentAccounts(rawAccounts).filter(
-            (account) =>
-              account.companyId === connection.companyId ||
-              account.companyName === connection.companyName
-          );
-          await replaceCachedPaymentAccounts(connection.companyId, companyAccounts);
-          completeStep();
-
-          if (abortController.signal.aborted) return;
-          startStep(`${connection.companyName} · pohyby na účtoch`);
-
-          const accountById = new Map(companyAccounts.map((account) => [account.id, account]));
-          const previousLastModified = lastModifiedTimestamp;
-          const rawPayments = await fetchPayments({
-            companies: [connection],
-            ...(!needsFullSync && previousLastModified
-              ? { lastModifiedTimestamp: withLastModifiedOverlap(previousLastModified) }
-              : {})
-          });
-          const companyTransactions = normalizePaymentTransactions(rawPayments, accountById).filter(
-            (transaction) =>
-              transaction.companyId === connection.companyId ||
-              transaction.companyName === connection.companyName
-          );
-          await upsertCachedPaymentTransactions(connection.companyId, companyTransactions);
-          await writeCashflowSyncMeta({
-            key: metaKey,
-            companyId: connection.companyId,
-            completedAt: new Date().toISOString(),
-            lastModifiedTimestamp: getMaxLastModified(companyTransactions, previousLastModified)
-          });
-          completeStep();
-
-          await refreshFromCache();
-        }
-      } catch (error) {
-        if (!abortController.signal.aborted) {
-          setLiveError(error instanceof Error ? error.message : "Nepodarilo sa načítať payments dáta.");
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          handledRefreshNonceRef.current = refreshNonce;
-          setIsLoadingLiveData(false);
-          endSync();
-        }
-      }
-    };
-
-    loadCashflowData();
-    return () => {
-      abortController.abort();
-    };
-  }, [
+  const {
+    data: { accounts: liveAccounts, transactions: liveTransactions },
+    isSyncing: isLoadingLiveData,
+    hasResolvedFirstData,
+    error: liveError,
+    refresh
+  } = useSyncOrchestrator(CASHFLOW_ENGINES, {
     connections,
     syncConnections,
-    refreshNonce,
-    hasLoadedPersistedFilters,
-    beginSync,
-    startStep,
-    completeStep,
-    endSync
-  ]);
+    granularity,
+    enabled: hasLoadedPersistedFilters
+  });
 
   const hasLiveData = liveAccounts.length > 0 || liveTransactions.length > 0;
   const liveOverview = useMemo(
@@ -323,10 +109,10 @@ export default function CashflowPage() {
             transactions: liveTransactions,
             granularity,
             selectedCompanies: effectiveCompanies,
-            allowedCompanyIds: syncConnections.map((connection) => connection.companyId)
+            selectedCompanyIds
           })
         : null,
-    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies, syncConnections]
+    [hasLiveData, liveAccounts, liveTransactions, granularity, effectiveCompanies, selectedCompanyIds]
   );
 
   const mockOverview = useMemo(
@@ -353,15 +139,40 @@ export default function CashflowPage() {
   };
 
   const shouldShowMockData = connections.length === 0 || (!!liveError && !hasLiveData);
+  // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
+  const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
+
+  const sectionOptions = useMemo<VisibilityOption[]>(
+    () => [
+      {
+        id: CASHFLOW_SECTIONS.companies,
+        label: "Financie podľa firiem",
+        filterCount: selectedCompanies.length
+      }
+    ],
+    [selectedCompanies]
+  );
+
+  const isSectionHidden = (id: string) => hiddenSections.includes(id);
 
   return (
     <DashboardShell
       title="Financie"
       isSyncing={isLoadingLiveData}
-      syncProgress={syncProgress}
-      onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      syncNote="Pohyby na účtoch ťaháme pre každú firmu naraz, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
+      onRefresh={connections.length > 0 ? refresh : undefined}
+      categoryVisibility={{
+        categoryOptions: [],
+        sectionOptions,
+        hiddenIds: hiddenSections,
+        onHiddenIdsChange: setHiddenSections
+      }}
     >
-      {shouldShowMockData ? <DemoDataBanner /> : null}
+      {isPreparingModule ? <ModuleSkeleton label="Načítavam financie…" /> : null}
+      {isPreparingModule ? null : (
+        <>
+      {shouldShowMockData && !isLoadingConnections ? <DemoDataBanner /> : null}
+      {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <CashflowDashboard
         kpis={overview.kpis}
         points={overview.points}
@@ -370,7 +181,6 @@ export default function CashflowPage() {
         recentTransactions={overview.recentTransactions}
         unsettledTransactions={overview.unsettledTransactions}
         isMockData={shouldShowMockData}
-        isLoading={isLoadingLiveData}
         activeCompanyLabel={focusedCompany ?? undefined}
         onClearCompanyFilter={() => setFocusedCompany(null)}
         onResetCompanyFilter={() => {
@@ -378,6 +188,7 @@ export default function CashflowPage() {
           setFocusedCompany(null);
         }}
       />
+      {isSectionHidden(CASHFLOW_SECTIONS.companies) ? null : (
       <CompaniesDashboard
         title="Financie podľa firiem"
         companies={filteredCompanies}
@@ -387,6 +198,9 @@ export default function CashflowPage() {
         onSelectionChange={updateSelectionWithFocusedGuard}
         onFocusedCompanyChange={setFocusedCompany}
       />
+      )}
+        </>
+      )}
     </DashboardShell>
   );
 }

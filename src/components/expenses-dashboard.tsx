@@ -5,56 +5,81 @@ import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import type { NormalizedExpense } from "@/lib/kros-types";
 import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
+import {
+  categoryForTag,
+  hasRealCategories,
+  sortTagCategories,
+  type TagCategoryIndex
+} from "@/lib/tag-categories";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
+import { formatPeriodFocusLabel } from "@/lib/period-buckets";
 import { parseDocumentDate } from "@/lib/document-date";
+import { useDonutEntrance } from "@/lib/use-donut-entrance";
+import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
-import { GranularityToggle } from "./granularity-toggle";
+import { DonutLegend } from "./donut-legend";
+import { FilterIconButton } from "./filter-icon-button";
 import { KpiCarousel } from "./kpi-carousel";
-import { ExpenseRow } from "./recent-expenses-section";
+import { ExpenseRow, ExpenseScopeNote } from "./recent-expenses-section";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
-  onGranularityChange: (value: Granularity) => void;
   kpis: KpiCard[];
   points: RevenuePoint[];
   expenses: NormalizedExpense[];
   tagStructure: ExpenseTagSlice[];
+  /** Kategórie štítkov pre Filter kategórií nad donutom (nič iné neovplyvňuje). */
+  tagCategoryIndex?: TagCategoryIndex;
   dueWatchlist: ExpenseDueWatchlist;
   selectedTags?: string[];
   selectedCompanies?: string[];
-  activeTagLabel?: string;
+  /**
+   * Focusnuté štítky — všetky grafy sú podľa nich odfiltrované. V donute vlastný výsek
+   * nemajú: ten ukazuje, ako sa ich výdavky delia podľa ostatných štítkov.
+   */
+  activeTagLabels?: string[];
   activeCompanyLabel?: string;
-  onClearTagFilter?: () => void;
+  onFocusTagsChange?: (tags: string[]) => void;
   onClearCompanyFilter?: () => void;
-  onFocusTag?: (tag: string | null) => void;
+  /**
+   * Štítok stĺpca, na ktorý sa kliklo. Sekcie pod grafom (donut, štítky, dodávatelia,
+   * doklady, firmy) sú podľa neho odfiltrované, samotný graf nie — inak by po kliknutí
+   * ostal jediný stĺpec a nedalo by sa preklikať inam.
+   */
+  focusedPeriod?: string | null;
+  onFocusedPeriodChange?: (label: string | null) => void;
   isMockData?: boolean;
-  isLoading?: boolean;
 };
 
 export function ExpensesDashboard({
   granularity,
-  onGranularityChange,
   kpis,
   points,
   expenses,
   tagStructure,
+  tagCategoryIndex,
   dueWatchlist,
   selectedTags = [],
   selectedCompanies = [],
-  activeTagLabel,
+  activeTagLabels = [],
   activeCompanyLabel,
-  onClearTagFilter,
+  onFocusTagsChange,
   onClearCompanyFilter,
-  onFocusTag,
-  isMockData = false,
-  isLoading = false
+  focusedPeriod = null,
+  onFocusedPeriodChange,
+  isMockData = false
 }: Props) {
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
   const [detailPoint, setDetailPoint] = useState<RevenuePoint | null>(null);
   const [detailSide, setDetailSide] = useState<"current" | "previous">("current");
   const [isDueSheetOpen, setIsDueSheetOpen] = useState(false);
   const [dueSheetTab, setDueSheetTab] = useState<"overdue" | "upcoming">("overdue");
-  const [isPieAnimated, setIsPieAnimated] = useState(false);
+  // Lupa na graf je osobné nastavenie, preto ide cez `usePreference`, nie cez vlastný
+  // zápis do localStorage — server aj lokálna cache tak držia jeden tvar.
+  const [donutCategoryFilter, setDonutCategoryFilter] = usePreference("ui.expensesDonutCategories");
+  const [pendingDonutCategories, setPendingDonutCategories] = useState<string[]>([]);
+  const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
 
@@ -71,6 +96,41 @@ export function ExpensesDashboard({
     });
   }, [detailPoint, expenses, granularity, selectedTags, selectedCompanies]);
 
+  const categoryBySliceName = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!tagCategoryIndex) return map;
+    for (const slice of tagStructure) {
+      map.set(slice.name, categoryForTag(tagCategoryIndex, slice.name));
+    }
+    return map;
+  }, [tagStructure, tagCategoryIndex]);
+
+  const availableDonutCategories = useMemo(
+    () => sortTagCategories(Array.from(new Set(categoryBySliceName.values()))),
+    [categoryBySliceName]
+  );
+
+  const showCategoryFilter =
+    Boolean(tagCategoryIndex) &&
+    hasRealCategories(tagCategoryIndex ?? { categoryByTag: new Map() }) &&
+    availableDonutCategories.length > 1;
+
+  // Kategórie, ktoré v aktuálnych dátach nie sú, filter neaktivujú — inak by
+  // uložený výber po zmene firiem vyprázdnil graf.
+  const activeDonutCategories = useMemo(
+    () => donutCategoryFilter.filter((category) => availableDonutCategories.includes(category)),
+    [donutCategoryFilter, availableDonutCategories]
+  );
+
+  // Zámerne NEZÁVISÍ na `showCategoryFilter`: to je len o tom, či má zmysel ukázať tlačidlo.
+  // Keby filter dát viselo na ňom, stačilo by, aby dáta na chvíľu mali jedinú kategóriu, a
+  // uložený výber by potichu prestal platiť — v grafe by naskočili štítky z iných kategórií.
+  const visibleTagStructure = useMemo(() => {
+    if (activeDonutCategories.length === 0) return tagStructure;
+    const allowed = new Set(activeDonutCategories);
+    return tagStructure.filter((slice) => allowed.has(categoryBySliceName.get(slice.name) ?? ""));
+  }, [tagStructure, activeDonutCategories, categoryBySliceName]);
+
   const donutData = useMemo(() => {
     // Largest slices get rank 0,1,… — rovnaká paleta a rozostup ako donut v module Peniaze.
     const palette = [
@@ -83,7 +143,7 @@ export function ExpensesDashboard({
       "#ffc46b",
       "#9edc7a"
     ];
-    const positive = tagStructure.filter((slice) => slice.amount > 0);
+    const positive = visibleTagStructure.filter((slice) => slice.amount > 0);
     const total = positive.reduce((sum, slice) => sum + slice.amount, 0);
 
     let cumulative = -Math.PI / 2;
@@ -100,7 +160,12 @@ export function ExpensesDashboard({
         endAngle
       };
     });
-  }, [tagStructure]);
+  }, [visibleTagStructure]);
+
+  // Pri jednej zvolenej kategórii graf ukazuje práve ju, tak ju rovno aj pomenuje —
+  // pri viacerých alebo žiadnej ostáva všeobecný názov.
+  const donutTitle =
+    activeDonutCategories.length === 1 ? activeDonutCategories[0] : "Štruktúra výdavkov";
 
   const donutTotal = useMemo(
     () => donutData.reduce((sum, slice) => sum + slice.amount, 0),
@@ -110,16 +175,23 @@ export function ExpensesDashboard({
     () => donutData.reduce((sum, slice) => sum + slice.documentCount, 0),
     [donutData]
   );
-  const activeSlice = useMemo(
-    () => (activeTagLabel ? donutData.find((slice) => slice.name === activeTagLabel) ?? null : null),
-    [donutData, activeTagLabel]
+  // Focusnuté štítky, ktoré v donute naozaj majú výsek — donut sa vlastným klikom nezužuje,
+  // len zvýrazňuje, a keď je zvýraznený práve jeden, stred píše jeho sumu namiesto celku.
+  const focusedSlices = useMemo(
+    () => donutData.filter((slice) => activeTagLabels.includes(slice.name)),
+    [donutData, activeTagLabels]
+  );
+  const activeSlice = focusedSlices.length === 1 ? focusedSlices[0] : null;
+
+  // Podpis geometrie donutu. Klik na štítok v donute prepočíta `donutData` na nové pole
+  // s tými istými výsekmi — animáciu preto viažeme na obsah, nie na identitu poľa. Inak
+  // by sa graf rozbehol odznova pri každom kliknutí, aj keď sa v ňom nič nemení.
+  const donutShapeKey = useMemo(
+    () => donutData.map((slice) => `${slice.name}:${slice.amount}`).join("|"),
+    [donutData]
   );
 
-  useEffect(() => {
-    setIsPieAnimated(false);
-    const timeout = window.setTimeout(() => setIsPieAnimated(true), 70);
-    return () => window.clearTimeout(timeout);
-  }, [donutData]);
+  const isPieAnimated = useDonutEntrance(donutShapeKey);
 
   useEffect(() => {
     return () => {
@@ -129,7 +201,7 @@ export function ExpensesDashboard({
     };
   }, []);
 
-  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
@@ -152,6 +224,17 @@ export function ExpensesDashboard({
     }, 3000);
   };
 
+  // Klik na stĺpec zúži sekcie pod grafom; opätovný klik na ten istý stĺpec filter zruší.
+  const togglePeriodFocus = (point: RevenuePoint) => {
+    if (!onFocusedPeriodChange) return;
+    onFocusedPeriodChange(focusedPeriod === point.label ? null : point.label);
+  };
+
+  const activatePoint = (point: RevenuePoint) => {
+    showTemporaryTooltip(point);
+    togglePeriodFocus(point);
+  };
+
   const openDocDetails = (point: RevenuePoint, side: "current" | "previous") => {
     if (tooltipTimeoutRef.current) {
       window.clearTimeout(tooltipTimeoutRef.current);
@@ -161,9 +244,26 @@ export function ExpensesDashboard({
     setDetailSide(side);
   };
 
+  // Klik na výsek štítok k focusu pridá, opätovný klik ho odoberie — focus na inom
+  // štítku pritom ostáva, takže dáta sa dajú zúžiť viacerými štítkami naraz.
   const handleSliceClick = (tagName: string) => {
-    if (!onFocusTag) return;
-    onFocusTag(activeTagLabel === tagName ? null : tagName);
+    if (!onFocusTagsChange) return;
+    onFocusTagsChange(
+      activeTagLabels.includes(tagName)
+        ? activeTagLabels.filter((tag) => tag !== tagName)
+        : [...activeTagLabels, tagName]
+    );
+  };
+
+  const openCategoryFilter = () => {
+    setPendingDonutCategories(activeDonutCategories);
+    setIsCategoryFilterOpen(true);
+  };
+
+  const togglePendingCategory = (category: string) => {
+    setPendingDonutCategories((prev) =>
+      prev.includes(category) ? prev.filter((name) => name !== category) : [...prev, category]
+    );
   };
 
   const detailDocs = bucketDocs?.[detailSide] ?? [];
@@ -173,23 +273,36 @@ export function ExpensesDashboard({
   const overdueCount = dueWatchlist.overdue.length;
   const dueSheetDocs = dueSheetTab === "overdue" ? dueWatchlist.overdue : dueWatchlist.upcoming;
   const dueSheetTotal = dueSheetTab === "overdue" ? dueWatchlist.overdueTotal : dueWatchlist.upcomingTotal;
-  const isOverlayOpen = detailPoint !== null || isDueSheetOpen;
 
   return (
-    <section className={isOverlayOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
-          <GranularityToggle value={granularity} onChange={onGranularityChange} />
           {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
-          {activeTagLabel ? (
-            <button type="button" className="active-tag-badge" onClick={onClearTagFilter}>
-              <span>{activeTagLabel}</span>
+          {activeTagLabels.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className="active-tag-badge"
+              onClick={() => onFocusTagsChange?.(activeTagLabels.filter((name) => name !== tag))}
+            >
+              <span>{tag}</span>
               <span className="badge-close">×</span>
             </button>
-          ) : null}
+          ))}
           {activeCompanyLabel ? (
             <button type="button" className="active-tag-badge" onClick={onClearCompanyFilter}>
               <span>{activeCompanyLabel}</span>
+              <span className="badge-close">×</span>
+            </button>
+          ) : null}
+          {focusedPeriod ? (
+            <button
+              type="button"
+              className="active-tag-badge"
+              onClick={() => onFocusedPeriodChange?.(null)}
+            >
+              <span>{formatPeriodFocusLabel(granularity, focusedPeriod)}</span>
               <span className="badge-close">×</span>
             </button>
           ) : null}
@@ -214,26 +327,14 @@ export function ExpensesDashboard({
         </button>
       ) : null}
 
-      {isLoading ? (
-        <div className="dashboard-skeleton-overlay revenue-skeleton" aria-live="polite">
-          <div className="skeleton-pill" />
-          <div className="skeleton-number" />
-          <div className="skeleton-row">
-            <span />
-            <span />
-          </div>
-          <div className="skeleton-chart">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} style={{ height: `${34 + ((index * 13) % 52)}%` }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       <KpiCarousel items={kpis} invertDeltaColor />
 
       <article className="panel">
-        <div className="bar-chart" ref={chartRef} onMouseLeave={() => setActivePoint(null)}>
+        <div
+          className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
+          ref={chartRef}
+          onMouseLeave={() => setActivePoint(null)}
+        >
           {points.map((point, index) => {
             const tooltipEdgeClass =
               index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
@@ -243,17 +344,18 @@ export function ExpensesDashboard({
               <div
                 role="button"
                 tabIndex={0}
-                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}`}
+                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}${focusedPeriod === point.label ? " is-period-focused" : ""}`}
                 key={point.label}
                 style={{ "--bar-index": index } as React.CSSProperties}
+                aria-pressed={onFocusedPeriodChange ? focusedPeriod === point.label : undefined}
                 onMouseEnter={() => setActivePoint(point)}
                 onFocus={() => setActivePoint(point)}
                 onTouchStart={() => showTemporaryTooltip(point)}
-                onClick={() => showTemporaryTooltip(point)}
+                onClick={() => activatePoint(point)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    showTemporaryTooltip(point);
+                    activatePoint(point);
                   }
                 }}
               >
@@ -296,22 +398,20 @@ export function ExpensesDashboard({
 
       <article className="panel">
         <header className="panel-head">
-          <h3>Štruktúra výdavkov podľa štítkov</h3>
+          <h3>{donutTitle}</h3>
+          {showCategoryFilter ? (
+            <FilterIconButton
+              label="Filter kategórií"
+              activeCount={activeDonutCategories.length}
+              onClick={openCategoryFilter}
+            />
+          ) : null}
         </header>
-        <div className={isLoading ? "cashflow-donut-wrap loading" : "cashflow-donut-wrap"}>
+        <div className="cashflow-donut-wrap">
           <div className="cashflow-donut-card">
-            {isLoading ? (
-              <div className="cashflow-donut-skeleton" aria-hidden="true">
-                <div className="cashflow-donut-skeleton-ring" />
-                <div className="cashflow-donut-skeleton-center">
-                  <span />
-                  <span />
-                </div>
-              </div>
-            ) : (
               <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Výdavky podľa štítkov">
                 {donutData.map((slice, sliceIndex) => {
-                  const isActive = activeTagLabel === slice.name;
+                  const isActive = activeTagLabels.includes(slice.name);
                   const outerRadius = isActive ? 136 : 126;
                   const innerRadius = 90;
                   const center = 160;
@@ -334,7 +434,9 @@ export function ExpensesDashboard({
                     `A ${innerRadius} ${innerRadius} 0 ${isLargeArc} 0 ${startInnerX} ${startInnerY}`,
                     "Z"
                   ].join(" ");
-                  const isDimmed = Boolean(activeTagLabel) && !isActive;
+                  // Zvýraznenie má zmysel len vtedy, keď focusnutý štítok v donute naozaj je —
+                  // pri focuse z inej kategórie by inak zosvetleli všetky výseky.
+                  const isDimmed = focusedSlices.length > 0 && !isActive;
                   return (
                     <path
                       key={slice.name}
@@ -357,9 +459,14 @@ export function ExpensesDashboard({
                   className={isPieAnimated ? "cashflow-donut-hole is-animated" : "cashflow-donut-hole"}
                 />
               </svg>
-            )}
             <div className="cashflow-donut-center">
-              <p className="cashflow-donut-title">{activeSlice ? activeSlice.name : "Výdavky tento rok"}</p>
+              <p className="cashflow-donut-title">
+                {activeSlice
+                  ? activeSlice.name
+                  : focusedPeriod
+                    ? `Výdavky ${formatPeriodFocusLabel(granularity, focusedPeriod)}`
+                    : "Výdavky tento rok"}
+              </p>
               <strong>{formatCurrency(activeSlice ? activeSlice.amount : donutTotal)}</strong>
               <span>
                 {activeSlice
@@ -369,23 +476,18 @@ export function ExpensesDashboard({
             </div>
           </div>
 
-          {isLoading ? (
-            <ul className="cashflow-donut-legend skeleton" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <li key={`legend-skeleton-${index}`}>
-                  <div className="cashflow-legend-item skeleton" />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul className="cashflow-donut-legend">
+            <DonutLegend ariaLabel="Štítky v grafe štruktúry výdavkov">
               {donutData.map((slice) => {
                 const deltaValue = slice.amount - slice.previousAmount;
                 return (
                   <li key={slice.name}>
                     <button
                       type="button"
-                      className={activeTagLabel === slice.name ? "cashflow-legend-item active" : "cashflow-legend-item"}
+                      className={
+                        activeTagLabels.includes(slice.name)
+                          ? "cashflow-legend-item active"
+                          : "cashflow-legend-item"
+                      }
                       style={{ "--legend-accent": slice.color } as React.CSSProperties}
                       onClick={() => handleSliceClick(slice.name)}
                     >
@@ -399,13 +501,75 @@ export function ExpensesDashboard({
                   </li>
                 );
               })}
-            </ul>
-          )}
+            </DonutLegend>
         </div>
+        {donutData.length === 0 && activeDonutCategories.length > 0 ? (
+          <p className="tag-sub">Vybrané kategórie nemajú v tomto období žiadne výdavky.</p>
+        ) : null}
       </article>
 
+      {isCategoryFilterOpen ? (
+        <SheetOverlay onClose={() => setIsCategoryFilterOpen(false)}>
+          <div
+            className="tag-filter-sheet"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Filter kategórií štítkov"
+          >
+            <header className="tag-filter-head">
+              <h4>Filter kategórií</h4>
+              <button
+                type="button"
+                className="filter-close"
+                onClick={() => setIsCategoryFilterOpen(false)}
+              >
+                Zavrieť
+              </button>
+            </header>
+
+            <div className="tag-filter-options">
+              {availableDonutCategories.map((category) => (
+                <button
+                  type="button"
+                  key={category}
+                  className={pendingDonutCategories.includes(category) ? "filter-chip active" : "filter-chip"}
+                  onClick={() => togglePendingCategory(category)}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+
+            <footer className="tag-filter-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setPendingDonutCategories([]);
+                  setDonutCategoryFilter([]);
+                  setIsCategoryFilterOpen(false);
+                }}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                className="sync-button"
+                onClick={() => {
+                  setDonutCategoryFilter(pendingDonutCategories);
+                  setIsCategoryFilterOpen(false);
+                }}
+              >
+                Použiť filter
+              </button>
+            </footer>
+          </div>
+        </SheetOverlay>
+      ) : null}
+
       {detailPoint && bucketDocs ? (
-        <div className="tag-filter-overlay" onClick={() => setDetailPoint(null)} role="presentation">
+        <SheetOverlay onClose={() => setDetailPoint(null)}>
           <div
             className="tag-filter-sheet invoice-detail-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -464,7 +628,10 @@ export function ExpensesDashboard({
                           {expense.documentNumber ? ` • ${expense.documentNumber}` : ""}
                         </p>
                       </div>
-                      <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
+                      <div className="invoice-item-amount">
+                        <strong>{formatCurrencyPrecise(expense.totalPrice)}</strong>
+                        <ExpenseScopeNote expense={expense} />
+                      </div>
                     </div>
                     <div className="invoice-tags" aria-label={expense.tags.length ? "Štítky dokladu" : undefined}>
                       {expense.tags.map((tag) => (
@@ -476,11 +643,11 @@ export function ExpensesDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
 
       {isDueSheetOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsDueSheetOpen(false)}>
+        <SheetOverlay onClose={() => setIsDueSheetOpen(false)}>
           <div
             className="tag-filter-sheet unsettled-payments-sheet"
             role="dialog"
@@ -536,7 +703,7 @@ export function ExpensesDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

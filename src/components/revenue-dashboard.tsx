@@ -5,14 +5,14 @@ import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import { formatCurrency, formatCurrencyPrecise, formatDelta, getDeltaPct } from "@/lib/format";
 import { parseDocumentDate } from "@/lib/document-date";
 import { getInvoiceAnalyticsDate, getRevenueBucketInvoices } from "@/lib/dashboard-live";
+import { formatPeriodFocusLabel } from "@/lib/period-buckets";
 import type { NormalizedInvoice } from "@/lib/kros-types";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
-import { GranularityToggle } from "./granularity-toggle";
 import { KpiCarousel } from "./kpi-carousel";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   granularity: Granularity;
-  onGranularityChange: (value: Granularity) => void;
   kpis: KpiCard[];
   points: RevenuePoint[];
   invoices?: NormalizedInvoice[];
@@ -22,12 +22,16 @@ type Props = {
   activeCompanyLabel?: string;
   onClearTagFilter?: () => void;
   onClearCompanyFilter?: () => void;
-  isLoading?: boolean;
+  /**
+   * Štítok stĺpca, na ktorý sa kliklo. Sekcie pod grafom sú podľa neho odfiltrované,
+   * graf sám nie — inak by po kliknutí ostal jediný stĺpec a nedalo by sa preklikať inam.
+   */
+  focusedPeriod?: string | null;
+  onFocusedPeriodChange?: (label: string | null) => void;
 };
 
 export function RevenueDashboard({
   granularity,
-  onGranularityChange,
   kpis,
   points,
   invoices = [],
@@ -37,7 +41,8 @@ export function RevenueDashboard({
   activeCompanyLabel,
   onClearTagFilter,
   onClearCompanyFilter,
-  isLoading = false
+  focusedPeriod = null,
+  onFocusedPeriodChange
 }: Props) {
   const maxValue = Math.max(...points.map((point) => Math.max(point.current, point.previous)));
   const [activePoint, setActivePoint] = useState<RevenuePoint | null>(null);
@@ -65,7 +70,7 @@ export function RevenueDashboard({
     };
   }, []);
 
-  useScrollToEnd(chartRef, `${granularity}:${points.length}:${isLoading ? "loading" : "ready"}`);
+  useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
   const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
 
@@ -87,6 +92,17 @@ export function RevenueDashboard({
     }, 3000);
   };
 
+  // Klik na stĺpec zúži sekcie pod grafom; opätovný klik na ten istý stĺpec filter zruší.
+  const togglePeriodFocus = (point: RevenuePoint) => {
+    if (!onFocusedPeriodChange) return;
+    onFocusedPeriodChange(focusedPeriod === point.label ? null : point.label);
+  };
+
+  const activatePoint = (point: RevenuePoint) => {
+    showTemporaryTooltip(point);
+    togglePeriodFocus(point);
+  };
+
   const openInvoiceDetails = (point: RevenuePoint, side: "current" | "previous") => {
     if (tooltipTimeoutRef.current) {
       window.clearTimeout(tooltipTimeoutRef.current);
@@ -100,10 +116,9 @@ export function RevenueDashboard({
   const detailTotal = detailInvoices.reduce((sum, invoice) => sum + invoice.totalPrice, 0);
 
   return (
-    <section className={invoiceDetailPoint ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       <div className="row-head">
         <div className="filters-inline">
-          <GranularityToggle value={granularity} onChange={onGranularityChange} />
           {activeTagLabel ? (
             <button type="button" className="active-tag-badge" onClick={onClearTagFilter}>
               <span>{activeTagLabel}</span>
@@ -116,29 +131,27 @@ export function RevenueDashboard({
               <span className="badge-close">×</span>
             </button>
           ) : null}
+          {focusedPeriod ? (
+            <button
+              type="button"
+              className="active-tag-badge"
+              onClick={() => onFocusedPeriodChange?.(null)}
+            >
+              <span>{formatPeriodFocusLabel(granularity, focusedPeriod)}</span>
+              <span className="badge-close">×</span>
+            </button>
+          ) : null}
         </div>
       </div>
-
-      {isLoading ? (
-        <div className="dashboard-skeleton-overlay revenue-skeleton" aria-live="polite">
-          <div className="skeleton-pill" />
-          <div className="skeleton-number" />
-          <div className="skeleton-row">
-            <span />
-            <span />
-          </div>
-          <div className="skeleton-chart">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} style={{ height: `${34 + ((index * 13) % 52)}%` }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <KpiCarousel items={kpis} />
 
       <article className="panel">
-        <div className="bar-chart" ref={chartRef} onMouseLeave={() => setActivePoint(null)}>
+        <div
+          className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
+          ref={chartRef}
+          onMouseLeave={() => setActivePoint(null)}
+        >
           {points.map((point, index) => {
             const tooltipEdgeClass =
               index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
@@ -148,17 +161,18 @@ export function RevenueDashboard({
               <div
                 role="button"
                 tabIndex={0}
-                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}`}
+                className={`bar-item ${getYoyBarClass(point)}${activePoint?.label === point.label ? " active" : ""}${focusedPeriod === point.label ? " is-period-focused" : ""}`}
                 key={point.label}
                 style={{ "--bar-index": index } as React.CSSProperties}
+                aria-pressed={onFocusedPeriodChange ? focusedPeriod === point.label : undefined}
                 onMouseEnter={() => setActivePoint(point)}
                 onFocus={() => setActivePoint(point)}
                 onTouchStart={() => showTemporaryTooltip(point)}
-                onClick={() => showTemporaryTooltip(point)}
+                onClick={() => activatePoint(point)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    showTemporaryTooltip(point);
+                    activatePoint(point);
                   }
                 }}
               >
@@ -200,7 +214,7 @@ export function RevenueDashboard({
       </article>
 
       {invoiceDetailPoint && invoiceDetails ? (
-        <div className="tag-filter-overlay" onClick={() => setInvoiceDetailPoint(null)} role="presentation">
+        <SheetOverlay onClose={() => setInvoiceDetailPoint(null)}>
           <div
             className="tag-filter-sheet invoice-detail-sheet"
             onClick={(event) => event.stopPropagation()}
@@ -273,7 +287,7 @@ export function RevenueDashboard({
               </ul>
             )}
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );

@@ -1,25 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ModuleSkeleton } from "@/components/module-skeleton";
+import type { VisibilityOption } from "@/components/category-visibility-button";
 import { DemoDataBanner } from "@/components/demo-data-banner";
+import { FilterMismatchNotice } from "@/components/filter-mismatch-notice";
 import { ExpensesDashboard } from "@/components/expenses-dashboard";
 import { CategorizedTagsDashboard } from "@/components/categorized-tags-dashboard";
 import { ExpenseVendorsSection } from "@/components/expense-vendors-section";
 import { RecentExpensesSection } from "@/components/recent-expenses-section";
 import { CompaniesDashboard } from "@/components/companies-dashboard";
-import type { Granularity } from "@/lib/mock-data";
-import type { KrosConnection, NormalizedExpense } from "@/lib/kros-types";
-import { readConnections } from "@/lib/kros-storage";
+import type { AggregatedBreakdownPoint, NormalizedExpense } from "@/lib/kros-types";
+import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
+import { applyCompanyFilter } from "@/lib/preferences/company-filter";
+import { usePreference } from "@/lib/use-preference";
 import {
-  allSelectedTags,
   categoryForTag,
   documentMatchesTagFilters,
+  hasRealCategories,
   isTagAllowedByFilters,
   migrateFlatFiltersToCategories,
-  parseStoredTagFilters,
-  type TagCategoryFilters
+  sortTagCategories,
+  tagFilterKey,
+  type TagCategoryFilters,
+  type TagCategoryIndex
 } from "@/lib/tag-categories";
 import {
   computeComparableExpenseYtdTotals,
@@ -31,450 +37,132 @@ import {
   computeExpenseTagStructure,
   computeExpenseVendorBreakdown,
   getFilteredRecentExpenses,
-  normalizeExpenses,
-  scopeExpenseAmountsToTags
+  scopeExpenseAmountsToTagFilters,
+  withNormalizedTagShares
 } from "@/lib/expenses-live";
-import { getDateRange } from "@/lib/dashboard-live";
-import { getMockExpenses } from "@/lib/expenses-mock-data";
-import { formatMonthKeyLabel, useSyncProgress } from "@/lib/use-sync-progress";
-import { readNdjsonStream } from "@/lib/ndjson-stream";
 import {
-  expenseCompanyMetaKey,
-  expenseMonthMetaKey,
-  getCachedExpenses,
-  readExpenseSyncMeta,
-  upsertCachedExpenses,
-  writeExpenseSyncMeta
-} from "@/lib/expense-cache";
-
-const TAG_FILTER_STORAGE_KEY = "kros_dashboard_expenses_selected_tags";
-const COMPANY_FILTER_STORAGE_KEY = "kros_dashboard_expenses_selected_companies";
-const LAST_SYNC_STORAGE_KEY = "kros_dashboard_last_sync_at";
-
-type LiveDataRange = "ytd" | "history";
-
-type MonthSyncRange = { monthKey: string; from: string; to: string };
+  focusOutsideDonut,
+  focusedTagNames,
+  reconcileFocusedTags,
+  type FocusedTag
+} from "@/lib/tag-focus";
+import { getBucketPeriodWindow } from "@/lib/period-buckets";
+import { getMockExpenses } from "@/lib/expenses-mock-data";
+import { expenseEngine } from "@/lib/sync/expense-engine";
+import { useSyncOrchestrator } from "@/lib/sync/use-sync-orchestrator";
 
 /**
- * Jeden krok sťahovania — buď chýbajúci mesiac firmy, alebo doklady zmenené od
- * posledného syncu. Plán krokov zostavíme pred prvým fetchom, aby progress bar
- * poznal celok a nemusel len nekonečne točiť.
+ * Engine array musí byť modulová konštanta, nie literál v tele komponentu —
+ * inak sa efekt v orchestrátore spustí pri každom rendere odznova.
  */
-type ExpenseSyncStep =
-  | { kind: "month"; connection: KrosConnection; monthRange: MonthSyncRange }
-  | { kind: "changes"; connection: KrosConnection; lastModifiedTimestamp: string };
+const EXPENSE_ENGINES = [expenseEngine];
 
-/** Riadky priebehu z `/api/kros/expenses` (NDJSON stream). */
-type ExpenseStreamEvent =
-  | { type: "progress"; phase: "list"; loaded?: number }
-  | { type: "progress"; phase: "details"; done?: number; total?: number }
-  | ExpenseResultEvent;
-
-type ExpenseResultEvent = { type: "result"; data?: unknown[]; errors?: { message?: string }[] };
-
-// Stránkovanie hlavičiek je proti doťahovaniu rozúčtovania krátke, ale nie
-// zanedbateľné — kus baru mu preto necháme.
-const LIST_PHASE_SHARE = 0.12;
-
-/** Podiel hotového v rámci jedného kroku + jeho popis pre progress bar. */
-function readStepProgress(event: ExpenseStreamEvent) {
-  if (event.type !== "progress") return null;
-
-  if (event.phase === "list") {
-    const loaded = event.loaded ?? 0;
-    return { fraction: LIST_PHASE_SHARE / 2, detail: `hľadám doklady (${loaded})` };
-  }
-
-  const total = event.total ?? 0;
-  const done = event.done ?? 0;
-  if (total === 0) return { fraction: 1, detail: "žiadne doklady" };
-  return {
-    fraction: LIST_PHASE_SHARE + (1 - LIST_PHASE_SHARE) * (done / total),
-    detail: `doklady ${done}/${total}`
-  };
+/**
+ * Doklady zúžené filtrom štítkov a focusom (rozkliknutými štítkami) — doklad musí niesť
+ * všetky focusnuté štítky. Sumy sa potom zúžia na tie riadky rozúčtovania, ktoré prejdú
+ * filtrom aj focusom — z dokladu rozúčtovaného na viac štítkov sa tak všade (graf, KPI,
+ * dodávatelia aj zoznamy dokladov) počíta len časť patriaca výberu.
+ */
+function scopeExpensesToTags(
+  expenses: NormalizedExpense[],
+  filters: TagCategoryFilters,
+  focusedTags: string[],
+  tagCategoryIndex: TagCategoryIndex
+) {
+  const matching = expenses.filter((expense) =>
+    documentMatchesTagFilters(expense.tags, filters, focusedTags, tagCategoryIndex)
+  );
+  return scopeExpenseAmountsToTagFilters(matching, filters, focusedTags, tagCategoryIndex);
 }
 
-declare global {
-  // eslint-disable-next-line no-var -- globalThis typing requires `var`
-  var __krosDashboardGranularity: Granularity | undefined;
-}
-
-function getLiveDataRange(granularity: Granularity): LiveDataRange {
-  return granularity === "year" ? "history" : "ytd";
-}
-
-function startOfDayIso(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString();
-}
-
-function endOfDayIso(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value.toISOString();
-}
-
-function monthKeyFromDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function buildMonthSyncRanges(fetchFrom: string, fetchTo: string) {
-  const start = new Date(fetchFrom);
-  const end = new Date(fetchTo);
-  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  const ranges: MonthSyncRange[] = [];
-
-  while (cursor <= end) {
-    const monthStart = new Date(cursor);
-    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-    const from = monthStart < start ? start : monthStart;
-    const to = monthEnd > end ? end : monthEnd;
-
-    ranges.push({
-      monthKey: monthKeyFromDate(cursor),
-      from: startOfDayIso(from),
-      to: endOfDayIso(to)
-    });
-
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return ranges;
-}
-
-function getMaxLastModified(expenses: NormalizedExpense[], fallback?: string) {
-  return expenses.reduce<string | undefined>((max, expense) => {
-    if (!expense.lastModifiedTimestamp) return max;
-    if (!max) return expense.lastModifiedTimestamp;
-    return new Date(expense.lastModifiedTimestamp).getTime() > new Date(max).getTime()
-      ? expense.lastModifiedTimestamp
-      : max;
-  }, fallback);
-}
-
-function withLastModifiedOverlap(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  date.setMinutes(date.getMinutes() - 5);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-  const milliseconds = date.getUTCMilliseconds();
-  const fraction =
-    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
-}
+/**
+ * Id pevných sekcií pre prepínač zobrazenia. Prefix `section:` ich odlišuje od kategórií
+ * štítkov, ktoré v tom istom zozname vystupujú pod svojím názvom.
+ */
+const EXPENSE_SECTIONS = {
+  vendors: "section:vendors",
+  recentExpenses: "section:recentExpenses",
+  companies: "section:companies"
+} as const;
 
 export default function ExpensesPage() {
-  const [granularity, setGranularity] = useState<Granularity>(
-    globalThis.__krosDashboardGranularity ?? "month"
-  );
-  const [categoryFilters, setCategoryFilters] = useState<TagCategoryFilters>({});
-  const [focusedTag, setFocusedTag] = useState<string | null>(null);
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  // Nastavenia sú v spoločnom store (server + `localStorage` ako cache), nie v stave stránky.
+  const [granularity, setGranularity] = usePreference("ui.granularity");
+  const [categoryFilters, setCategoryFilters] = usePreference("expenses.tagFilters");
+  // Focus drží viac štítkov naraz — dáta sa zúžia na doklady, ktoré nesú všetky. Ku každému
+  // štítku si pamätá aj sekciu, v ktorej klik vznikol: tá sa vlastným focusom nezužuje.
+  const [focusedTags, setFocusedTags] = useState<FocusedTag[]>([]);
+  const [selectedCompanies, setSelectedCompanies] = usePreference("expenses.companies");
+  const [hiddenSections, setHiddenSections] = usePreference("ui.expensesHiddenSections");
   const [focusedCompany, setFocusedCompany] = useState<string | null>(null);
-  const [connections, setConnections] = useState<KrosConnection[]>([]);
-  const [liveExpenses, setLiveExpenses] = useState<NormalizedExpense[]>([]);
-  const [isLoadingLiveData, setIsLoadingLiveData] = useState(false);
-  const [, setLiveError] = useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  // Stĺpec grafu, na ktorý sa kliklo. Drill-down ako focus štítku či firmy, preto tiež
+  // nie je uložený filter — po návrate do modulu má byť vidieť celý rok, nie jeden mesiac.
+  const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
+  // Prepojenia sú firemné a žijú na serveri — na novom zariadení už netreba nič preklikávať.
+  const { connections, isLoading: isLoadingConnections } = useKrosConnections();
   const [hasLoadedPersistedFilters, setHasLoadedPersistedFilters] = useState(false);
-  const handledRefreshNonceRef = useRef(0);
-  const {
-    progress: syncProgress,
-    beginSync,
-    startStep,
-    advanceStep,
-    completeStep,
-    endSync
-  } = useSyncProgress();
+  const [tagRefreshNonce, setTagRefreshNonce] = useState(0);
 
   const effectiveCompanies = useMemo(
     () => (focusedCompany ? [focusedCompany] : selectedCompanies),
     [focusedCompany, selectedCompanies]
   );
-  const syncConnections = useMemo(() => {
-    if (selectedCompanies.length === 0) return connections;
+  // Uložený filter sa aplikuje ako prienik s prepojenými firmami; `noneAvailable` znamená,
+  // že sem filter z iného zariadenia nesedí — a to sa musí povedať, nie ukázať ako nulu.
+  const companyFilter = useMemo(
+    () => applyCompanyFilter(connections, selectedCompanies, (connection) => connection.companyName),
+    [connections, selectedCompanies]
+  );
+  const syncConnections = companyFilter.companies;
 
-    const selectedCompanySet = new Set(selectedCompanies);
-    return connections.filter((connection) => selectedCompanySet.has(connection.companyName));
-  }, [connections, selectedCompanies]);
-
+  // Prvý render beží ešte pred pripojením k store-u, takže sa sťahovanie odkladá o tik —
+  // inak by prvý fetch šiel s prázdnym filtrom a hneď za ním druhý so skutočným.
   useEffect(() => {
-    setConnections(readConnections());
+    setHasLoadedPersistedFilters(true);
   }, []);
 
-  useEffect(() => {
-    try {
-      const rawTags = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
-      const rawCompanies = localStorage.getItem(COMPANY_FILTER_STORAGE_KEY);
-
-      setCategoryFilters(parseStoredTagFilters(rawTags));
-
-      if (rawCompanies) {
-        const parsedCompanies = JSON.parse(rawCompanies) as string[];
-        if (Array.isArray(parsedCompanies)) {
-          setSelectedCompanies(parsedCompanies);
-        }
-      }
-    } catch {
-      // Ignore invalid persisted filter payload.
-    } finally {
-      setHasLoadedPersistedFilters(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(categoryFilters));
-  }, [hasLoadedPersistedFilters, categoryFilters]);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-    localStorage.setItem(COMPANY_FILTER_STORAGE_KEY, JSON.stringify(selectedCompanies));
-  }, [hasLoadedPersistedFilters, selectedCompanies]);
-
-  useEffect(() => {
-    globalThis.__krosDashboardGranularity = granularity;
-  }, [granularity]);
-
-  useEffect(() => {
-    if (!hasLoadedPersistedFilters) return;
-
-    if (connections.length === 0) {
-      setLiveExpenses([]);
-      endSync();
-      return;
-    }
-
-    if (syncConnections.length === 0) {
-      setLiveExpenses([]);
-      setIsLoadingLiveData(false);
-      endSync();
-      return;
-    }
-
-    const abortController = new AbortController();
-    // Same flow as Biznis: hydrate from the persistent IndexedDB cache first; months
-    // without a completed sync get a full fetch, a manual refresh pulls only expenses
-    // changed since the stored per-company LastModifiedTimestamp.
-    const liveDataRange = getLiveDataRange(granularity);
-    const fetchRange = getDateRange(liveDataRange === "history" ? "year" : "month");
-    const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
-    const syncCompanyIds = syncConnections.map((connection) => connection.companyId);
-
-    const fetchExpenses = async (body: {
-      companies: KrosConnection[];
-      deliveryDateFrom?: string;
-      deliveryDateTo?: string;
-      lastModifiedTimestamp?: string;
-    }) => {
-      const response = await fetch("/api/kros/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: abortController.signal
-      });
-
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(
-          payload?.details
-            ? `${payload?.error ?? "Nepodarilo sa načítať výdavky."} ${payload.details}`
-            : payload?.error ?? "Nepodarilo sa načítať výdavky."
-        );
-      }
-
-      // Dáta prídu posledným riadkom streamu, dovtedy chodí priebeh sťahovania.
-      const collected: { result: ExpenseResultEvent | null } = { result: null };
-      await readNdjsonStream(response.body, (raw) => {
-        const event = raw as ExpenseStreamEvent;
-        if (event?.type === "result") {
-          collected.result = event;
-          return;
-        }
-
-        const stepProgress = readStepProgress(event);
-        if (stepProgress) {
-          advanceStep(stepProgress.fraction, stepProgress.detail);
-        }
-      });
-
-      const payload = collected.result;
-      if (!payload) {
-        throw new Error("Nepodarilo sa načítať výdavky — sťahovanie sa nedokončilo.");
-      }
-      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-        throw new Error(payload.errors[0]?.message ?? "Niektoré firmy sa nepodarilo načítať.");
-      }
-      return Array.isArray(payload.data) ? payload.data : [];
-    };
-
-    const loadExpenses = async () => {
-      const cachedExpenses = await getCachedExpenses(syncCompanyIds);
-      if (!abortController.signal.aborted) {
-        setLiveExpenses(cachedExpenses);
-      }
-
-      setLiveError(null);
-
-      try {
-        const monthRanges = buildMonthSyncRanges(fetchRange.fetchFrom, fetchRange.fetchTo);
-        let didFetch = false;
-        let didClearSyncLogs = false;
-        const clearSyncLogsOnce = async () => {
-          if (didClearSyncLogs) return;
-          didClearSyncLogs = true;
-          await fetch("/api/kros/logs", { method: "DELETE" });
-        };
-
-        // Najprv plán: čo všetko treba stiahnuť. Počet krokov je podklad pre
-        // progress bar, preto ho zisťujeme ešte pred prvým fetchom.
-        const steps: ExpenseSyncStep[] = [];
-        for (const connection of syncConnections) {
-          const missingMonthRanges: MonthSyncRange[] = [];
-          for (const monthRange of monthRanges) {
-            const monthMeta = await readExpenseSyncMeta(
-              expenseMonthMetaKey(connection.companyId, liveDataRange, monthRange.monthKey)
-            );
-            if (!monthMeta?.completedAt) {
-              missingMonthRanges.push(monthRange);
-            }
-          }
-
-          if (missingMonthRanges.length > 0) {
-            for (const monthRange of missingMonthRanges) {
-              steps.push({ kind: "month", connection, monthRange });
-            }
-            continue;
-          }
-
-          if (!isManualRefresh) continue;
-
-          const companyMeta = await readExpenseSyncMeta(
-            expenseCompanyMetaKey(connection.companyId, liveDataRange)
-          );
-          if (!companyMeta?.lastModifiedTimestamp) continue;
-          steps.push({
-            kind: "changes",
-            connection,
-            lastModifiedTimestamp: companyMeta.lastModifiedTimestamp
-          });
-        }
-
-        if (abortController.signal.aborted) return;
-        beginSync(steps.length);
-        if (steps.length > 0) {
-          setIsLoadingLiveData(true);
-        }
-
-        for (const step of steps) {
-          if (abortController.signal.aborted) return;
-
-          const { connection } = step;
-          startStep(
-            step.kind === "month"
-              ? `${connection.companyName} · ${formatMonthKeyLabel(step.monthRange.monthKey)}`
-              : `${connection.companyName} · zmenené doklady`
-          );
-
-          await clearSyncLogsOnce();
-          const rawExpenses = await fetchExpenses(
-            step.kind === "month"
-              ? {
-                  companies: [connection],
-                  deliveryDateFrom: step.monthRange.from,
-                  deliveryDateTo: step.monthRange.to
-                }
-              : {
-                  companies: [connection],
-                  lastModifiedTimestamp: withLastModifiedOverlap(step.lastModifiedTimestamp)
-                }
-          );
-
-          const normalizedExpenses = normalizeExpenses(rawExpenses);
-          const companyExpenses = normalizedExpenses.filter(
-            (expense) =>
-              expense.companyId === connection.companyId || expense.companyName === connection.companyName
-          );
-          const completedAt = new Date().toISOString();
-          await upsertCachedExpenses(connection.companyId, companyExpenses);
-
-          if (step.kind === "month") {
-            await writeExpenseSyncMeta({
-              key: expenseMonthMetaKey(connection.companyId, liveDataRange, step.monthRange.monthKey),
-              companyId: connection.companyId,
-              range: liveDataRange,
-              monthKey: step.monthRange.monthKey,
-              completedAt
-            });
-          }
-
-          const companyMetaKey = expenseCompanyMetaKey(connection.companyId, liveDataRange);
-          const previousCompanyMeta = await readExpenseSyncMeta(companyMetaKey);
-          await writeExpenseSyncMeta({
-            key: companyMetaKey,
-            companyId: connection.companyId,
-            range: liveDataRange,
-            completedAt,
-            lastModifiedTimestamp: getMaxLastModified(
-              companyExpenses,
-              previousCompanyMeta?.lastModifiedTimestamp
-            )
-          });
-
-          didFetch = true;
-          completeStep();
-          const nextCachedExpenses = await getCachedExpenses(syncCompanyIds);
-          if (!abortController.signal.aborted) {
-            setLiveExpenses(nextCachedExpenses);
-          }
-        }
-
-        if (didFetch) {
-          localStorage.setItem(LAST_SYNC_STORAGE_KEY, new Date().toISOString());
-        }
-      } catch (error) {
-        if (!abortController.signal.aborted) {
-          setLiveError(error instanceof Error ? error.message : "Načítanie live dát zlyhalo.");
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          handledRefreshNonceRef.current = refreshNonce;
-          setIsLoadingLiveData(false);
-          endSync();
-        }
-      }
-    };
-
-    loadExpenses();
-
-    return () => abortController.abort();
-  }, [
+  const {
+    data: { expenses: liveExpenses },
+    isSyncing: isLoadingLiveData,
+    hasResolvedFirstData,
+    refresh
+  } = useSyncOrchestrator(EXPENSE_ENGINES, {
     connections,
     syncConnections,
     granularity,
-    refreshNonce,
-    hasLoadedPersistedFilters,
-    beginSync,
-    startStep,
-    advanceStep,
-    completeStep,
-    endSync
-  ]);
+    enabled: hasLoadedPersistedFilters
+  });
+
+  const handleRefresh = () => {
+    setTagRefreshNonce((value) => value + 1);
+    refresh();
+  };
 
   const hasLiveMode = connections.length > 0;
-  const tagCategoryIndex = useTagCategoryIndex(connections, refreshNonce);
+  // Prechod na modul má ukázať loader, nie demo čísla, ktoré o chvíľu prepíšu tie skutočné.
+  const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
+  const tagCategoryIndex = useTagCategoryIndex(connections, tagRefreshNonce);
   const mockExpenses = useMemo(() => (hasLiveMode ? [] : getMockExpenses()), [hasLiveMode]);
   const expenses = hasLiveMode ? liveExpenses : mockExpenses;
+  // Sekcie pod grafom sa počítajú v okne focusnutého stĺpca: tento rok ten stĺpec, vlani
+  // to isté obdobie. Bez focusu ostáva pôvodné okno „tento rok vs. vlani" (YTD).
+  const periodWindow = useMemo(
+    () => (focusedPeriod ? getBucketPeriodWindow(granularity, focusedPeriod) : null),
+    [focusedPeriod, granularity]
+  );
+
+  // Po prepnutí obdobia (mesiace → týždne) focusnutý stĺpec zanikne — filter, ktorý sa
+  // nemá čoho držať, patrí zahodiť, nie ho ticho nechať visieť na odznaku.
+  useEffect(() => {
+    if (focusedPeriod && !periodWindow) setFocusedPeriod(null);
+  }, [focusedPeriod, periodWindow]);
 
   useEffect(() => {
-    setCategoryFilters((prev) => migrateFlatFiltersToCategories(prev, tagCategoryIndex));
-  }, [tagCategoryIndex]);
+    const migrated = migrateFlatFiltersToCategories(categoryFilters, tagCategoryIndex);
+    // `migrateFlatFiltersToCategories` vracia pôvodný objekt, keď nie je čo prerobiť —
+    // bez tejto podmienky by zápis spustil efekt dokola.
+    if (migrated !== categoryFilters) setCategoryFilters(migrated);
+  }, [tagCategoryIndex, categoryFilters, setCategoryFilters]);
 
   const availableTagSet = useMemo(
     () => new Set(expenses.flatMap((expense) => expense.tags)),
@@ -490,30 +178,27 @@ export default function ExpensesPage() {
     return next;
   }, [categoryFilters, availableTagSet]);
 
-  const effectiveFocusedTag =
-    focusedTag && availableTagSet.has(focusedTag) ? focusedTag : null;
+  const effectiveFocus = useMemo(
+    () => focusedTags.filter((focused) => availableTagSet.has(focused.tag)),
+    [focusedTags, availableTagSet]
+  );
+  // Grafy, KPI, dodávatelia aj doklady sa zužujú celým focusom…
+  const effectiveFocusedTags = useMemo(() => focusedTagNames(effectiveFocus), [effectiveFocus]);
+  // …donut ale len tým, čo v ňom nevzniklo — vlastným klikom sa nezužuje.
+  const donutFocusedTags = useMemo(() => focusOutsideDonut(effectiveFocus), [effectiveFocus]);
 
+  // Zoznamy štítkov ostávajú na Filtri štítkov — bez zužovania súm, aby sa v sekcii
+  // dalo preklikať na iný štítok s rovnakými číslami ako pred kliknutím.
   const filterScopedExpenses = useMemo(
-    () =>
-      expenses.filter((expense) =>
-        documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, null)
-      ),
+    () => expenses.filter((expense) => documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters)),
     [expenses, sanitizedCategoryFilters]
   );
 
-  // Fokus štítku prispôsobí graf/KPI/doklady, ale zoznamy kategórií ostávajú podľa Filtra štítkov.
-  // Pri aktívnych štítkoch sa sumy zúžia na ich rozúčtovanie — na doklade rozúčtovanom
-  // na viac štítkov sa počíta len časť patriaca zvoleným štítkom.
-  const tagScopedExpenses = useMemo(() => {
-    const activeTags = [
-      ...allSelectedTags(sanitizedCategoryFilters),
-      ...(effectiveFocusedTag ? [effectiveFocusedTag] : [])
-    ];
-    const matching = expenses.filter((expense) =>
-      documentMatchesTagFilters(expense.tags, sanitizedCategoryFilters, effectiveFocusedTag)
-    );
-    return scopeExpenseAmountsToTags(matching, activeTags);
-  }, [expenses, sanitizedCategoryFilters, effectiveFocusedTag]);
+  // Graf, KPI, donut, dodávatelia aj doklady idú z dokladov zúžených filtrom a focusom.
+  const tagScopedExpenses = useMemo(
+    () => scopeExpensesToTags(expenses, sanitizedCategoryFilters, effectiveFocusedTags, tagCategoryIndex),
+    [expenses, sanitizedCategoryFilters, effectiveFocusedTags, tagCategoryIndex]
+  );
 
   const points = useMemo(
     () =>
@@ -542,71 +227,153 @@ export default function ExpensesPage() {
   );
 
   const kpis = useMemo(
-    () => computeExpenseKpis(points, ytdTotals, dueWatchlist),
-    [points, ytdTotals, dueWatchlist]
+    () => computeExpenseKpis(points, ytdTotals, dueWatchlist, focusedPeriod),
+    [points, ytdTotals, dueWatchlist, focusedPeriod]
   );
 
-  // Donut filtrujeme výberom z Filtra štítkov, ale nie focusnutým štítkom —
-  // klik na výsek má slice len zvýrazniť, nie zredukovať donut na jediný výsek.
+  // Donut je sekcia filtra ako každá iná: focus z ostatných sekcií mu zúži čísla, vlastný
+  // klik nie — inak by po kliknutí ostal jediný výsek a nedalo by sa preklikať inam.
+  // Výseky preto neodpadávajú, focusnuté sa v grafe len zvýraznia.
   const tagStructure = useMemo(() => {
-    const slices = computeExpenseTagStructure(filterScopedExpenses, [], effectiveCompanies).filter(
-      (slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex)
-    );
-    const total = slices.reduce((sum, slice) => sum + Math.max(slice.amount, 0), 0);
-    return slices.map((slice) => ({
-      ...slice,
-      share: total === 0 ? 0 : Math.max(slice.amount, 0) / total
-    }));
-  }, [filterScopedExpenses, sanitizedCategoryFilters, effectiveCompanies, tagCategoryIndex]);
+    const scopedExpenses =
+      donutFocusedTags.length === 0
+        ? filterScopedExpenses
+        : scopeExpensesToTags(
+            expenses,
+            sanitizedCategoryFilters,
+            donutFocusedTags,
+            tagCategoryIndex
+          );
+    const slices = computeExpenseTagStructure(
+      scopedExpenses,
+      [],
+      effectiveCompanies,
+      periodWindow ?? undefined
+    ).filter((slice) => isTagAllowedByFilters(slice.name, sanitizedCategoryFilters, tagCategoryIndex));
+    return withNormalizedTagShares(slices);
+  }, [
+    expenses,
+    filterScopedExpenses,
+    donutFocusedTags,
+    sanitizedCategoryFilters,
+    effectiveCompanies,
+    tagCategoryIndex,
+    periodWindow
+  ]);
 
   const availableTagsData = useMemo(
     () => computeExpenseTagBreakdown(expenses, effectiveCompanies),
     [expenses, effectiveCompanies]
   );
 
-  const tagsData = useMemo(() => {
-    const filterPoints = computeExpenseTagBreakdown(filterScopedExpenses, effectiveCompanies).filter(
-      (point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex)
+  // Zoznam pre prepínač v hlavičke: kategórie zo VŠETKÝCH štítkov, nie z tých po filtri —
+  // inak by vypnutá kategória z prepínača zmizla a nedalo by sa ju vrátiť. Skrytie
+  // kategórie jej filter nezruší, takže prepínač zároveň ukazuje, kde filter visí.
+  const categoryOptions = useMemo<VisibilityOption[]>(() => {
+    if (!hasRealCategories(tagCategoryIndex)) return [];
+    const categories = new Set(
+      availableTagsData.map((point) => categoryForTag(tagCategoryIndex, point.name))
     );
-    if (!effectiveFocusedTag) {
+    return sortTagCategories(Array.from(categories)).map((category) => ({
+      id: category,
+      label: category,
+      filterCount: sanitizedCategoryFilters[category]?.length ?? 0
+    }));
+  }, [availableTagsData, tagCategoryIndex, sanitizedCategoryFilters]);
+
+  const sectionOptions = useMemo<VisibilityOption[]>(
+    () => [
+      { id: EXPENSE_SECTIONS.vendors, label: "Top dodávatelia" },
+      { id: EXPENSE_SECTIONS.recentExpenses, label: "Posledné výdavky" },
+      {
+        id: EXPENSE_SECTIONS.companies,
+        label: "Výdavky podľa firiem",
+        filterCount: selectedCompanies.length
+      }
+    ],
+    [selectedCompanies]
+  );
+
+  const isSectionHidden = (id: string) => hiddenSections.includes(id);
+
+  const tagsData = useMemo(() => {
+    const filterPoints = computeExpenseTagBreakdown(
+      filterScopedExpenses,
+      effectiveCompanies,
+      periodWindow ?? undefined
+    ).filter((point) => isTagAllowedByFilters(point.name, sanitizedCategoryFilters, tagCategoryIndex));
+    if (effectiveFocusedTags.length === 0) {
       return filterPoints;
     }
 
-    // V kategórii focusnutého štítku ostávajú sumy podľa Filtra štítkov;
-    // ostatné kategórie sa prepočítajú podľa focusnutého štítku.
-    const focusedCategory = categoryForTag(tagCategoryIndex, effectiveFocusedTag);
-    const focusByName = new Map(
-      computeExpenseTagBreakdown(tagScopedExpenses, effectiveCompanies).map((point) => [
-        point.name,
-        point
-      ])
-    );
+    // V kategórii, z ktorej štítok focusnutý je, sa jej vlastný focus nepočíta — inak by
+    // v sekcii ostal jediný riadok a nedalo by sa preklikať na iný štítok. Focus z ostatných
+    // kategórií platí aj tu, takže sumy sedia s prienikom zvolených štítkov.
+    const breakdownByCategory = new Map<string, Map<string, AggregatedBreakdownPoint>>();
+    const breakdownFor = (category: string) => {
+      const cached = breakdownByCategory.get(category);
+      if (cached) return cached;
+
+      const focusOutsideCategory = effectiveFocusedTags.filter(
+        (tag) => tagFilterKey(tagCategoryIndex, tag) !== category
+      );
+      const scopedExpenses =
+        focusOutsideCategory.length === 0
+          ? filterScopedExpenses
+          : scopeExpensesToTags(
+              expenses,
+              sanitizedCategoryFilters,
+              focusOutsideCategory,
+              tagCategoryIndex
+            );
+      const points = computeExpenseTagBreakdown(
+        scopedExpenses,
+        effectiveCompanies,
+        periodWindow ?? undefined
+      );
+      const byName = new Map(points.map((point) => [point.name, point]));
+      breakdownByCategory.set(category, byName);
+      return byName;
+    };
+
     return filterPoints
       .flatMap((point) => {
-        const category = categoryForTag(tagCategoryIndex, point.name);
-        if (category === focusedCategory) return [point];
-        const focusedPoint = focusByName.get(point.name);
-        return focusedPoint ? [focusedPoint] : [];
+        const scoped = breakdownFor(tagFilterKey(tagCategoryIndex, point.name)).get(point.name);
+        return scoped ? [scoped] : [];
       })
       .sort((a, b) => b.amount - a.amount);
   }, [
+    expenses,
     filterScopedExpenses,
-    tagScopedExpenses,
     effectiveCompanies,
     sanitizedCategoryFilters,
     tagCategoryIndex,
-    effectiveFocusedTag
+    effectiveFocusedTags,
+    periodWindow
   ]);
 
   const vendors = useMemo(
-    () => computeExpenseVendorBreakdown(tagScopedExpenses, [], effectiveCompanies),
-    [tagScopedExpenses, effectiveCompanies]
+    () =>
+      computeExpenseVendorBreakdown(
+        tagScopedExpenses,
+        [],
+        effectiveCompanies,
+        undefined,
+        periodWindow ?? undefined
+      ),
+    [tagScopedExpenses, effectiveCompanies, periodWindow]
   );
 
   const companiesData = useMemo(
     // Zoznam firiem sa nezužuje focusom — rovnako ako štítky v kategórii.
-    () => computeExpenseCompanyBreakdown(tagScopedExpenses, [], selectedCompanies),
-    [tagScopedExpenses, selectedCompanies]
+    () =>
+      computeExpenseCompanyBreakdown(
+        tagScopedExpenses,
+        [],
+        selectedCompanies,
+        periodWindow ?? undefined
+      ),
+    [tagScopedExpenses, selectedCompanies, periodWindow]
   );
 
   const recentExpenses = useMemo(
@@ -615,17 +382,26 @@ export default function ExpensesPage() {
         granularity,
         selectedTags: [],
         selectedCompanies: effectiveCompanies,
-        limit: 10
+        limit: 10,
+        period: periodWindow ?? undefined
       }),
-    [tagScopedExpenses, granularity, effectiveCompanies]
+    [tagScopedExpenses, granularity, effectiveCompanies, periodWindow]
   );
 
   const handleCategoryFiltersChange = (next: TagCategoryFilters) => {
     setCategoryFilters(next);
-    if (focusedTag && !isTagAllowedByFilters(focusedTag, next, tagCategoryIndex)) {
-      setFocusedTag(null);
-    }
+    // Focus je drill-down vo filtri — štítok, ktorý filter už nepustí, z focusu vypadne.
+    setFocusedTags((previous) =>
+      previous.filter((focused) => isTagAllowedByFilters(focused.tag, next, tagCategoryIndex))
+    );
   };
+
+  // Odkiaľ klik prišiel, rozhoduje, ktorá sekcia sa ním NEZUŽUJE — preto dva handlery.
+  const handleDonutFocusChange = (nextTags: string[]) =>
+    setFocusedTags((previous) => reconcileFocusedTags(previous, nextTags, true));
+
+  const handleSectionFocusChange = (nextTags: string[]) =>
+    setFocusedTags((previous) => reconcileFocusedTags(previous, nextTags, false));
 
   const updateSelectionWithFocusedGuard = (
     nextSelection: string[],
@@ -643,27 +419,39 @@ export default function ExpensesPage() {
     <DashboardShell
       title="Výdavky"
       isSyncing={isLoadingLiveData}
-      syncProgress={syncProgress}
-      onRefresh={connections.length > 0 ? () => setRefreshNonce((value) => value + 1) : undefined}
+      syncNote="Doklady ťaháme po mesiacoch a ku každému aj rozúčtovanie na štítky, preto prvé načítanie trvá dlhšie. Ostanú uložené v zariadení — pri ďalšom otvorení sa dosynchronizujú len zmeny."
+      onRefresh={connections.length > 0 ? handleRefresh : undefined}
+      categoryVisibility={{
+        categoryOptions,
+        sectionOptions,
+        hiddenIds: hiddenSections,
+        onHiddenIdsChange: setHiddenSections,
+        granularity,
+        onGranularityChange: setGranularity
+      }}
     >
-      {!hasLiveMode ? <DemoDataBanner /> : null}
+      {isPreparingModule ? <ModuleSkeleton label="Načítavam výdavky…" /> : null}
+      {isPreparingModule ? null : (
+        <>
+      {!hasLiveMode && !isLoadingConnections ? <DemoDataBanner /> : null}
+      {companyFilter.noneAvailable ? <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} /> : null}
       <ExpensesDashboard
         granularity={granularity}
-        onGranularityChange={setGranularity}
         kpis={kpis}
         points={points}
         expenses={tagScopedExpenses}
         tagStructure={tagStructure}
+        tagCategoryIndex={tagCategoryIndex}
         dueWatchlist={dueWatchlist}
         selectedTags={[]}
         selectedCompanies={effectiveCompanies}
-        activeTagLabel={effectiveFocusedTag ?? undefined}
+        activeTagLabels={effectiveFocusedTags}
         activeCompanyLabel={focusedCompany ?? undefined}
-        onClearTagFilter={() => setFocusedTag(null)}
         onClearCompanyFilter={() => setFocusedCompany(null)}
-        onFocusTag={setFocusedTag}
+        onFocusTagsChange={handleDonutFocusChange}
+        focusedPeriod={focusedPeriod}
+        onFocusedPeriodChange={setFocusedPeriod}
         isMockData={!hasLiveMode}
-        isLoading={isLoadingLiveData}
       />
       <CategorizedTagsDashboard
         tags={tagsData}
@@ -672,14 +460,17 @@ export default function ExpensesPage() {
         baseTitle="Výdavky podľa štítkov"
         ariaLabelPrefix="Filtrovať výdavky podľa štítku"
         categoryFilters={sanitizedCategoryFilters}
-        focusedTag={effectiveFocusedTag}
+        focusedTags={effectiveFocusedTags}
+        hiddenCategories={hiddenSections}
         onCategoryFiltersChange={handleCategoryFiltersChange}
-        onFocusedTagChange={setFocusedTag}
-        isLoading={isLoadingLiveData}
+        onFocusedTagsChange={handleSectionFocusChange}
         invertDeltaColor
       />
-      <ExpenseVendorsSection vendors={vendors} isLoading={isLoadingLiveData} />
-      <RecentExpensesSection expenses={recentExpenses} isLoading={isLoadingLiveData} />
+      {isSectionHidden(EXPENSE_SECTIONS.vendors) ? null : <ExpenseVendorsSection vendors={vendors} />}
+      {isSectionHidden(EXPENSE_SECTIONS.recentExpenses) ? null : (
+        <RecentExpensesSection expenses={recentExpenses} />
+      )}
+      {isSectionHidden(EXPENSE_SECTIONS.companies) ? null : (
       <CompaniesDashboard
         title="Výdavky podľa firiem"
         companies={companiesData}
@@ -688,7 +479,7 @@ export default function ExpensesPage() {
           connections.length > 0 ? connections.map((connection) => connection.companyName) : undefined
         }
         invertDeltaColor
-        collapsedStorageKey="kros_dashboard_expenses_collapsed_companies"
+        collapsedKey="ui.collapsed.expensesCompanies"
         focusedCompany={focusedCompany}
         onSelectionChange={(companies) =>
           updateSelectionWithFocusedGuard(
@@ -699,8 +490,10 @@ export default function ExpensesPage() {
           )
         }
         onFocusedCompanyChange={setFocusedCompany}
-        isLoading={isLoadingLiveData}
       />
+      )}
+        </>
+      )}
     </DashboardShell>
   );
 }

@@ -92,29 +92,40 @@ export function isTagAllowedByFilters(
 }
 
 /**
- * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND).
- * V rámci kategórie stačí jeden zo zvolených štítkov (OR).
- * Focusnutý štítok musí byť na doklade a zároveň platia všetky filtre kategórií.
+ * Doklad prejde filtrom, ak spĺňa každú aktívnu kategóriu (AND). V rámci kategórie stačí
+ * jeden zo zvolených štítkov (OR).
+ *
+ * Rozkliknuté štítky sú samostatné podmienky, ale s tou istou logikou: focus na dvoch
+ * štítkoch JEDNEJ kategórie výber ROZŠÍRI (Apartmán 1 alebo Apartmán 2), focus v dvoch
+ * rôznych kategóriách ho zúži (Apartmán 1 a zároveň Náklady 2). Predtým sa focus vyhodnocoval
+ * ako čisté AND, čo pri dvoch štítkoch tej istej kategórie nemohlo vyjsť nikdy — doklad nesie
+ * v jednej dimenzii spravidla jediný štítok, takže prehľad zostal prázdny.
+ *
+ * `index` je nepovinný: bez skutočných kategórií žijú všetky štítky v jednej spoločnej
+ * sekcii, takže sa focus vyhodnotí ako jedno OR — presne ako pri jedinej kategórii.
  */
 export function documentMatchesTagFilters(
   documentTags: string[],
   filters: TagCategoryFilters,
-  focusedTag: string | null = null
+  focusedTags: string[] = [],
+  index: TagCategoryIndex = EMPTY_TAG_CATEGORY_INDEX
 ): boolean {
-  if (focusedTag) {
-    const focused = focusedTag.trim().toLowerCase();
-    if (!documentTags.some((tag) => tag.trim().toLowerCase() === focused)) {
-      return false;
-    }
-  }
+  const documentTagSet = new Set(documentTags.map((tag) => tag.trim().toLowerCase()));
 
   const constraints = Object.values(filters).filter((selected) => selected.length > 0);
+
+  const focusByCategory = new Map<string, string[]>();
+  for (const tag of focusedTags) {
+    const category = tagFilterKey(index, tag);
+    focusByCategory.set(category, [...(focusByCategory.get(category) ?? []), tag]);
+  }
+  constraints.push(...focusByCategory.values());
+
   if (constraints.length === 0) return true;
 
-  return constraints.every((selected) => {
-    const selectedSet = new Set(selected.map((tag) => tag.trim().toLowerCase()));
-    return documentTags.some((tag) => selectedSet.has(tag.trim().toLowerCase()));
-  });
+  return constraints.every((selected) =>
+    selected.some((tag) => documentTagSet.has(tag.trim().toLowerCase()))
+  );
 }
 
 /** Nastaví / zruší filter jednej kategórie. Prázdny výber = všetky štítky (bez filtra). */
@@ -132,28 +143,48 @@ export function setCategoryTagFilter(
   return next;
 }
 
+/**
+ * Kľúč, pod ktorý štítok patrí vo filtri aj vo fokuse. Bez skutočných kategórií
+ * (KROS ich nemá vyplnené) žijú všetky štítky v jednej spoločnej sekcii.
+ */
+export function tagFilterKey(index: TagCategoryIndex, tagName: string): string {
+  return hasRealCategories(index) ? categoryForTag(index, tagName) : FLAT_TAG_FILTER_KEY;
+}
+
 /** Všetky explicitne zvolené štítky naprieč kategóriami (na kontrolu focusu a pod.). */
 export function allSelectedTags(filters: TagCategoryFilters): string[] {
   return Object.values(filters).flat();
 }
 
+/**
+ * Zrovná uloženú hodnotu filtra na dnešný tvar. Zvlášť od `parseStoredTagFilters`, lebo tú
+ * istú normalizáciu potrebuje aj register nastavení (`src/lib/preferences/registry.ts`) nad
+ * hodnotou, ktorá už prešla `JSON.parse` — a bez nej by sa STARÝ plochý formát (pole štítkov
+ * bez kategórií) zahodil ako neplatný a ľuďom by pri prvom načítaní zmizli filtre.
+ */
+export function normalizeTagFilters(parsed: unknown): TagCategoryFilters {
+  if (Array.isArray(parsed)) {
+    const tags = parsed.filter((tag): tag is string => typeof tag === "string");
+    return tags.length > 0 ? { [FLAT_TAG_FILTER_KEY]: tags } : {};
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const result: TagCategoryFilters = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!Array.isArray(value)) continue;
+      const tags = value.filter((tag): tag is string => typeof tag === "string");
+      if (tags.length > 0) result[key] = tags;
+    }
+    return result;
+  }
+
+  return {};
+}
+
 export function parseStoredTagFilters(raw: string | null): TagCategoryFilters {
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      const tags = parsed.filter((tag): tag is string => typeof tag === "string");
-      return tags.length > 0 ? { [FLAT_TAG_FILTER_KEY]: tags } : {};
-    }
-    if (parsed && typeof parsed === "object") {
-      const result: TagCategoryFilters = {};
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (!Array.isArray(value)) continue;
-        const tags = value.filter((tag): tag is string => typeof tag === "string");
-        if (tags.length > 0) result[key] = tags;
-      }
-      return result;
-    }
+    return normalizeTagFilters(JSON.parse(raw) as unknown);
   } catch {
     // Ignore invalid persisted filter payload.
   }
@@ -184,6 +215,15 @@ export type TagCategoryGroup = {
 };
 
 const collator = new Intl.Collator("sk-SK", { sensitivity: "base" });
+
+/** Kategórie abecedne, „Nedefinované“ vždy posledné — rovnaké poradie ako sekcie štítkov. */
+export function sortTagCategories(categories: string[]): string[] {
+  return [...categories].sort((a, b) => {
+    if (a === UNCATEGORIZED_CATEGORY) return 1;
+    if (b === UNCATEGORIZED_CATEGORY) return -1;
+    return collator.compare(a, b);
+  });
+}
 
 /**
  * Zoskupí breakdown body podľa kategórie štítku. Kategórie sú zoradené abecedne,

@@ -177,6 +177,11 @@ body {
   display: none;
 }
 
+/* Na desktope odhlásenie ponúka ikona v hlavičke, v nastaveniach by bolo navyše. */
+.mobile-only-settings {
+  display: none;
+}
+
 .header-icon-link {
   align-items: center;
   border: 1px solid #2b3558;
@@ -195,32 +200,44 @@ body {
   color: #f2f5ff;
 }
 
-.header-refresh-btn {
+.header-actions {
   align-items: center;
   align-self: flex-start;
+  display: flex;
+  gap: 0.5rem;
+}
+
+/*
+ * Bez krúžku: ikony v hlavičke sú pomocné akcie a rámik okolo nich len pridával šum.
+ * Rozmer 36 px ostáva — je to plocha na dotyk, nie dekorácia.
+ */
+.header-icon-btn {
+  align-items: center;
   background: transparent;
-  border: 1px solid #2b3558;
+  border: 0;
   border-radius: 999px;
-  color: #d5defe;
+  color: #96a3cd;
   cursor: pointer;
   display: inline-flex;
+  flex: 0 0 auto;
   height: 36px;
   justify-content: center;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  padding: 0;
+  transition: color 0.15s ease;
   width: 36px;
 }
 
-.header-refresh-btn:hover:not(:disabled) {
-  border-color: #4f67b5;
+.header-icon-btn:hover:not(:disabled) {
   color: #f2f5ff;
 }
 
-.header-refresh-btn:disabled {
+.header-icon-btn:disabled {
   cursor: default;
   opacity: 0.7;
 }
 
-.header-refresh-icon {
+.header-refresh-icon,
+.header-action-icon {
   height: 18px;
   stroke: currentColor;
   stroke-linecap: round;
@@ -229,7 +246,7 @@ body {
   width: 18px;
 }
 
-.header-refresh-btn[data-syncing="true"] .header-refresh-icon {
+.header-icon-btn[data-syncing="true"] .header-refresh-icon {
   animation: header-refresh-spin 0.8s linear infinite;
   transform-origin: center;
 }
@@ -258,7 +275,10 @@ body {
     0 -10px 28px rgba(148, 179, 255, 0.09) inset;
   display: grid;
   gap: 0.25rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Päť modulov: Domov, Príjmy, Výdavky, Financie, Nastavenia. Na 375px vychádza
+     ~71 px na položku, preto je popisok o kúsok menší než pri štyroch.
+     Pravidlo je zámerne aj v @media (max-width: 760px) — tam ho treba držať v zhode. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   left: 50%;
   max-width: min(430px, calc(100vw - 1.2rem));
   padding: 0.4rem 0.4rem 0.35rem;
@@ -324,7 +344,7 @@ body {
 }
 
 .mobile-liquid-label {
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 650;
   letter-spacing: 0;
   opacity: 0.92;
@@ -334,6 +354,22 @@ body {
 
 .mobile-liquid-link:active {
   transform: translateY(1px) scale(0.985);
+}
+
+/* Kliknuté, ale ešte nenačítané — zvýraznenie preskočí hneď a jemne pulzuje. */
+.mobile-liquid-link[data-pending="true"] .mobile-liquid-label,
+.mobile-liquid-link[data-pending="true"] .mobile-liquid-icon {
+  animation: mobile-liquid-pending 900ms ease-in-out infinite;
+}
+
+@keyframes mobile-liquid-pending {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .mobile-liquid-icon {
@@ -406,125 +442,8 @@ body {
   margin-top: 1.35rem;
 }
 
-.dashboard-section,
-.panel-with-skeleton {
+.dashboard-section {
   position: relative;
-}
-
-.dashboard-section.overlay-open,
-.dashboard-body.overlay-open {
-  z-index: 140;
-}
-
-.dashboard-skeleton-overlay {
-  backdrop-filter: blur(10px);
-  background: rgba(10, 13, 24, 0.72);
-  border: 1px solid rgba(82, 102, 170, 0.28);
-  border-radius: 22px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-  overflow: hidden;
-  pointer-events: none;
-  position: absolute;
-  z-index: 12;
-}
-
-.dashboard-skeleton-overlay::after {
-  animation: skeleton-shimmer 1.25s ease-in-out infinite;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 50%, transparent 100%);
-  content: "";
-  inset: 0;
-  position: absolute;
-  transform: translateX(-100%);
-}
-
-.revenue-skeleton {
-  display: flex;
-  flex-direction: column;
-  inset: 3.15rem 0 0;
-  min-height: 520px;
-  padding: 2.4rem 1.2rem 1.2rem;
-}
-
-.list-skeleton {
-  display: grid;
-  gap: 0.85rem;
-  inset: 3.4rem 0 0;
-  min-height: 280px;
-  padding: 0.9rem 0.4rem;
-}
-
-.skeleton-pill,
-.skeleton-number,
-.skeleton-row span,
-.skeleton-chart span,
-.skeleton-list-row span {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-radius: 999px;
-}
-
-.skeleton-pill {
-  height: 18px;
-  margin: 0 auto 1.4rem;
-  width: 150px;
-}
-
-.skeleton-number {
-  height: clamp(62px, 14vw, 86px);
-  margin: 0 auto;
-  width: min(76%, 360px);
-}
-
-.skeleton-row {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin: 1.2rem 0 2.2rem;
-}
-
-.skeleton-row span {
-  height: 18px;
-  width: 116px;
-}
-
-.skeleton-chart {
-  align-items: end;
-  display: flex;
-  flex: 1;
-  gap: 0.85rem;
-  min-height: 150px;
-}
-
-.skeleton-chart span {
-  border-radius: 12px 12px 4px 4px;
-  flex: 1;
-  min-height: 42px;
-}
-
-.skeleton-list-row {
-  align-items: center;
-  background: rgba(25, 34, 62, 0.7);
-  border: 1px solid rgba(77, 96, 158, 0.28);
-  border-radius: 14px;
-  display: flex;
-  justify-content: space-between;
-  min-height: 70px;
-  padding: 0.9rem 1rem;
-}
-
-.skeleton-list-row span:first-child {
-  height: 16px;
-  width: 48%;
-}
-
-.skeleton-list-row span:last-child {
-  height: 18px;
-  width: 26%;
-}
-
-@keyframes skeleton-shimmer {
-  to {
-    transform: translateX(100%);
-  }
 }
 
 .row-head {
@@ -675,23 +594,36 @@ body {
   transform: translateY(-0.5px);
 }
 
+/*
+ * Obdobie v sheete „Zobrazenie“: segmentový prepínač na celú šírku. Tri tlačidlá v širokom
+ * badgei, ktoré končili v polovici, vyzerali ako nedokončený prvok — teraz si šírku delia
+ * na rovnaké tretiny a rám sedí s riadkami sekcií pod ním.
+ */
 .granularity-toggle {
   background: #141a2d;
   border: 1px solid #29355e;
-  border-radius: 999px;
-  display: flex;
-  padding: 0.2rem;
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0.25rem;
 }
 
 .toggle {
   background: transparent;
   border: 0;
-  border-radius: 999px;
+  border-radius: 11px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.83rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  padding: 0.4rem 0.7rem;
+  padding: 0.58rem 0.4rem;
+  text-align: center;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.toggle:hover {
+  color: #dbe4ff;
 }
 
 .toggle.active {
@@ -945,6 +877,16 @@ body {
   color: #eff2ff;
 }
 
+/*
+ * Popup s číslami musí byť nad VŠETKÝMI stĺpcami, nie len nad tými pred sebou.
+ * `.bar-item` má kvôli `animation-fill-mode: both` natrvalo nastavený `transform`, takže
+ * je vlastný stacking context — `z-index` tooltipu vnútri sa preto s ďalšími stĺpcami
+ * vôbec neporovnáva a nasledujúci stĺpec ho prekryl. Zdvihnúť treba celý stĺpec.
+ */
+.bar-item.active {
+  z-index: 30;
+}
+
 .bar-stack {
   align-items: flex-end;
   display: flex;
@@ -1008,6 +950,30 @@ body {
 
 .bar-item.active.bar-yoy-down .bar.current {
   box-shadow: 0 0 0 2px rgba(220, 115, 140, 0.48), 0 5px 16px rgba(120, 45, 65, 0.34);
+}
+
+/*
+ * Klik na stĺpec zúži sekcie pod grafom. V grafe to musí byť vidieť aj po tom, ako
+ * zmizne bublina s číslami — vybraný stĺpec dostane svetlý prstenec, ostatné potichu
+ * zosvetlia (rovnaký jazyk ako `is-dimmed` výseky v donute).
+ *
+ * Zosvetlenie ide na vnútro stĺpca, nie na `.bar-item`: ten má kvôli
+ * `animation-fill-mode: both` natrvalo `opacity: 1` z poslednej snímky vstupnej
+ * animácie a tá by beh normálnej deklarácie prebila.
+ */
+.bar-chart.has-period-focus .bar-item:not(.is-period-focused) .bar-stack,
+.bar-chart.has-period-focus .bar-item:not(.is-period-focused) p {
+  opacity: 0.45;
+  transition: opacity 140ms ease;
+}
+
+.bar-chart .bar-item.is-period-focused .bar.current {
+  box-shadow: 0 0 0 2px rgba(226, 233, 255, 0.9);
+}
+
+.bar-item.is-period-focused p {
+  color: #eff2ff;
+  font-weight: 700;
 }
 
 .bar.previous {
@@ -1214,48 +1180,6 @@ body {
   width: 100%;
 }
 
-.cashflow-donut-skeleton {
-  align-items: center;
-  aspect-ratio: 1;
-  display: grid;
-  max-width: 360px;
-  place-items: center;
-  position: relative;
-  width: 100%;
-}
-
-.cashflow-donut-skeleton-ring {
-  border: 20px solid rgba(74, 93, 151, 0.48);
-  border-radius: 999px;
-  height: 78%;
-  width: 78%;
-}
-
-.cashflow-donut-skeleton-center {
-  align-items: center;
-  display: grid;
-  gap: 0.45rem;
-  inset: 0;
-  justify-content: center;
-  justify-items: center;
-  position: absolute;
-}
-
-.cashflow-donut-skeleton-center span {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-radius: 999px;
-  display: block;
-  height: 12px;
-}
-
-.cashflow-donut-skeleton-center span:first-child {
-  width: 110px;
-}
-
-.cashflow-donut-skeleton-center span:last-child {
-  width: 72px;
-}
-
 .cashflow-donut-svg {
   display: block;
   max-width: 360px;
@@ -1406,11 +1330,6 @@ body {
   width: 4px;
 }
 
-.cashflow-legend-item.skeleton {
-  background: linear-gradient(120deg, rgba(55, 70, 122, 0.72), rgba(91, 110, 178, 0.52));
-  border-color: rgba(77, 96, 158, 0.28);
-}
-
 .cashflow-legend-item.active {
   border-color: rgba(162, 187, 255, 0.82);
   box-shadow:
@@ -1418,6 +1337,22 @@ body {
     0 0 0 1px rgba(195, 214, 255, 0.34) inset,
     inset 0 0 0 999px color-mix(in srgb, var(--legend-accent, #86f0be) 9%, transparent);
   transform: none;
+}
+
+/* Karta Domova zámerne nevykresľuje `.cashflow-legend-trend` — trend by so sebou
+   priniesol závislosť na období, ktorej sa má táto karta vyhýbať (zobrazuje
+   zostatok k dnešku, nie tok za obdobie). Bez tohto prepisu by ale dlaždica
+   zdedila trojriadkovú mriežku a 180px podlahu z Financií a dole by jej ostal
+   prázdny pás po chýbajúcom riadku trendu. Prepis preto zníži mriežku na dva
+   riadky, zruší min-height podlahu a zruší aj zdedený `cursor: pointer` —
+   táto dlaždica nie je tlačidlo, na rozdiel od legendy vo Financiách/Výdavkoch. */
+.home-legend-item {
+  grid-template-areas:
+    "label"
+    "value";
+  grid-template-rows: minmax(52px, auto) minmax(30px, auto);
+  min-height: 0;
+  cursor: default;
 }
 
 .cashflow-legend-label {
@@ -1585,7 +1520,12 @@ body {
   display: block;
 }
 
-.invoice-list .invoice-tags {
+/*
+ * Štítky dokladu nikdy nepretekajú kartu — dlhý alebo početný zoznam sa
+ * scrolluje vodorovne, a to bez viditeľného scroll baru (riadok tak nemení
+ * výšku ani vzhľad podľa počtu štítkov).
+ */
+.invoice-tags {
   align-items: center;
   box-sizing: border-box;
   display: flex;
@@ -1594,23 +1534,21 @@ body {
   gap: 0.28rem;
   height: 1.75rem;
   margin-top: 0;
-  max-width: none;
+  max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   width: 100%;
 }
 
 .invoice-tags::-webkit-scrollbar {
-  height: 4px;
-}
-
-.invoice-tags::-webkit-scrollbar-thumb {
-  background: rgba(100, 126, 210, 0.45);
-  border-radius: 999px;
+  height: 0;
+  width: 0;
+  display: none;
 }
 
 .invoice-tags span {
@@ -1725,6 +1663,21 @@ body {
   flex-shrink: 0;
   justify-self: end;
   min-width: 0;
+  text-align: right;
+}
+
+/* Doklad zúžený filtrom — pod sumou je vidno, z akého celku tá časť je. */
+.expense-scope-note {
+  margin: 0.15rem 0 0;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.invoice-item-amount {
+  align-items: flex-end;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   text-align: right;
 }
 
@@ -1898,6 +1851,12 @@ body {
   margin: 0;
 }
 
+.breakdown-meta {
+  color: var(--muted);
+  display: block;
+  font-size: 0.7rem;
+}
+
 .movement-amount-text {
   font-weight: 700;
 }
@@ -1995,27 +1954,6 @@ body {
   color: #ffffff;
 }
 
-.log-message {
-  max-width: min(48vw, 360px);
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.log-detail-pre {
-  background: #0f1526;
-  border: 1px solid #2b3864;
-  border-radius: 10px;
-  color: #d8e0ff;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  margin: 0.75rem 0 0;
-  max-height: 52vh;
-  overflow: auto;
-  padding: 0.8rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .secondary-button {
   background: linear-gradient(180deg, #212d4f 0%, #1a2340 100%);
   border-color: #3b4d85;
@@ -2034,6 +1972,11 @@ body {
   position: absolute;
 }
 
+/*
+ * Vykresľuje sa portálom do `document.body` (`SheetOverlay`), teda ako súrodenec
+ * `.mobile-liquid-nav` — z-index preto musí byť nad menu (90), inak menu prekryje
+ * spodok dialógu.
+ */
 .tag-filter-overlay {
   background: rgba(6, 8, 14, 0.58);
   inset: 0;
@@ -2175,8 +2118,18 @@ body {
     display: none;
   }
 
-  .header-refresh-btn {
+  /*
+   * Hlavička na mobile nemá odhlásenie (je v Nastaveniach) ani obnovenie (rieši ho
+   * potiahnutie prstom) — schovávame preto jednotlivé akcie, nie celú skupinu. Prepínač
+   * zobrazených kategórií tu ostáva, na mobile je potrebný najviac.
+   */
+  .header-actions > *:not(.category-visibility-trigger) {
     display: none;
+  }
+
+  /* Hlavička na mobile nemá tlačidlo odhlásenia, ponúkame ho v Nastaveniach. */
+  .mobile-only-settings {
+    display: block;
   }
 
   .mobile-liquid-nav {
@@ -2197,7 +2150,7 @@ body {
       0 -10px 28px rgba(148, 179, 255, 0.09) inset;
     display: grid;
     gap: 0.25rem;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     left: 50%;
     max-width: min(430px, calc(100vw - 1.2rem));
     padding: 0.4rem 0.4rem 0.35rem;
@@ -2263,7 +2216,7 @@ body {
   }
 
   .mobile-liquid-label {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     font-weight: 650;
     letter-spacing: 0;
     opacity: 0.92;
@@ -2365,6 +2318,12 @@ body {
     min-width: 0;
   }
 
+  /* Bez tohto by mobilné pravidlo vyššie (rovnaká špecifickosť, neskôr v súbore)
+     prepísalo min-height:0 z hlavného prepisu vyššie späť na 168px. */
+  .home-legend-item {
+    min-height: 0;
+  }
+
   .kpi-card {
     min-height: 165px;
   }
@@ -2418,6 +2377,9 @@ body {
   }
 }
 
+/* --- Sťahovanie dát ------------------------------------------------------ */
+
+/* Tenký pás v hlavičke — dosynchronizovanie nad už zobrazenými dátami. */
 .sync-progress {
   display: grid;
   gap: 0.4rem;
@@ -2446,17 +2408,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.sync-progress-detail {
-  color: #8792b4;
-  display: flex;
-  font-size: 0.7rem;
-  font-weight: 600;
-  gap: 0.45rem;
-  min-height: 0.95rem;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
 .sync-progress-track {
   background: rgba(43, 57, 100, 0.6);
   border-radius: 999px;
@@ -2469,37 +2420,796 @@ body {
   border-radius: 999px;
   height: 100%;
   min-width: 6px;
-  overflow: hidden;
-  position: relative;
   transition: width 260ms ease;
 }
 
-/* Beh vlnky drží najavo, že krok stále pracuje, aj keď % stoja. */
-.sync-progress-fill::after {
-  animation: sync-progress-sheen 1.3s ease-in-out infinite;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  content: "";
+/* Sťahovanie na celú obrazovku — prvé načítanie modulu. */
+/* Kruh s popisom kroku drží stred, vysvetlenie sedí na spodku obrazovky. */
+.sync-overlay {
+  animation: sync-overlay-in 240ms ease both;
+  backdrop-filter: blur(20px) saturate(150%);
+  background:
+    radial-gradient(ellipse 820px 560px at 50% 16%, rgba(66, 94, 186, 0.5) 0%, rgba(17, 20, 32, 0) 68%),
+    rgba(10, 13, 23, 0.93);
+  display: grid;
+  grid-template-rows: 1fr auto;
   inset: 0;
+  justify-items: center;
+  /*
+   * Iba oznam o priebehu — nič sa v ňom neklikne, takže kliknutia púšťame skrz.
+   * Menu je navyše mimo `.app-shell`, teda nad touto vrstvou: aj počas sťahovania
+   * sa dá prekliknúť na iný modul.
+   */
+  pointer-events: none;
+  padding: calc(2.2rem + env(safe-area-inset-top)) 1.35rem calc(7rem + env(safe-area-inset-bottom));
+  position: fixed;
+  row-gap: 1.6rem;
+  z-index: 150;
+}
+
+.sync-overlay-card {
+  align-self: center;
+  display: grid;
+  gap: 1.15rem;
+  justify-items: center;
+  max-width: 540px;
+  text-align: center;
+  width: 100%;
+}
+
+.sync-overlay-eyebrow {
+  color: #93a2cd;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.sync-overlay-ring {
+  height: clamp(172px, 27vh, 220px);
+  position: relative;
+  width: clamp(172px, 27vh, 220px);
+}
+
+.sync-overlay-ring svg {
+  height: 100%;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.sync-overlay-ring-track {
+  fill: none;
+  stroke: rgba(52, 68, 118, 0.55);
+}
+
+.sync-overlay-ring-value {
+  fill: none;
+  stroke: url(#sync-ring-gradient);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Jemné dýchanie ringu drží najavo, že sa pracuje, aj keď percento chvíľu stojí. */
+.sync-overlay-ring::after {
+  animation: sync-overlay-breathe 2.4s ease-in-out infinite;
+  background: radial-gradient(circle at 50% 50%, rgba(112, 145, 255, 0.3) 0%, rgba(112, 145, 255, 0) 68%);
+  border-radius: 50%;
+  content: "";
+  inset: -14%;
+  pointer-events: none;
   position: absolute;
 }
 
-@keyframes sync-progress-sheen {
+.sync-overlay-ring-center {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.sync-overlay-ring-center strong {
+  color: #f2f5ff;
+  font-size: clamp(2.3rem, 6vw, 3rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.sync-overlay-ring-center span {
+  color: #93a2cd;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.sync-overlay-current {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 100%;
+}
+
+.sync-overlay-current strong {
+  color: #eff2ff;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.sync-overlay-current span {
+  color: #a7b3d6;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  min-height: 1.2rem;
+}
+
+.sync-overlay-current em {
+  color: #7e89ab;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+}
+
+.sync-overlay-note {
+  color: #6b7594;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 420px;
+  text-align: center;
+}
+
+@keyframes sync-overlay-in {
   from {
-    transform: translateX(-100%);
+    opacity: 0;
   }
   to {
-    transform: translateX(100%);
+    opacity: 1;
+  }
+}
+
+@keyframes sync-overlay-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sync-progress-fill::after {
+  .sync-overlay,
+  .sync-overlay-ring::after,
+  .mobile-liquid-link[data-pending="true"] .mobile-liquid-label,
+  .mobile-liquid-link[data-pending="true"] .mobile-liquid-icon {
     animation: none;
-    opacity: 0;
   }
+
+  .sync-overlay-ring-value {
+    transition: none;
+  }
+}
+
+/*
+ * Filter v hlavičke sekcie: len nevyplnená ikona, bez krúžku a podkladu. Textové tlačidlo
+ * („Filter štítkov (5)“) aj krúžok okolo ikony brali v hlavičke priveľa pozornosti — filter
+ * je pomocná akcia, nadpis sekcie má ostať tým najvýraznejším prvkom.
+ */
+.filter-icon-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #7f8cb4;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  position: relative;
+  transition: color 160ms ease;
+  width: 30px;
+}
+
+.filter-icon-button svg {
+  height: 19px;
+  width: 19px;
+}
+
+.filter-icon-button:hover {
+  color: #dbe4ff;
+}
+
+.filter-icon-button.is-active {
+  color: #b8c8ff;
+}
+
+.filter-icon-badge {
+  color: #93a9f2;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  position: absolute;
+  right: -1px;
+  top: 0;
+}
+
+/* Šípky legendy donutu — na desktope je to jediný spôsob, ako sa dostať ku kartám za hranou. */
+.cashflow-donut-legend-wrap {
+  min-width: 0;
+  position: relative;
+}
+
+.cashflow-legend-nav {
+  align-items: center;
+  background: rgba(20, 28, 52, 0.94);
+  border: 1px solid rgba(120, 148, 236, 0.5);
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(6, 10, 22, 0.45);
+  color: #e4ecff;
+  cursor: pointer;
+  display: flex;
+  font-size: 1.25rem;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 0 0.12rem;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: background 160ms ease, border-color 160ms ease;
+  width: 34px;
+  z-index: 2;
+}
+
+.cashflow-legend-nav:hover {
+  background: rgba(32, 44, 78, 0.98);
+  border-color: rgba(168, 192, 255, 0.82);
+}
+
+.cashflow-legend-nav.prev {
+  left: 0.15rem;
+}
+
+.cashflow-legend-nav.next {
+  right: 0.15rem;
+}
+
+/* Na dotykových zariadeniach netreba — legenda sa posúva swipom. */
+@media (hover: none) and (pointer: coarse) {
+  .cashflow-legend-nav {
+    display: none;
+  }
+}
+
+/* Prepínač zobrazenia v hlavičke modulu — aktívny stav len farbou, žiadny rámik. */
+.header-icon-btn.is-active {
+  color: #c3d0ff;
+}
+
+/* Skrytá kategória s aktívnym filtrom — bodka je jediný signál, že prehľad niečo zužuje. */
+.header-icon-btn.has-hidden-filters {
+  position: relative;
+}
+
+.header-icon-btn.has-hidden-filters::after {
+  background: #ffb163;
+  border-radius: 999px;
+  content: "";
+  height: 7px;
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 7px;
+}
+
+.category-visibility-options {
+  display: grid;
+  gap: 0.45rem;
+}
+
+/* Skupiny sa scrollujú spolu, aby dlhý zoznam kategórií nezatlačil tlačidlá zo sheetu. */
+.category-visibility-scroll {
+  margin: 1rem 0 1.1rem;
+  max-height: min(52vh, 400px);
+  overflow-y: auto;
+}
+
+.category-visibility-row {
+  align-items: center;
+  background: #18203c;
+  border: 1px solid #2a3765;
+  border-radius: 14px;
+  color: #dee6ff;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.92rem;
+  gap: 0.7rem;
+  justify-content: space-between;
+  padding: 0.62rem 0.7rem 0.62rem 0.85rem;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+  width: 100%;
+}
+
+.category-visibility-row:hover {
+  border-color: #4f67b5;
+}
+
+.category-visibility-name {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.category-filter-hint {
+  align-items: center;
+  background: rgba(255, 177, 99, 0.16);
+  border: 1px solid rgba(255, 177, 99, 0.5);
+  border-radius: 999px;
+  color: #ffc98c;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  gap: 0.15rem;
+  line-height: 1;
+  padding: 0.14rem 0.34rem 0.14rem 0.24rem;
+}
+
+.category-filter-hint svg {
+  height: 11px;
+  width: 11px;
+}
+
+.category-switch {
+  background: #232d4f;
+  border: 1px solid #35426f;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 2px;
+  transition: background 160ms ease, border-color 160ms ease;
+  width: 40px;
+}
+
+.category-switch.is-on {
+  background: linear-gradient(180deg, #4f6fe0 0%, #3d55b8 100%);
+  border-color: #7691e9;
+}
+
+.category-switch-knob {
+  background: #cdd8ff;
+  border-radius: 999px;
+  height: 16px;
+  transition: transform 160ms ease;
+  width: 16px;
+}
+
+.category-switch.is-on .category-switch-knob {
+  background: #f4f7ff;
+  transform: translateX(18px);
+}
+
+/* --- Zástupný obsah modulu počas prvého načítania ------------------------ */
+
+.module-skeleton-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0 0 0.6rem;
+  text-align: center;
+}
+
+.skeleton-line,
+.skeleton-bar {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, #1b2442 0%, #24304f 50%, #1b2442 100%);
+  border-radius: 8px;
+}
+
+.skeleton-line {
+  height: 14px;
+  margin: 0.55rem 0;
+  width: 100%;
+}
+
+.skeleton-line-sm {
+  height: 11px;
+  margin-inline: auto;
+  width: 38%;
+}
+
+.skeleton-line-md {
+  height: 13px;
+  width: 52%;
+}
+
+.skeleton-line-xl {
+  height: 34px;
+  margin: 0.9rem auto;
+  width: 62%;
+}
+
+.skeleton-chart {
+  align-items: flex-end;
+  display: flex;
+  gap: 0.95rem;
+  height: clamp(170px, 33vw, 220px);
+  padding: 0.4rem 0.35rem 0;
+}
+
+.skeleton-bar {
+  flex: 1 1 0;
+  min-width: 18px;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line,
+  .skeleton-bar {
+    animation: none;
+  }
+}
+
+/* Skupiny dýchajú: nadpisy nalepené na predchádzajúci zoznam sa čítali ako jeden blok. */
+.category-visibility-group + .category-visibility-group {
+  margin-top: 1.4rem;
+}
+
+.category-visibility-group-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+/* Akcie panela pod textom — v hlavičke sa dlhé názvy tlačidiel lámali. */
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.panel-actions .secondary-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Graf Domova: stĺpce Príjmy/Výdavky a čiara zisku na jednej škále. Stĺpce sa
+ * polohujú od NULOVEJ ČIARY, nie od spodku — pri zápornom zisku sa nula odlepí
+ * od dna a čiara klesne pod ňu. Preto vlastné triedy a nie `.bar-*`: tie držia
+ * Príjmy aj Výdavky, kde stĺpce znamenajú tento rok vs. vlani.
+ *
+ * `.profit-chart-scroll` je JEDINÝ posúvateľný kontajner a čiara (SVG) aj stĺpce
+ * sú jeho priami/nepriami potomkovia vnútri `.profit-chart-track` so ŠÍRKOU V PIXELOCH
+ * (nastavuje ju komponent, nie CSS percento). Vďaka tomu majú obe vrstvy vždy presne tú
+ * istú šírku obsahu a posúvajú sa spolu — predtým bola čiara (SVG) sirotou v
+ * neposúvateľnom `.profit-chart-wrap` na šírku `100 %` OBRAZOVKY, kým stĺpce pri väčšom
+ * počte než sa zmestí pretekali mimo neho (`.bar-chart` má rovnaký problém vyriešený
+ * priamo na sebe, tu ho vyriešiť nešlo, lebo čiara bola mimo posúvateľnej vrstvy).
+ */
+.profit-chart-wrap {
+  position: relative;
+}
+
+.profit-chart-scroll {
+  -ms-overflow-style: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.profit-chart-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.profit-chart-track {
+  /* Šírka príde inline z komponentu (počet stĺpcov × ich pixelová šírka), toto je
+     len poistka, nech pri málo stĺpcoch track nezostane užší, než je viditeľná plocha. */
+  min-width: 100%;
+  position: relative;
+}
+
+.profit-chart {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: 0.32rem 0.5rem;
+  width: 100%;
+}
+
+.profit-bar-item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  /* Základ 44px zodpovedá `COLUMN_WIDTH` v profit-chart.tsx — grow nechá stĺpce
+     roztiahnuť sa, keď je stĺpcov málo a track je širší než ich súčet (pozri
+     `min-width: 100%` vyššie); keď stĺpcov je veľa, track má presne ich súčet
+     šírky a grow nemá čo rozdeliť, takže stĺpce ostanú pri 44px a posúvajú sa. */
+  flex: 1 1 44px;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0;
+  position: relative;
+  animation: revenue-bar-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--bar-index, 0) * 55ms);
+}
+
+.profit-bar-item p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+/*
+ * Rovnaký dôvod ako pri `.bar-item.active`: `.profit-bar-item` má kvôli
+ * `animation-fill-mode: both` natrvalo nastavený `transform` zo vstupnej
+ * animácie, takže je vlastný stacking context. `z-index` na bublinu s číslami
+ * vnútri by sa preto porovnával len voči jej súrodencom, nie voči ostatným
+ * stĺpcom — zdvihnúť treba celý fokusnutý stĺpec.
+ */
+.profit-bar-item.is-period-focused {
+  z-index: 30;
+}
+
+.profit-bar-item.is-period-focused p {
+  color: #eff2ff;
+}
+
+.profit-bar-stack {
+  display: flex;
+  gap: 0.2rem;
+  height: clamp(170px, 33vw, 220px);
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.profit-bar {
+  border-radius: 8px;
+  position: absolute;
+  width: 13px;
+}
+
+.profit-bar.income {
+  background: linear-gradient(180deg, #9cb4ff 0%, #7b99ff 38%, #5d78e6 100%);
+  box-shadow: 0 5px 12px rgba(92, 125, 242, 0.38);
+  right: calc(50% + 0.1rem);
+}
+
+.profit-bar.expense {
+  background: linear-gradient(180deg, #fcd34d 0%, #f6b73c 40%, #d98b18 100%);
+  box-shadow: 0 5px 12px rgba(217, 139, 24, 0.32);
+  left: calc(50% + 0.1rem);
+}
+
+/* Čiara zisku leží NAD stĺpcami, ale nesmie brať kliky — tie patria stĺpcom. */
+.profit-chart-line {
+  height: clamp(170px, 33vw, 220px);
+  left: 0.5rem;
+  pointer-events: none;
+  position: absolute;
+  top: 0.32rem;
+  width: calc(100% - 1rem);
+  z-index: 10;
+}
+
+.profit-chart-line polyline {
+  fill: none;
+  stroke: #f0f4ff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.profit-chart-line circle {
+  fill: #f0f4ff;
+  stroke: none;
+}
+
+.profit-chart-zero {
+  stroke: rgba(226, 234, 255, 0.28);
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.profit-chart.has-period-focus .profit-bar-item:not(.is-period-focused) .profit-bar-stack,
+.profit-chart.has-period-focus .profit-bar-item:not(.is-period-focused) p {
+  opacity: 0.42;
+}
+
+.profit-chart-legend {
+  display: flex;
+  gap: 0.9rem;
+  justify-content: center;
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.profit-chart-legend li {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.72rem;
+  gap: 0.32rem;
+}
+
+.profit-chart-legend li::before {
+  border-radius: 3px;
+  content: "";
+  height: 8px;
+  width: 8px;
+}
+
+.profit-chart-legend li.income::before {
+  background: #7b99ff;
+}
+
+.profit-chart-legend li.expense::before {
+  background: #f6b73c;
+}
+
+.profit-chart-legend li.profit::before {
+  background: #f0f4ff;
+}
+
+.profit-tooltip-previous {
+  color: var(--muted);
+}
+
+.profit-headline {
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0.2rem 0 0;
+}
+
+.profit-headline-meta {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0.6rem;
+}
+
+.profit-kpi-row {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.7rem;
+}
+
+.profit-kpi-row > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.profit-kpi-label {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 0.76rem;
+}
+
+.home-donut {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  margin: 0.6rem auto;
+  mask: radial-gradient(circle, transparent 56%, #000 57%);
+  width: min(190px, 52vw);
+}
+
+.home-card-link {
+  color: #a9bcff;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 0.7rem;
+  text-decoration: none;
+}
+
+.vat-month {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.8rem;
+}
+
+.vat-month strong {
+  font-size: 1.35rem;
+}
+
+.due-row {
+  margin-top: 0.9rem;
+}
+
+.due-row-head {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.due-bar {
+  background: rgba(226, 234, 255, 0.12);
+  border-radius: 999px;
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 0.4rem 0;
+  overflow: hidden;
+}
+
+.due-bar-segment.due {
+  background: #7b99ff;
+}
+
+.due-bar-segment.overdue {
+  background: #f6b73c;
+}
+
+.due-bar-segment.overdue60 {
+  background: #f87171;
+}
+
+.due-bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.due-bands li {
+  border-left: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.45rem;
+}
+
+.due-bands li span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.due-bands li.due {
+  border-left-color: #7b99ff;
+}
+
+.due-bands li.overdue {
+  border-left-color: #f6b73c;
+}
+
+.due-bands li.overdue60 {
+  border-left-color: #f87171;
 }

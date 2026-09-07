@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { appendKrosLog } from "@/lib/kros-logs";
+import { resolveConnections } from "@/lib/kros-connection-handlers";
+import { krosContext } from "../context";
 import { toDateOnlyString } from "@/lib/document-date";
 
+/** Prepojenie tak, ako ho server načíta z databázy. Z prehliadača token nikdy nechodí. */
 type CompanyConnection = {
   companyId: number;
   companyName: string;
@@ -9,7 +12,8 @@ type CompanyConnection = {
 };
 
 type ExpenseRequestBody = {
-  companies: CompanyConnection[];
+  /** Filter firiem. Prázdne = všetky firmy prepojené touto firmou. */
+  companyIds?: number[];
   deliveryDateFrom?: string;
   deliveryDateTo?: string;
   lastModifiedTimestamp?: string;
@@ -303,11 +307,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
   }
 
-  if (
-    !Array.isArray(body.companies) ||
-    (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo))
-  ) {
+  if (!body.lastModifiedTimestamp && (!body.deliveryDateFrom || !body.deliveryDateTo)) {
     return NextResponse.json({ error: "Neplatné telo požiadavky" }, { status: 400 });
+  }
+
+  const context = await krosContext();
+  if (context instanceof NextResponse) return context;
+
+  // Pred otvorením streamu: keby sa prepojenia načítavali až vnútri, chyba databázy by
+  // odišla ako riadok v NDJSON namiesto stavového kódu.
+  const companies = await resolveConnections(context.connections, context.scope, body.companyIds);
+  if (companies.length === 0) {
+    return NextResponse.json({ error: "Žiadna firma nie je prepojená s KROS." }, { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -325,7 +336,7 @@ export async function POST(request: Request) {
       };
 
       try {
-        await runExpenseSync(body, request.signal, send);
+        await runExpenseSync(body, companies, request.signal, send);
       } catch (error) {
         await appendKrosLog({
           direction: "error",
@@ -361,6 +372,7 @@ export async function POST(request: Request) {
 
 async function runExpenseSync(
   body: ExpenseRequestBody,
+  companies: CompanyConnection[],
   signal: AbortSignal,
   send: (event: unknown) => void
 ) {
@@ -368,9 +380,9 @@ async function runExpenseSync(
     direction: "request",
     endpoint: "/api/kros/expenses",
     method: "POST",
-    message: `firmy=${body.companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
+    message: `firmy=${companies.length}${body.deliveryDateFrom ? `, deliveryDateFrom=${body.deliveryDateFrom}` : ""}${body.deliveryDateTo ? `, deliveryDateTo=${body.deliveryDateTo}` : ""}${body.lastModifiedTimestamp ? `, lastModifiedTimestamp=${body.lastModifiedTimestamp}` : ""}`,
     payload: {
-      companies: body.companies.map((company) => ({
+      companies: companies.map((company) => ({
         companyId: company.companyId,
         companyName: company.companyName
       })),
@@ -383,7 +395,7 @@ async function runExpenseSync(
   const allExpenses = [];
   const errors: { companyName: string; message: string }[] = [];
 
-  for (const company of body.companies) {
+  for (const company of companies) {
     try {
       const companyExpenses = await fetchCompanyExpenses(
         company,
@@ -407,7 +419,7 @@ async function runExpenseSync(
     endpoint: "/api/kros/expenses",
     method: "POST",
     status: 200,
-    message: `Načítané výdavky=${allExpenses.length}, chyby=${errors.length}, firmy=${body.companies.length}`,
+    message: `Načítané výdavky=${allExpenses.length}, chyby=${errors.length}, firmy=${companies.length}`,
     payload: errors.length > 0 ? { errors } : undefined
   });
 

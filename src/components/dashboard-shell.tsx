@@ -1,9 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
-import { formatSyncEta, type SyncProgress } from "@/lib/use-sync-progress";
+import { formatSyncEta, getSyncFraction, useSyncProgressValue } from "@/lib/use-sync-progress";
+import {
+  CategoryVisibilityButton,
+  type CategoryVisibilitySettings
+} from "@/components/category-visibility-button";
+import { SyncOverlay } from "@/components/sync-overlay";
 
 import { signOutAction } from "@/app/actions/sign-out";
 
@@ -11,27 +14,31 @@ type Props = {
   children: React.ReactNode;
   isSyncing?: boolean;
   onRefresh?: () => void;
-  syncProgress?: SyncProgress | null;
+  /** Vysvetlenie dlhého prvého načítania pre obrazovku sťahovania. */
+  syncNote?: string;
   title?: string;
+  /** Keď má modul čo skrývať, v hlavičke pribudne prepínač zobrazených sekcií. */
+  categoryVisibility?: CategoryVisibilitySettings;
 };
 
 export function DashboardShell({
   children,
   isSyncing = false,
   onRefresh,
-  syncProgress = null,
-  title = "Príjmy"
+  syncNote,
+  title = "Príjmy",
+  categoryVisibility
 }: Props) {
   const [pullDistance, setPullDistance] = useState(0);
   const pullStartYRef = useRef<number | null>(null);
   const isPullingRef = useRef(false);
   const pullThreshold = 86;
-  const pathname = usePathname();
-  const progress = syncProgress && syncProgress.total > 0 ? syncProgress : null;
-  const progressPct = progress
-    ? Math.min(100, Math.round(((progress.done + (progress.stepFraction ?? 0)) / progress.total) * 100))
-    : 0;
-  const progressEta = formatSyncEta(progress?.etaSeconds);
+  const syncProgress = useSyncProgressValue();
+  const progress = syncProgress && syncProgress.steps.length > 0 ? syncProgress : null;
+  const inlineProgress = progress && !progress.immersive ? progress : null;
+  const inlinePct = inlineProgress ? Math.round(getSyncFraction(inlineProgress) * 100) : 0;
+  const inlineStep = inlineProgress?.steps[inlineProgress.activeIndex];
+  const inlineEta = formatSyncEta(inlineProgress?.etaSeconds);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
     if (!onRefresh || isSyncing || window.scrollY > 0) return;
@@ -85,53 +92,51 @@ export function DashboardShell({
       <header className="app-header">
         <div>
           <h1>{title}</h1>
-          <nav className="header-nav desktop-only-nav" aria-label="Navigácia prehľadov">
-            <Link href="/" className={pathname === "/" ? "header-nav-link active" : "header-nav-link"}>
-              Príjmy
-            </Link>
-            <Link
-              href="/expenses"
-              className={pathname === "/expenses" ? "header-nav-link active" : "header-nav-link"}
-            >
-              Výdavky
-            </Link>
-            <Link
-              href="/cashflow"
-              className={pathname === "/cashflow" ? "header-nav-link active" : "header-nav-link"}
-            >
-              Financie
-            </Link>
-          </nav>
         </div>
-        {onRefresh ? (
-          <button
-            type="button"
-            className="header-refresh-btn"
-            onClick={() => onRefresh()}
-            disabled={isSyncing}
-            data-syncing={isSyncing}
-            aria-label="Obnoviť dáta"
-            title="Obnoviť dáta"
-          >
-            <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M20 11a8 8 0 1 0-.9 4.5" />
-              <path d="M20 4v6h-6" />
-            </svg>
-          </button>
-        ) : null}
-        <form action={signOutAction}>
-          <button type="submit" className="header-refresh-btn" aria-label="Odhlásiť sa">
-            Odhlásiť sa
-          </button>
-        </form>
+        <div className="header-actions">
+          {categoryVisibility &&
+          (categoryVisibility.categoryOptions.length + categoryVisibility.sectionOptions.length > 0 ||
+            categoryVisibility.granularity) ? (
+            <CategoryVisibilityButton {...categoryVisibility} moduleTitle={title} />
+          ) : null}
+          {onRefresh ? (
+            <button
+              type="button"
+              className="header-icon-btn"
+              onClick={() => onRefresh()}
+              disabled={isSyncing}
+              data-syncing={isSyncing}
+              aria-label="Obnoviť dáta"
+              title="Obnoviť dáta"
+            >
+              <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 11a8 8 0 1 0-.9 4.5" />
+                <path d="M20 4v6h-6" />
+              </svg>
+            </button>
+          ) : null}
+          <form action={signOutAction}>
+            <button type="submit" className="header-icon-btn" aria-label="Odhlásiť sa" title="Odhlásiť sa">
+              <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2" />
+                <path d="M10 12h10" />
+                <path d="M17 9l3 3-3 3" />
+              </svg>
+            </button>
+          </form>
+        </div>
       </header>
 
-      {progress ? (
+      {inlineProgress ? (
         <div className="sync-progress">
           <div className="sync-progress-meta">
-            <span className="sync-progress-step">{progress.label ?? "Načítavam dáta..."}</span>
+            <span className="sync-progress-step">
+              {[inlineStep?.group, inlineStep?.label, inlineProgress.detail]
+                .filter(Boolean)
+                .join(" · ") || "Načítavam dáta..."}
+            </span>
             <span className="sync-progress-count">
-              {progressPct} %{progressEta ? ` · ${progressEta}` : ""}
+              {inlinePct} %{inlineEta ? ` · ${inlineEta}` : ""}
             </span>
           </div>
           <div
@@ -140,80 +145,19 @@ export function DashboardShell({
             aria-label="Priebeh načítania dát"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={progressPct}
-            aria-valuetext={`${progressPct} %`}
+            aria-valuenow={inlinePct}
+            aria-valuetext={`${inlinePct} %`}
           >
-            <div className="sync-progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="sync-progress-detail">
-            {[`Krok ${Math.min(progress.done + 1, progress.total)}/${progress.total}`, progress.detail]
-              .filter(Boolean)
-              .join(" · ")}
+            <div className="sync-progress-fill" style={{ width: `${inlinePct}%` }} />
           </div>
         </div>
       ) : null}
 
       {children}
 
-      <nav className="mobile-liquid-nav" aria-label="Hlavná navigácia">
-        <Link href="/" className={pathname === "/" ? "mobile-liquid-link active" : "mobile-liquid-link"}>
-          <span className="mobile-liquid-orb" aria-hidden="true">
-            <span className="mobile-liquid-icon">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M4.5 10.4 12 4l7.5 6.4V20a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1v-9.6Z" />
-              <path d="M9.5 21v-5.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V21" />
-            </svg>
-            </span>
-          </span>
-          <span className="mobile-liquid-label">Príjmy</span>
-        </Link>
-        <Link
-          href="/expenses"
-          className={pathname === "/expenses" ? "mobile-liquid-link active" : "mobile-liquid-link"}
-        >
-          <span className="mobile-liquid-orb" aria-hidden="true">
-            <span className="mobile-liquid-icon">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M6 3.5h12v17l-2.4-1.6-2.4 1.6-1.2-.8-1.2.8-2.4-1.6L6 20.5v-17Z" />
-              <path d="M9 8h6" />
-              <path d="M9 11.5h6" />
-              <path d="M9 15h3.6" />
-            </svg>
-            </span>
-          </span>
-          <span className="mobile-liquid-label">Výdavky</span>
-        </Link>
-        <Link
-          href="/cashflow"
-          className={pathname === "/cashflow" ? "mobile-liquid-link active" : "mobile-liquid-link"}
-        >
-          <span className="mobile-liquid-orb" aria-hidden="true">
-            <span className="mobile-liquid-icon">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M4 19.5h16" />
-              <rect x="5.2" y="12.2" width="3.2" height="5.6" rx="1.1" />
-              <rect x="10.4" y="8.6" width="3.2" height="9.2" rx="1.1" />
-              <rect x="15.6" y="5.6" width="3.2" height="12.2" rx="1.1" />
-            </svg>
-            </span>
-          </span>
-          <span className="mobile-liquid-label">Financie</span>
-        </Link>
-        <Link
-          href="/settings"
-          className={pathname === "/settings" ? "mobile-liquid-link active" : "mobile-liquid-link"}
-        >
-          <span className="mobile-liquid-orb" aria-hidden="true">
-            <span className="mobile-liquid-icon">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="m19.2 12.9.1-.9-.1-.9 2-1.5-1.9-3.3-2.4 1a7.8 7.8 0 0 0-1.6-.9L15 3.7h-6l-.3 2.7a7.8 7.8 0 0 0-1.6.9l-2.4-1L2.8 9.6l2 1.5-.1.9.1.9-2 1.5 1.9 3.3 2.4-1a7.8 7.8 0 0 0 1.6.9l.3 2.7h6l.3-2.7a7.8 7.8 0 0 0 1.6-.9l2.4 1 1.9-3.3-2-1.5Z" />
-              <circle cx="12" cy="12" r="2.8" />
-            </svg>
-            </span>
-          </span>
-          <span className="mobile-liquid-label">Nastavenia</span>
-        </Link>
-      </nav>
+      {progress?.immersive ? (
+        <SyncOverlay progress={progress} title={title} note={syncNote} />
+      ) : null}
     </main>
   );
 }

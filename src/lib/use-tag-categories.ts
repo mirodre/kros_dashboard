@@ -36,7 +36,7 @@ export function useTagCategoryIndex(
         const response = await fetch("/api/kros/tags", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ companies: connections }),
+          body: JSON.stringify({ companyIds: connections.map((connection) => connection.companyId) }),
           signal: abortController.signal
         });
 

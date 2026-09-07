@@ -23,9 +23,11 @@ const PUBLIC_PREFIXES = [
  * cross-site POSTe neposiela — aj prihlásený používateľ by teda prišiel bez session,
  * middleware by ho presmeroval na `/api/auth/signin` a POST telo (zoznam firiem) by sa
  * stratilo. Skutočná autorizácia tejto route nie je session, ale jednorazový `state`,
- * ktorý handler overuje cez `consumeOAuthState()` (`src/app/kros/callback/route.ts`) —
- * ten istý token, čo appka sama vydala cez `POST /api/kros/oauth-state`, ktoré je samo
- * za prihlásením.
+ * ktorý handler spotrebuje cez `oauthStateStore().consume()`
+ * (`src/app/kros/callback/route.ts`) — ten istý token, čo appka sama vydala cez
+ * `POST /api/kros/oauth-state`, ktoré je samo za prihlásením. Od fázy 2 ten `state` nesie
+ * aj firmu a človeka, ktorý ho vydal: bez toho by callback bez session nevedel, komu
+ * prepojenie zapísať.
  */
 /**
  * Cesta, na ktorú middleware posiela neprihláseného. Konštanta je TU, a nie pri middleware,

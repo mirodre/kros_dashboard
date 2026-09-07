@@ -1,5 +1,3 @@
-import { savePendingState } from "./kros-storage";
-
 function createIntegrationConsentUrl(state: string) {
   const consentBase =
     process.env.NEXT_PUBLIC_KROS_CONSENT_BASE_URL ?? "https://firma.kros.sk/integration-consent";
@@ -28,7 +26,8 @@ type StartKrosConnectOptions = {
 export async function startKrosConnect(options: StartKrosConnectOptions = {}): Promise<boolean> {
   const { onStatus } = options;
   const state = crypto.randomUUID().replace(/-/g, "");
-  savePendingState(state);
+  // `state` sa neukladá v prehliadači: od fázy 2 ho server viaže na firmu a človeka pri
+  // vydaní, takže návrat z KROS overuje on — nie kód, ktorý beží na zariadení.
   onStatus?.("Pripravujem bezpečné prepojenie s KROS...");
 
   try {
@@ -38,7 +37,8 @@ export async function startKrosConnect(options: StartKrosConnectOptions = {}): P
       body: JSON.stringify({ state })
     });
     if (!response.ok) {
-      onStatus?.("Nepodarilo sa pripraviť OAuth prepojenie. Skús to znova.");
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      onStatus?.(payload?.error ?? "Nepodarilo sa pripraviť OAuth prepojenie. Skús to znova.");
       return false;
     }
   } catch {

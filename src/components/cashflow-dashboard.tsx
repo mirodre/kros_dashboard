@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { KpiCard } from "@/lib/mock-data";
 import type {
   CashflowAccountPoint,
@@ -9,6 +9,9 @@ import type {
 } from "@/lib/cashflow-mock-data";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
 import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
+import { useDonutEntrance } from "@/lib/use-donut-entrance";
+import { DonutLegend } from "./donut-legend";
+import { SheetOverlay } from "./sheet-overlay";
 
 type Props = {
   kpis: KpiCard[];
@@ -18,7 +21,6 @@ type Props = {
   recentTransactions: CashflowRecentTransaction[];
   unsettledTransactions: CashflowRecentTransaction[];
   isMockData?: boolean;
-  isLoading?: boolean;
   activeCompanyLabel?: string;
   onClearCompanyFilter?: () => void;
   onResetCompanyFilter?: () => void;
@@ -32,22 +34,11 @@ export function CashflowDashboard({
   recentTransactions,
   unsettledTransactions,
   isMockData = false,
-  isLoading = false,
   activeCompanyLabel,
   onClearCompanyFilter,
   onResetCompanyFilter
 }: Props) {
-  const legendRef = useRef<HTMLUListElement | null>(null);
-  const lastLegendDragEndedAtRef = useRef(0);
-  const dragStateRef = useRef<{ isPointerDown: boolean; isDragging: boolean; startX: number; startScrollLeft: number }>({
-    isPointerDown: false,
-    isDragging: false,
-    startX: 0,
-    startScrollLeft: 0
-  });
-  const [isLegendDragging, setIsLegendDragging] = useState(false);
   const [activeSliceId, setActiveSliceId] = useState<string | "all">("all");
-  const [isPieAnimated, setIsPieAnimated] = useState(false);
   const [activeFlowLabel, setActiveFlowLabel] = useState<string | null>(null);
   const [isUnsettledSheetOpen, setIsUnsettledSheetOpen] = useState(false);
 
@@ -116,51 +107,14 @@ export function CashflowDashboard({
     setActiveSliceId("all");
   }, [accounts]);
 
-  useEffect(() => {
-    setIsPieAnimated(false);
-    const timeout = window.setTimeout(() => setIsPieAnimated(true), 70);
-    return () => window.clearTimeout(timeout);
-  }, [chartData]);
+  // Podpis výsekov, nie identita poľa: prekreslenie s tými istými zostatkami (klik na
+  // výsek, dorovnané nastavenia po štarte) vstupnú animáciu nespustí.
+  const donutShapeKey = useMemo(
+    () => chartData.map((slice) => `${slice.id}:${slice.amount}`).join("|"),
+    [chartData]
+  );
 
-  const handleLegendPointerDown = (event: React.PointerEvent<HTMLUListElement>) => {
-    const container = legendRef.current;
-    if (!container) return;
-    dragStateRef.current = {
-      isPointerDown: true,
-      isDragging: false,
-      startX: event.clientX,
-      startScrollLeft: container.scrollLeft
-    };
-  };
-
-  const handleLegendPointerMove = (event: React.PointerEvent<HTMLUListElement>) => {
-    const container = legendRef.current;
-    const dragState = dragStateRef.current;
-    if (!container || !dragState.isPointerDown) return;
-    const deltaX = event.clientX - dragState.startX;
-    if (!dragState.isDragging && Math.abs(deltaX) > 6) {
-      dragState.isDragging = true;
-      setIsLegendDragging(true);
-    }
-    if (!dragState.isDragging) return;
-    container.scrollLeft = dragState.startScrollLeft - deltaX;
-  };
-
-  const stopLegendDragging = () => {
-    if (dragStateRef.current.isDragging) {
-      lastLegendDragEndedAtRef.current = Date.now();
-    }
-    dragStateRef.current.isPointerDown = false;
-    dragStateRef.current.isDragging = false;
-    setIsLegendDragging(false);
-  };
-
-  const handleLegendClickCapture = (event: React.MouseEvent<HTMLUListElement>) => {
-    // Ignore only the immediate ghost click right after drag end.
-    if (Date.now() - lastLegendDragEndedAtRef.current > 90) return;
-    event.preventDefault();
-    event.stopPropagation();
-  };
+  const isPieAnimated = useDonutEntrance(donutShapeKey);
 
   const filteredPoints =
     activeSliceId === "all" ? points : (accountPointsById[activeSliceId] ?? points);
@@ -186,9 +140,8 @@ export function CashflowDashboard({
   const unsettledCount = unsettledTransactions.length;
 
   return (
-    <section className={isUnsettledSheetOpen ? "dashboard-body dashboard-section overlay-open" : "dashboard-body dashboard-section"}>
+    <section className="dashboard-body dashboard-section">
       {isMockData ? <span className="active-tag-badge">Demo dáta</span> : null}
-      {isLoading ? <span className="active-tag-badge">Načítavam dáta...</span> : null}
       {activeCompanyLabel ? (
         <button type="button" className="active-tag-badge" onClick={onClearCompanyFilter}>
           <span>{activeCompanyLabel}</span>
@@ -210,7 +163,7 @@ export function CashflowDashboard({
         </button>
       ) : null}
 
-      {accounts.length === 0 && !isLoading ? (
+      {accounts.length === 0 ? (
         <article className="panel">
           <div className="cashflow-empty-state">
             <p>Pre vybraný filter firiem nemáme demo dáta.</p>
@@ -222,17 +175,8 @@ export function CashflowDashboard({
       ) : null}
 
       <article className="panel">
-        <div className={isLoading ? "cashflow-donut-wrap loading" : "cashflow-donut-wrap"}>
+        <div className="cashflow-donut-wrap">
           <div className="cashflow-donut-card">
-            {isLoading ? (
-              <div className="cashflow-donut-skeleton" aria-hidden="true">
-                <div className="cashflow-donut-skeleton-ring" />
-                <div className="cashflow-donut-skeleton-center">
-                  <span />
-                  <span />
-                </div>
-              </div>
-            ) : (
             <svg className="cashflow-donut-svg" viewBox="0 0 320 320" role="img" aria-label="Zostatok podľa účtov">
               {chartData.map((slice, sliceIndex) => {
                 const isActive = activeSliceId === slice.id;
@@ -281,7 +225,6 @@ export function CashflowDashboard({
                 className={isPieAnimated ? "cashflow-donut-hole is-animated" : "cashflow-donut-hole"}
               />
             </svg>
-            )}
             <div className="cashflow-donut-center">
               <p className="cashflow-donut-title">
                 {activeSlice ? activeSlice.name : "Všetky účty"}
@@ -297,25 +240,7 @@ export function CashflowDashboard({
             </div>
           </div>
 
-          {isLoading ? (
-            <ul className="cashflow-donut-legend skeleton" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <li key={`legend-skeleton-${index}`}>
-                  <div className="cashflow-legend-item skeleton" />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul
-              ref={legendRef}
-              className={isLegendDragging ? "cashflow-donut-legend is-dragging" : "cashflow-donut-legend"}
-              onPointerDown={handleLegendPointerDown}
-              onPointerMove={handleLegendPointerMove}
-              onPointerUp={stopLegendDragging}
-              onPointerCancel={stopLegendDragging}
-              onPointerLeave={() => stopLegendDragging()}
-              onClickCapture={handleLegendClickCapture}
-            >
+            <DonutLegend ariaLabel="Účty v grafe zostatkov">
               {chartData.map((slice) => (
                 <li key={slice.id}>
                   <button
@@ -338,8 +263,7 @@ export function CashflowDashboard({
                   </button>
                 </li>
               ))}
-            </ul>
-          )}
+            </DonutLegend>
         </div>
       </article>
 
@@ -480,7 +404,7 @@ export function CashflowDashboard({
         </article>
       </section>
       {isUnsettledSheetOpen ? (
-        <div className="tag-filter-overlay" onClick={() => setIsUnsettledSheetOpen(false)}>
+        <SheetOverlay onClose={() => setIsUnsettledSheetOpen(false)}>
           <div
             className="tag-filter-sheet unsettled-payments-sheet"
             role="dialog"
@@ -546,7 +470,7 @@ export function CashflowDashboard({
               })}
             </ul>
           </div>
-        </div>
+        </SheetOverlay>
       ) : null}
     </section>
   );
