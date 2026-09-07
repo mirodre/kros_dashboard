@@ -74,18 +74,24 @@ describe("HomeDueCard", () => {
     expect(html).toContain("Po splatnosti nad 60 dní");
   });
 
-  // Zoznam dokladov sám je za portálom (`SheetOverlay` sa montuje až na klientovi),
-  // takže na serveri sa dá overiť len to, čo ho otvára. Že sa otvorí a čo v ňom je,
-  // drží typový systém a testy `computeDuePositions` nad `documents`.
-  it("ponúka Zoznam dokladov, keď je čo vypísať", () => {
+  // Karta sa otvára na strane s pruhmi; druhá strana (zoznam) je za swipe, teda
+  // za stavom, ktorý statický render nevie prepnúť. Overuje sa preto to, čo swipe
+  // vôbec ponúka — bodky a ťuknutie na pásmo. Že zoznam nesie správne doklady,
+  // držia testy `computeDuePositions` nad `documents`.
+  it("obe strany sa dajú prelistovať na zoznam dokladov", () => {
     const html = renderCard(positions);
 
+    // Dve bodky na stranu, dve strany. Trieda sa musí skončiť za „dot", inak by
+    // sa do počtu pridal aj obal `due-deck-dots`.
+    expect(html.match(/class="due-deck-dot[ "]/g)?.length).toBe(4);
     expect(html).toContain("Zoznam dokladov");
-    // Pásma s dokladmi sa dajú rozkliknúť rovno z legendy.
+    // Ťuknutie na pásmo je skratka k tomu istému zoznamu — tri pásma na stranu.
     expect(html.match(/due-band-button/g)?.length).toBe(6);
+    // Karta sa otvára pruhmi, nie zoznamom.
+    expect(html).not.toContain("due-doc-list");
   });
 
-  it("bez dokladov nesľubuje zoznam, ktorý by bol prázdny", () => {
+  it("bez dokladov sa nedá nikam listovať a pásma nie sú tlačidlá", () => {
     const empty: DuePosition = { total: 0, count: 0, bands: [], documents: [] };
     const html = renderCard({
       net: 0,
@@ -94,7 +100,8 @@ describe("HomeDueCard", () => {
       receivablesAvailable: true
     });
 
-    expect(html).not.toContain("Zoznam dokladov");
+    expect(html).not.toContain("due-deck-dot");
+    expect(html).not.toContain("due-deck-dots");
     expect(html).not.toContain("due-band-button");
   });
 

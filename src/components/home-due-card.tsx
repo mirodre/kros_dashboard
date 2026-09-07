@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { DueBandKey, DueDocument, DuePosition, DuePositions } from "@/lib/home-live";
 import { parseDocumentDate } from "@/lib/document-date";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
-import { SheetOverlay } from "@/components/sheet-overlay";
 
 type Props = {
   positions: DuePositions;
@@ -17,13 +16,8 @@ const BAND_CLASS: Record<string, string> = {
   overdue60: "overdue60"
 };
 
-/** Ktorú stranu má otvorený zoznam dokladov. `null` = zoznam je zavretý. */
-type DueSide = "receivables" | "payables";
-
-const SIDE_TITLE: Record<DueSide, string> = {
-  receivables: "Mám dostať",
-  payables: "Mám zaplatiť"
-};
+/** Koľko pixelov musí prst prejsť, aby to bol swipe a nie ťuknutie. */
+const SWIPE_THRESHOLD = 45;
 
 function documentsWord(count: number) {
   if (count === 1) return "doklad";
@@ -33,70 +27,6 @@ function documentsWord(count: number) {
 function daysWord(days: number) {
   if (days === 1) return "deň";
   return days < 5 ? "dni" : "dní";
-}
-
-function DueRow({
-  title,
-  position,
-  onOpenBand
-}: {
-  title: string;
-  position: DuePosition;
-  /** `undefined` = pásma sa nedajú rozkliknúť (niet čo ukázať). */
-  onOpenBand?: (band: DueBandKey) => void;
-}) {
-  const positiveBands = position.bands.filter((band) => band.total > 0);
-  // Menovateľ NESMIE byť position.total: dobropis (záporná suma) urobí niektoré
-  // pásmo záporným, takže podpísaný súčet potom nemá nič spoločné so šírkami,
-  // ktoré sa reálne kreslia — vie vyjsť nula alebo záporné číslo, hoci v pruhu
-  // svieti plná farba. Prirodzený menovateľ je súčet len kladných pásiem, teda
-  // presne tých, čo sa do pruhu vôbec kreslia; `|| 1` chráni pred delením nulou,
-  // keď sú kladné pásma prázdne.
-  const positiveTotal = positiveBands.reduce((sum, band) => sum + band.total, 0) || 1;
-
-  return (
-    <div className="due-row">
-      <div className="due-row-head">
-        <span className="profit-kpi-label">{title}</span>
-        <strong>{formatCurrency(position.total)}</strong>
-      </div>
-      <div className="due-bar" role="img" aria-label={`${title}: ${formatCurrency(position.total)}`}>
-        {positiveBands.map((band) => (
-          <span
-            key={band.key}
-            className={`due-bar-segment ${BAND_CLASS[band.key]}`}
-            style={{ width: `${Math.min(100, (band.total / positiveTotal) * 100)}%` }}
-          />
-        ))}
-      </div>
-      <ul className="due-bands">
-        {position.bands.map((band) => (
-          <li key={band.key} className={BAND_CLASS[band.key]}>
-            {/* Rozklik pásma je tá istá cesta ako klik do grafu vo Výdavkoch: číslo
-                v legende otvorí práve tie doklady, z ktorých vzniklo. Pásmo bez
-                dokladov ostáva obyčajným textom — tlačidlo, ktoré otvorí prázdny
-                zoznam, je len sľub, čo sa nedodrží. */}
-            {onOpenBand && band.count > 0 ? (
-              <button
-                type="button"
-                className="due-band-button"
-                onClick={() => onOpenBand(band.key)}
-                aria-label={`${title} — ${band.label}: ${formatCurrency(band.total)}, ${band.count} ${documentsWord(band.count)}`}
-              >
-                <span>{band.label}</span>
-                <strong>{formatCurrency(band.total)}</strong>
-              </button>
-            ) : (
-              <>
-                <span>{band.label}</span>
-                <strong>{formatCurrency(band.total)}</strong>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 function DueDocumentRow({ document }: { document: DueDocument }) {
@@ -132,42 +62,210 @@ function DueDocumentRow({ document }: { document: DueDocument }) {
   );
 }
 
-export function HomeDueCard({ positions, isPeriodFocused }: Props) {
-  const [openSide, setOpenSide] = useState<DueSide | null>(null);
-  // Pásmo, na ktoré sa kliklo v legende. Drží sa mimo `openSide`, aby prepnutie
-  // strany v zozname nezhodilo zvolené pásmo, keď ho druhá strana tiež má.
+/**
+ * Jedna strana — pohľadávky alebo záväzky — ako dvojstránková karta: prvá strana
+ * je pruh so pásmami, druhá zoznam dokladov, z ktorých pruh vznikol. Swipe medzi
+ * nimi nahradil tlačidlo v hlavičke karty, ktoré na to bolo priveľké.
+ *
+ * Vykresľuje sa VŽDY len aktívna strana, nie obe vedľa seba pod `translateX`.
+ * Dôvod je výška: zoznam dokladov je oveľa vyšší než pruh, takže spoločná dráha
+ * by bola vysoká ako zoznam a pod pruhom by zostala prázdna diera.
+ */
+function DueDeck({
+  title,
+  position,
+  hasDocuments
+}: {
+  title: string;
+  position: DuePosition;
+  /** `false` = niet čo listovať, karta zostane jednostránková. */
+  hasDocuments: boolean;
+}) {
+  const [showDocuments, setShowDocuments] = useState(false);
   const [bandFilter, setBandFilter] = useState<DueBandKey | "all">("all");
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
 
-  const openList = (side: DueSide, band: DueBandKey | "all") => {
-    setOpenSide(side);
-    setBandFilter(band);
-  };
+  const positiveBands = position.bands.filter((band) => band.total > 0);
+  // Menovateľ NESMIE byť position.total: dobropis (záporná suma) urobí niektoré
+  // pásmo záporným, takže podpísaný súčet potom nemá nič spoločné so šírkami,
+  // ktoré sa reálne kreslia — vie vyjsť nula alebo záporné číslo, hoci v pruhu
+  // svieti plná farba. Prirodzený menovateľ je súčet len kladných pásiem, teda
+  // presne tých, čo sa do pruhu vôbec kreslia; `|| 1` chráni pred delením nulou,
+  // keď sú kladné pásma prázdne.
+  const positiveTotal = positiveBands.reduce((sum, band) => sum + band.total, 0) || 1;
 
-  const position = openSide === "receivables" ? positions.receivables : positions.payables;
-
-  // Prepnutie strany nesmie ostať na pásme, ktoré druhá strana nemá: záväzky
-  // nepoznajú „nad 60 dní", takže zoznam by po prepnutí ukázal prázdno a chip,
-  // ktorý v ňom nie je. Vtedy padá filter na „Všetko".
   const availableBands = position.bands.filter((band) => band.count > 0);
-  const activeBand =
-    bandFilter !== "all" && availableBands.some((band) => band.key === bandFilter)
-      ? bandFilter
-      : "all";
-
-  const documents = useMemo(
-    () =>
-      activeBand === "all"
-        ? position.documents
-        : position.documents.filter((document) => document.band === activeBand),
-    [position, activeBand]
-  );
+  const documents =
+    bandFilter === "all"
+      ? position.documents
+      : position.documents.filter((document) => document.band === bandFilter);
   const documentsTotal = documents.reduce((sum, document) => sum + document.amount, 0);
 
-  // Zoznam otvárame len tam, kde je čo otvoriť. Pri chýbajúcom stave úhrady
-  // faktúr nevieme, ktoré pohľadávky sú neuhradené — prázdny zoznam by tvrdil,
-  // že nie je čo dostať.
-  const canOpenReceivables = positions.receivablesAvailable && positions.receivables.count > 0;
-  const canOpenPayables = positions.payables.count > 0;
+  const openDocuments = (band: DueBandKey | "all") => {
+    if (!hasDocuments) return;
+    setBandFilter(band);
+    setShowDocuments(true);
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    setTouchStart(touch ? { x: touch.clientX, y: touch.clientY } : null);
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStart) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    // Vodorovné gesto si zoberieme, svislé pustíme ďalej — inak by sa na karte
+    // nedala rolovať stránka.
+    const deltaX = Math.abs(touchStart.x - touch.clientX);
+    const deltaY = Math.abs(touchStart.y - touch.clientY);
+    if (deltaX > deltaY && deltaX > 8) {
+      event.preventDefault();
+    }
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStart) return;
+    const endX = event.changedTouches[0]?.clientX ?? touchStart.x;
+    const delta = touchStart.x - endX;
+    setTouchStart(null);
+    if (Math.abs(delta) <= SWIPE_THRESHOLD) return;
+    // Doľava dopredu na zoznam, doprava späť na pruh. Pri návrate padá filter
+    // pásma, aby swipe tam a zase sem neskončil na inom zozname, než z akého odišiel.
+    if (delta > 0) {
+      openDocuments("all");
+    } else {
+      setShowDocuments(false);
+      setBandFilter("all");
+    }
+  };
+
+  return (
+    <div
+      className="due-row"
+      onTouchStart={hasDocuments ? handleTouchStart : undefined}
+      onTouchMove={hasDocuments ? handleTouchMove : undefined}
+      onTouchEnd={hasDocuments ? handleTouchEnd : undefined}
+    >
+      <div className="due-row-head">
+        <span className="profit-kpi-label">{title}</span>
+        <strong>{formatCurrency(position.total)}</strong>
+      </div>
+
+      {showDocuments ? (
+        <div className="due-deck-page" key="documents">
+          {/* Pásma ako filter zoznamu — len tie, ktoré na tejto strane niečo majú. */}
+          {availableBands.length > 1 ? (
+            <div className="due-band-chips">
+              <button
+                type="button"
+                className={bandFilter === "all" ? "filter-chip active" : "filter-chip"}
+                onClick={() => setBandFilter("all")}
+              >
+                Všetko ({position.count})
+              </button>
+              {availableBands.map((band) => (
+                <button
+                  key={band.key}
+                  type="button"
+                  className={bandFilter === band.key ? "filter-chip active" : "filter-chip"}
+                  onClick={() => setBandFilter(band.key)}
+                >
+                  {band.label} ({band.count})
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="invoice-detail-summary">
+            <span>
+              {documents.length} {documentsWord(documents.length)}
+            </span>
+            <strong>{formatCurrencyPrecise(documentsTotal)}</strong>
+          </div>
+
+          <ul className="invoice-list due-doc-list">
+            {documents.map((document) => (
+              <DueDocumentRow key={document.key} document={document} />
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="due-deck-page" key="bands">
+          <div
+            className="due-bar"
+            role="img"
+            aria-label={`${title}: ${formatCurrency(position.total)}`}
+          >
+            {positiveBands.map((band) => (
+              <span
+                key={band.key}
+                className={`due-bar-segment ${BAND_CLASS[band.key]}`}
+                style={{ width: `${Math.min(100, (band.total / positiveTotal) * 100)}%` }}
+              />
+            ))}
+          </div>
+          <ul className="due-bands">
+            {position.bands.map((band) => (
+              <li key={band.key} className={BAND_CLASS[band.key]}>
+                {/* Ťuknutie na pásmo je skratka k swipe: otvorí zoznam už zúžený
+                    na to pásmo. Pásmo bez dokladov ostáva textom — tlačidlo, ktoré
+                    otvorí prázdny zoznam, je len sľub, čo sa nedodrží. */}
+                {hasDocuments && band.count > 0 ? (
+                  <button
+                    type="button"
+                    className="due-band-button"
+                    onClick={() => openDocuments(band.key)}
+                    aria-label={`${title} — ${band.label}: ${formatCurrency(band.total)}, ${band.count} ${documentsWord(band.count)}`}
+                  >
+                    <span>{band.label}</span>
+                    <strong>{formatCurrency(band.total)}</strong>
+                  </button>
+                ) : (
+                  <>
+                    <span>{band.label}</span>
+                    <strong>{formatCurrency(band.total)}</strong>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Bodky sú aj ovládanie, aj jediný signál, že sa karta dá listovať —
+          samotné gesto na obrazovke nie je vidieť, a na myši ho ani nemá kto urobiť. */}
+      {hasDocuments ? (
+        <div className="due-deck-dots" role="group" aria-label={`${title} — prepnutie zobrazenia`}>
+          <button
+            type="button"
+            className={showDocuments ? "due-deck-dot" : "due-deck-dot active"}
+            aria-pressed={!showDocuments}
+            aria-label="Podľa splatnosti"
+            onClick={() => {
+              setShowDocuments(false);
+              setBandFilter("all");
+            }}
+          />
+          <button
+            type="button"
+            className={showDocuments ? "due-deck-dot active" : "due-deck-dot"}
+            aria-pressed={showDocuments}
+            aria-label="Zoznam dokladov"
+            onClick={() => openDocuments("all")}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function HomeDueCard({ positions, isPeriodFocused }: Props) {
+  // Zoznam sa dá listovať len tam, kde je čo listovať. Pri chýbajúcom stave úhrady
+  // faktúr nevieme, ktoré pohľadávky sú neuhradené — prázdny zoznam by tvrdil, že
+  // nie je čo dostať.
+  const canListReceivables = positions.receivablesAvailable && positions.receivables.count > 0;
   const totalCount =
     (positions.receivablesAvailable ? positions.receivables.count : 0) + positions.payables.count;
 
@@ -176,15 +274,6 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
       <article className="panel">
         <header className="panel-head">
           <h3>Pohľadávky a záväzky</h3>
-          {canOpenReceivables || canOpenPayables ? (
-            <button
-              type="button"
-              className="panel-head-action"
-              onClick={() => openList(canOpenReceivables ? "receivables" : "payables", "all")}
-            >
-              Zoznam dokladov
-            </button>
-          ) : null}
         </header>
 
         {positions.receivablesAvailable ? (
@@ -214,12 +303,10 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
             sa odtiaľto zbalenie odstraňovalo, spadli omylom do vetvy „údaj
             nedostupný" a v bežnom prípade sa vôbec nenakreslili. */}
         {positions.receivablesAvailable ? (
-          <DueRow
+          <DueDeck
             title="Mám dostať"
             position={positions.receivables}
-            onOpenBand={
-              canOpenReceivables ? (band) => openList("receivables", band) : undefined
-            }
+            hasDocuments={canListReceivables}
           />
         ) : (
           <div className="due-row">
@@ -232,100 +319,12 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
           </div>
         )}
 
-        <DueRow
+        <DueDeck
           title="Mám zaplatiť"
           position={positions.payables}
-          onOpenBand={canOpenPayables ? (band) => openList("payables", band) : undefined}
+          hasDocuments={positions.payables.count > 0}
         />
       </article>
-
-      {openSide ? (
-        <SheetOverlay onClose={() => setOpenSide(null)}>
-          <div
-            className="tag-filter-sheet unsettled-payments-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Zoznam neuhradených dokladov"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="tag-filter-head">
-              <div>
-                <h4>Zoznam dokladov</h4>
-                <p className="tag-filter-help">Neuhradené k dnešku.</p>
-              </div>
-              <button type="button" className="filter-close" onClick={() => setOpenSide(null)}>
-                Zavrieť
-              </button>
-            </header>
-
-            <div className="invoice-detail-tabs">
-              {canOpenReceivables ? (
-                <button
-                  type="button"
-                  className={openSide === "receivables" ? "filter-chip active" : "filter-chip"}
-                  onClick={() => setOpenSide("receivables")}
-                >
-                  {SIDE_TITLE.receivables} ({positions.receivables.count})
-                </button>
-              ) : null}
-              {canOpenPayables ? (
-                <button
-                  type="button"
-                  className={openSide === "payables" ? "filter-chip active" : "filter-chip"}
-                  onClick={() => setOpenSide("payables")}
-                >
-                  {SIDE_TITLE.payables} ({positions.payables.count})
-                </button>
-              ) : null}
-            </div>
-
-            {/* Pásma sú druhá úroveň filtra, nie ďalšie taby — preto vlastný riadok.
-                Ukazujeme len tie, ktoré na tejto strane niečo majú. */}
-            {availableBands.length > 1 ? (
-              <div className="invoice-detail-tabs due-band-chips">
-                <button
-                  type="button"
-                  className={activeBand === "all" ? "filter-chip active" : "filter-chip"}
-                  onClick={() => setBandFilter("all")}
-                >
-                  Všetko ({position.count})
-                </button>
-                {availableBands.map((band) => (
-                  <button
-                    key={band.key}
-                    type="button"
-                    className={activeBand === band.key ? "filter-chip active" : "filter-chip"}
-                    onClick={() => setBandFilter(band.key)}
-                  >
-                    {band.label} ({band.count})
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="invoice-detail-summary">
-              <span>
-                {documents.length} {documentsWord(documents.length)}
-              </span>
-              <strong>{formatCurrencyPrecise(documentsTotal)}</strong>
-            </div>
-
-            {documents.length === 0 ? (
-              <p className="tag-sub">
-                {openSide === "receivables"
-                  ? "Skvelé, všetko je uhradené."
-                  : "Nič nečaká na úhradu."}
-              </p>
-            ) : (
-              <ul className="invoice-list">
-                {documents.map((document) => (
-                  <DueDocumentRow key={document.key} document={document} />
-                ))}
-              </ul>
-            )}
-          </div>
-        </SheetOverlay>
-      ) : null}
     </section>
   );
 }
