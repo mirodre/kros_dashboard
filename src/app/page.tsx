@@ -64,6 +64,7 @@ export default function HomePage() {
   const [granularity, setGranularity] = usePreference("ui.granularity");
   const [categoryFilters, setCategoryFilters] = usePreference("home.tagFilters");
   const [selectedCompanies, setSelectedCompanies] = usePreference("home.companies");
+  const [selectedAccountIds, setSelectedAccountIds] = usePreference("home.accounts");
   const [hiddenSections, setHiddenSections] = usePreference("ui.homeHiddenSections");
   const [focusedPeriod, setFocusedPeriod] = useState<string | null>(null);
   const [focusedTag, setFocusedTag] = useState<string | null>(null);
@@ -315,20 +316,21 @@ export default function HomePage() {
     [tagPoints]
   );
 
-  // Kalendárne mesiace vždy — bez ohľadu na prepínač obdobia. DPH sa podáva po
-  // mesiacoch a po týždňoch alebo rokoch je to číslo nezmysel. Zámerne `invoices`
-  // a `expenses`, nie `tagScopedInvoices`/`tagScopedExpenses` — filter štítkov sa na DPH
-  // neaplikuje, daň sa priraďuje dokladu ako celku. Firmu naopak rozklikom zúžiť ísť má —
-  // `effectiveCompanies`, nie `selectedCompanies` — rovnako ako pohľadávky/záväzky a účty
-  // pod tým istým rozkliknutím: tri karty rovnakého druhu musia mať rovnaké správanie.
+  // JEDINÁ karta v appke, ktorá si nevšíma nič naokolo — priznanie sa podáva z celého
+  // účtovníctva, nie z toho, čo má človek práve rozkliknuté. Preto sem nejde ani filter
+  // štítkov (`invoices`/`expenses`, nie `tagScopedInvoices`), ani firma
+  // (`selectedCompanies: []`, nie `effectiveCompanies`), ani prepínač obdobia — mesiace
+  // sú vždy kalendárne. Pozor: `invoices`/`expenses` už sú zúžené na firmy, ktoré sa
+  // vôbec sťahujú (`syncConnections`), takže uložený filter firiem rozsah dát stále
+  // určuje — karta to musí priznať hláškou, nie to zamlčať.
   const vatEstimate = useMemo(
     () =>
       computeVatEstimate({
         invoices,
         expenses,
-        selectedCompanies: effectiveCompanies
+        selectedCompanies: []
       }),
-    [invoices, expenses, effectiveCompanies]
+    [invoices, expenses]
   );
 
   // Účty sú stav k dnešku, nie tok za obdobie: granularita sem ide len preto, že ju
@@ -372,11 +374,15 @@ export default function HomePage() {
   const sectionOptions = useMemo<VisibilityOption[]>(
     () => [
       { id: HOME_SECTIONS.receivables, label: "Pohľadávky a záväzky" },
-      { id: HOME_SECTIONS.accounts, label: "Peniaze na účtoch" },
+      {
+        id: HOME_SECTIONS.accounts,
+        label: "Peniaze na účtoch",
+        filterCount: selectedAccountIds.length
+      },
       { id: HOME_SECTIONS.vat, label: "Predpokladaný odhad DPH" },
       { id: HOME_SECTIONS.companies, label: "Zisk podľa firiem", filterCount: selectedCompanies.length }
     ],
-    [selectedCompanies]
+    [selectedCompanies, selectedAccountIds]
   );
 
   const isPreparingModule = isLoadingConnections || !hasResolvedFirstData;
@@ -390,6 +396,9 @@ export default function HomePage() {
       categoryVisibility={{
         categoryOptions,
         sectionOptions,
+        // Domov kreslí pevné sekcie NAD štítkami, na rozdiel od Príjmov a Výdavkov —
+        // prepínač musí ísť v tom istom poradí, inak sa hľadá opačným koncom zoznamu.
+        groupOrder: "sections-first",
         hiddenIds: hiddenSections,
         onHiddenIdsChange: setHiddenSections,
         granularity,
@@ -419,10 +428,25 @@ export default function HomePage() {
             <HomeDueCard positions={duePositions} isPeriodFocused={Boolean(focusedPeriod)} />
           )}
           {hiddenSections.includes(HOME_SECTIONS.accounts) ? null : (
-            <HomeAccountsCard accounts={accounts} isPeriodFocused={Boolean(focusedPeriod)} />
+            <HomeAccountsCard
+              accounts={accounts}
+              selectedAccountIds={selectedAccountIds}
+              onSelectedAccountIdsChange={setSelectedAccountIds}
+              isPeriodFocused={Boolean(focusedPeriod)}
+            />
           )}
           {hiddenSections.includes(HOME_SECTIONS.vat) ? null : (
-            <HomeVatCard estimate={vatEstimate} isPeriodFocused={Boolean(focusedPeriod)} />
+            <HomeVatCard
+              estimate={vatEstimate}
+              hasIgnoredFilters={
+                Boolean(focusedPeriod) ||
+                Boolean(focusedCompany) ||
+                Boolean(focusedTag) ||
+                selectedCompanies.length > 0 ||
+                Object.values(categoryFilters).some((tags) => tags.length > 0)
+              }
+              limitedToCompanyCount={selectedCompanies.length}
+            />
           )}
           <CategorizedTagsDashboard
             baseTitle="Zisk podľa štítkov"

@@ -3137,15 +3137,120 @@ body {
   text-decoration: none;
 }
 
-.vat-month {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  margin-top: 0.8rem;
+/* --- Odhad DPH ----------------------------------------------------------- */
+
+.vat-eyebrow {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0.55rem 0 0;
 }
 
-.vat-month strong {
-  font-size: 1.35rem;
+/*
+ * Dvojica strán odhadu. Prúžky nesú rovnakú modrú/oranžovú ako stĺpce v grafe Zisku
+ * (`.profit-bar.income` / `.expense`) — príjem a výdavok si na jednej obrazovke musia
+ * držať svoju farbu.
+ */
+.vat-sides {
+  display: grid;
+  gap: 0.7rem;
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0;
+}
+
+.vat-side {
+  align-items: baseline;
+  display: grid;
+  /* Popis vľavo, suma vpravo, koľajnica pod nimi cez celú šírku. */
+  grid-template-areas:
+    "label value"
+    "track track";
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem 0.6rem;
+}
+
+.vat-side-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  grid-area: label;
+}
+
+.vat-side-value {
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  grid-area: value;
+}
+
+.vat-side-track {
+  background: rgba(226, 234, 255, 0.1);
+  border-radius: 999px;
+  grid-area: track;
+  height: 8px;
+  overflow: hidden;
+}
+
+.vat-side-fill {
+  animation: vat-side-in 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+  /* Nula musí ostať viditeľná ako škvrna na začiatku koľajnice, nie zmiznúť. */
+  min-width: 3px;
+  transform-origin: left center;
+}
+
+.vat-side.output .vat-side-fill {
+  background: linear-gradient(90deg, #5d78e6 0%, #7b99ff 55%, #9cb4ff 100%);
+  box-shadow: 0 2px 10px rgba(92, 125, 242, 0.34);
+}
+
+.vat-side.input .vat-side-fill {
+  background: linear-gradient(90deg, #d98b18 0%, #f6b73c 55%, #fcd34d 100%);
+  box-shadow: 0 2px 10px rgba(217, 139, 24, 0.28);
+}
+
+@keyframes vat-side-in {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vat-side-fill {
+    animation: none;
+  }
+}
+
+/* Uzavretý mesiac: jeden tichý riadok pod čiarou, nie druhá polovica karty. */
+.vat-previous {
+  align-items: baseline;
+  border-top: 1px solid rgba(226, 234, 255, 0.1);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 0.7rem;
+}
+
+.vat-previous-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.vat-previous-value {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.vat-previous-missing {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .due-row {

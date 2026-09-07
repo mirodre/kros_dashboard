@@ -39,11 +39,13 @@ export type PreferenceValueMap = {
   /** Filter štítkov Domova — vlastný, nie zdieľaný s modulmi: zmena tu nesmie prestaviť Príjmy. */
   "home.tagFilters": Record<string, string[]>;
   "home.companies": string[];
+  /**
+   * Účty, ktoré Domov ukazuje v „Peniazoch na účtoch" — po `id`, nie po názve: účet sa dá
+   * v KROSe premenovať a filter po tom nesmie vypadnúť. Prázdny výber = všetky účty.
+   */
+  "home.accounts": string[];
   "ui.homeHiddenSections": string[];
   "ui.collapsed.homeCompanies": boolean;
-  "ui.collapsed.homeReceivables": boolean;
-  "ui.collapsed.homeAccounts": boolean;
-  "ui.collapsed.homeVat": boolean;
 };
 
 export type PreferenceKey = keyof PreferenceValueMap;
@@ -185,16 +187,19 @@ export const PREFERENCE_KEYS: { [K in PreferenceKey]: Definition<K> } = {
     default: [],
     isValid: isStringArray
   },
+  "home.accounts": {
+    level: "tenant",
+    storageKey: "kros_dashboard_home_selected_accounts",
+    default: [],
+    isValid: isStringArray
+  },
   "ui.homeHiddenSections": {
     level: "user",
     storageKey: "kros_dashboard_home_hidden_sections",
     default: [],
     isValid: isStringArray
   },
-  "ui.collapsed.homeCompanies": collapsedPanel("kros_dashboard_home_collapsed_companies"),
-  "ui.collapsed.homeReceivables": collapsedPanel("kros_dashboard_home_collapsed_receivables"),
-  "ui.collapsed.homeAccounts": collapsedPanel("kros_dashboard_home_collapsed_accounts"),
-  "ui.collapsed.homeVat": collapsedPanel("kros_dashboard_home_collapsed_vat")
+  "ui.collapsed.homeCompanies": collapsedPanel("kros_dashboard_home_collapsed_companies")
 };
 
 export const PREFERENCE_KEY_LIST = Object.keys(PREFERENCE_KEYS) as PreferenceKey[];

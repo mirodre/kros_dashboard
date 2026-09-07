@@ -2,7 +2,6 @@
 
 import type { DuePosition, DuePositions } from "@/lib/home-live";
 import { formatCurrency } from "@/lib/format";
-import { usePersistedCollapsed } from "@/lib/use-persisted-collapsed";
 
 type Props = {
   positions: DuePositions;
@@ -53,48 +52,31 @@ function DueRow({ title, position }: { title: string; position: DuePosition }) {
 }
 
 export function HomeDueCard({ positions, isPeriodFocused }: Props) {
-  const [collapsed, setCollapsed] = usePersistedCollapsed("ui.collapsed.homeReceivables");
-
   return (
     <section className="dashboard-body">
-      <article className={`panel${collapsed ? " panel-collapsed" : ""}`}>
+      <article className="panel">
         <header className="panel-head">
-          <button
-            type="button"
-            className="panel-collapse-toggle"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Rozbaliť Pohľadávky a záväzky" : "Zbaliť Pohľadávky a záväzky"}
-          >
-            <span className={`panel-collapse-chevron${collapsed ? " collapsed" : ""}`} aria-hidden="true">
-              ▾
-            </span>
-            <h3>Pohľadávky a záväzky</h3>
-          </button>
+          <h3>Pohľadávky a záväzky</h3>
         </header>
 
-        {collapsed ? null : (
+        {positions.receivablesAvailable ? (
           <>
-            {positions.receivablesAvailable ? (
-              <>
-                <p className="profit-headline">{formatCurrency(positions.net)}</p>
-                <p className="profit-headline-meta">
-                  čiastka po vyrovnaní
-                  {isPeriodFocused ? " · k dnešku, nezávisle od vybraného obdobia" : ""}
-                </p>
-              </>
-            ) : (
-              <>
-                {/* Bez stavu úhrady faktúr nevieme, koľko máme dostať — a bez toho
-                    sa „čiastka po vyrovnaní" nedá spočítať. Pomlčka namiesto čísla:
-                    chýbajúci údaj a nula sú dve rôzne správy, hlavičku to nesmie
-                    zamlčať tak, ako to takmer urobilo odčítanie v computeDuePositions. */}
-                <p className="profit-headline">—</p>
-                <p className="profit-headline-meta">
-                  čiastka po vyrovnaní sa nedá spočítať — chýba stav úhrady faktúr
-                </p>
-              </>
-            )}
+            <p className="profit-headline">{formatCurrency(positions.net)}</p>
+            <p className="profit-headline-meta">
+              čiastka po vyrovnaní
+              {isPeriodFocused ? " · k dnešku, nezávisle od vybraného obdobia" : ""}
+            </p>
+          </>
+        ) : (
+          <>
+            {/* Bez stavu úhrady faktúr nevieme, koľko máme dostať — a bez toho
+                sa „čiastka po vyrovnaní" nedá spočítať. Pomlčka namiesto čísla:
+                chýbajúci údaj a nula sú dve rôzne správy, hlavičku to nesmie
+                zamlčať tak, ako to takmer urobilo odčítanie v computeDuePositions. */}
+            <p className="profit-headline">—</p>
+            <p className="profit-headline-meta">
+              čiastka po vyrovnaní sa nedá spočítať — chýba stav úhrady faktúr
+            </p>
 
             {positions.receivablesAvailable ? (
               <DueRow title="Mám dostať" position={positions.receivables} />

@@ -30,6 +30,13 @@ export type CategoryVisibilitySettings = {
    */
   granularity?: Granularity;
   onGranularityChange?: (value: Granularity) => void;
+  /**
+   * V akom poradí ísť skupinami. Nie kozmetika: prepínač musí čítať zhora dole tak, ako
+   * sekcie ležia na obrazovke, inak človek hľadá zaškrtávadlo na opačnom konci zoznamu,
+   * než kde vidí panel. Domov má štítky až za pevnými sekciami, ostatné moduly naopak —
+   * default preto sedí väčšine a Domov si žiada `"sections-first"`.
+   */
+  groupOrder?: "categories-first" | "sections-first";
 };
 
 type Props = CategoryVisibilitySettings & {
@@ -49,6 +56,7 @@ export function CategoryVisibilityButton({
   onHiddenIdsChange,
   granularity,
   onGranularityChange,
+  groupOrder = "categories-first",
   moduleTitle
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
@@ -181,8 +189,17 @@ export function CategoryVisibilityButton({
                 <p className="tag-sub">Tento prehľad zatiaľ žiadne sekcie na skrytie nemá.</p>
               ) : (
                 <>
-                  {renderOptions(categoryOptions, "Kategórie štítkov")}
-                  {renderOptions(sectionOptions, "Ostatné sekcie")}
+                  {groupOrder === "sections-first" ? (
+                    <>
+                      {renderOptions(sectionOptions, "Ostatné sekcie")}
+                      {renderOptions(categoryOptions, "Kategórie štítkov")}
+                    </>
+                  ) : (
+                    <>
+                      {renderOptions(categoryOptions, "Kategórie štítkov")}
+                      {renderOptions(sectionOptions, "Ostatné sekcie")}
+                    </>
+                  )}
                 </>
               )}
             </div>
