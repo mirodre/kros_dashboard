@@ -16,7 +16,6 @@ import {
   computeDuePositions,
   computeProfitCompanyBreakdown,
   computeProfitKpiCards,
-  computeProfitKpis,
   computeProfitSeries,
   computeProfitTagBreakdown,
   computeVatEstimate
@@ -186,7 +185,6 @@ export default function HomePage() {
     [tagScopedInvoices, flowScopedExpenses, granularity, effectiveCompanies]
   );
 
-  const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
   const kpiCards = useMemo(
     () => computeProfitKpiCards(points, granularity, focusedPeriod),
     [points, granularity, focusedPeriod]
@@ -424,7 +422,6 @@ export default function HomePage() {
             viazaný na `hasLiveMode`.
           */}
           <ProfitDashboard
-            kpis={kpis}
             kpiCards={kpiCards}
             points={points}
             focusedPeriod={focusedPeriod}

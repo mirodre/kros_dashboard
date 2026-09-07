@@ -169,22 +169,19 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
           style={chartTooltipStyle(tooltipLeft)}
         >
           <p className="tooltip-label">{focusedPoint.label}</p>
+          {/* Farebný bod pri každom riadku nesie to, čo predtým hovorila legenda
+              pod grafom: ktorá farba je ktorá séria. V bubline je to lacnejšie —
+              vysvetlenie je pri čísle a len vtedy, keď sa niekto pýta. */}
           <div className="tooltip-values">
-            <span>Príjmy: {formatCurrency(focusedPoint.income)}</span>
-            <span>Výdavky: {formatCurrency(focusedPoint.expense)}</span>
-            <span>Zisk: {formatCurrency(focusedPoint.profit)}</span>
+            <span className="income">Príjmy: {formatCurrency(focusedPoint.income)}</span>
+            <span className="expense">Výdavky: {formatCurrency(focusedPoint.expense)}</span>
+            <span className="profit">Zisk: {formatCurrency(focusedPoint.profit)}</span>
             <span className="profit-tooltip-previous">
               Vlani: {formatCurrency(focusedPoint.previousProfit)}
             </span>
           </div>
         </div>
       ) : null}
-
-      <ul className="profit-chart-legend">
-        <li className="income">Príjmy</li>
-        <li className="expense">Výdavky</li>
-        <li className="profit">Zisk</li>
-      </ul>
     </div>
   );
 }

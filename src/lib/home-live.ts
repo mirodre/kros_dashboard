@@ -14,7 +14,6 @@ import {
   isExpenseUnpaid
 } from "./expenses-live";
 import { parseDocumentDate } from "./document-date";
-import { getDeltaPct } from "./format";
 import { monthKeyFromDate } from "./invoice-cache";
 import type { Granularity, KpiCard } from "./mock-data";
 import type { AggregatedBreakdownPoint, NormalizedExpense, NormalizedInvoice } from "./kros-types";
@@ -83,51 +82,6 @@ export function computeProfitSeries({
       previousProfit: point.previous - previousExpense
     };
   });
-}
-
-export type ProfitKpiValue = {
-  current: number;
-  previous: number;
-  /** `null` = vlani bola nula, percento by nedávalo zmysel. */
-  deltaPct: number | null;
-};
-
-export type ProfitKpis = {
-  /** Stĺpec, z ktorého sú čísla; `null` pri prázdnej sérii. */
-  periodLabel: string | null;
-  profit: ProfitKpiValue;
-  income: ProfitKpiValue;
-  expense: ProfitKpiValue;
-};
-
-function kpiValue(current: number, previous: number): ProfitKpiValue {
-  return { current, previous, deltaPct: getDeltaPct(current, previous) };
-}
-
-/**
- * Hlavné čísla nad grafom. Klik do grafu ich prepne na vybraný stĺpec — inak by
- * číslo ukazovalo posledné obdobie, kým graf aj sekcie pod ním to focusnuté.
- */
-export function computeProfitKpis(
-  points: ProfitPoint[],
-  focusedPeriod?: string | null
-): ProfitKpis {
-  const focused = focusedPeriod
-    ? points.find((point) => point.label === focusedPeriod) ?? null
-    : null;
-  const point = focused ?? (points.length > 0 ? points[points.length - 1] : null);
-
-  if (!point) {
-    const empty = kpiValue(0, 0);
-    return { periodLabel: null, profit: empty, income: empty, expense: empty };
-  }
-
-  return {
-    periodLabel: point.label,
-    profit: kpiValue(point.profit, point.previousProfit),
-    income: kpiValue(point.income, point.previousIncome),
-    expense: kpiValue(point.expense, point.previousExpense)
-  };
 }
 
 const OVERDUE_60_DAYS_MS = 60 * 24 * 60 * 60 * 1000;

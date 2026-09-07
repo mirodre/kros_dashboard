@@ -3,7 +3,6 @@ import {
   computeDuePositions,
   computeProfitCompanyBreakdown,
   computeProfitKpiCards,
-  computeProfitKpis,
   computeProfitSeries,
   computeProfitTagBreakdown,
   computeVatEstimate,
@@ -89,49 +88,6 @@ describe("computeProfitSeries", () => {
     const points = computeProfitSeries(seriesInput([], []));
     expect(points.length).toBeGreaterThan(0);
     expect(points.every((point) => point.profit === 0)).toBe(true);
-  });
-});
-
-describe("computeProfitKpis", () => {
-  function point(label: string, income: number, expenseValue: number, prevProfit = 0): ProfitPoint {
-    return {
-      label,
-      income,
-      expense: expenseValue,
-      profit: income - expenseValue,
-      previousIncome: 0,
-      previousExpense: 0,
-      previousProfit: prevProfit
-    };
-  }
-
-  it("bez focusu berie posledný stĺpec", () => {
-    const kpis = computeProfitKpis([point("jan", 100, 40), point("feb", 200, 50)]);
-    expect(kpis.periodLabel).toBe("feb");
-    expect(kpis.profit.current).toBe(150);
-  });
-
-  it("focus stĺpca prepne hlavné číslo na ten stĺpec", () => {
-    const kpis = computeProfitKpis([point("jan", 100, 40), point("feb", 200, 50)], "jan");
-    expect(kpis.periodLabel).toBe("jan");
-    expect(kpis.profit.current).toBe(60);
-  });
-
-  it("focus na neexistujúci stĺpec padne späť na posledný, nie na nulu", () => {
-    const kpis = computeProfitKpis([point("jan", 100, 40)], "december");
-    expect(kpis.periodLabel).toBe("jan");
-    expect(kpis.profit.current).toBe(60);
-  });
-
-  it("bez vlaňajška je delta null, nie 100 % — nedá sa deliť nulou", () => {
-    const kpis = computeProfitKpis([point("jan", 100, 40, 0)]);
-    expect(kpis.profit.deltaPct).toBeNull();
-  });
-
-  it("prázdna séria dá nuly a nespadne", () => {
-    const kpis = computeProfitKpis([]);
-    expect(kpis.periodLabel).toBeNull();
-    expect(kpis.profit.current).toBe(0);
   });
 });
 
