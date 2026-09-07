@@ -77,23 +77,27 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
             <p className="profit-headline-meta">
               čiastka po vyrovnaní sa nedá spočítať — chýba stav úhrady faktúr
             </p>
-
-            {positions.receivablesAvailable ? (
-              <DueRow title="Mám dostať" position={positions.receivables} />
-            ) : (
-              <div className="due-row">
-                <span className="profit-kpi-label">Mám dostať</span>
-                {/* Chýbajúci údaj a nula sú dve rôzne správy. Pri peniazoch sa
-                    zamieňať nesmú — radšej priznáme, že to nevieme. */}
-                <p className="tag-filter-help">
-                  Údaj z KROS nedostupný — faktúry nenesú stav úhrady.
-                </p>
-              </div>
-            )}
-
-            <DueRow title="Mám zaplatiť" position={positions.payables} />
           </>
         )}
+
+        {/* Pruhy patria karte vždy, nie len keď stav úhrady chýba: hlavička
+            povie jedno číslo, pruhy povedia, z akých splatností vzniklo. Keď
+            sa odtiaľto zbalenie odstraňovalo, spadli omylom do vetvy „údaj
+            nedostupný" a v bežnom prípade sa vôbec nenakreslili. */}
+        {positions.receivablesAvailable ? (
+          <DueRow title="Mám dostať" position={positions.receivables} />
+        ) : (
+          <div className="due-row">
+            <span className="profit-kpi-label">Mám dostať</span>
+            {/* Chýbajúci údaj a nula sú dve rôzne správy. Pri peniazoch sa
+                zamieňať nesmú — radšej priznáme, že to nevieme. */}
+            <p className="tag-filter-help">
+              Údaj z KROS nedostupný — faktúry nenesú stav úhrady.
+            </p>
+          </div>
+        )}
+
+        <DueRow title="Mám zaplatiť" position={positions.payables} />
       </article>
     </section>
   );
