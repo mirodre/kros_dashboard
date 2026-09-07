@@ -23,7 +23,7 @@ import {
 import { scopeExpenseAmountsToTagFilters } from "@/lib/expenses-live";
 import { computeCashflowOverviewFromLiveData } from "@/lib/cashflow-live";
 import { formatCurrency } from "@/lib/format";
-import { getBucketPeriodWindow } from "@/lib/period-buckets";
+import { formatPeriodFocusLabel, getBucketPeriodWindow } from "@/lib/period-buckets";
 import { useKrosConnections } from "@/lib/use-kros-connections";
 import { useTagCategoryIndex } from "@/lib/use-tag-categories";
 import { usePreference } from "@/lib/use-preference";
@@ -414,6 +414,51 @@ export default function HomePage() {
           {!hasLiveMode ? <DemoDataBanner /> : null}
           {companyFilter.noneAvailable ? (
             <FilterMismatchNotice onShowAll={() => setSelectedCompanies([])} />
+          ) : null}
+
+          {/*
+            Rozkliknutý štítok, firma a obdobie ako štítky nad obsahom — to isté, čo
+            majú Príjmy a Výdavky. Domov ich mal dosiaľ len v stave, takže sa dalo
+            čítať zúžené čísla bez toho, aby bolo z obrazovky vidieť, že sú zúžené.
+            Štítok je zároveň spôsob, ako filter zrušiť: klik naň ho vypne.
+          */}
+          {focusedTag || focusedCompany || focusedPeriod ? (
+            <section className="dashboard-body dashboard-section">
+              <div className="row-head">
+                <div className="filters-inline">
+                  {focusedTag ? (
+                    <button
+                      type="button"
+                      className="active-tag-badge"
+                      onClick={() => setFocusedTag(null)}
+                    >
+                      <span>{focusedTag}</span>
+                      <span className="badge-close">×</span>
+                    </button>
+                  ) : null}
+                  {focusedCompany ? (
+                    <button
+                      type="button"
+                      className="active-tag-badge"
+                      onClick={() => setFocusedCompany(null)}
+                    >
+                      <span>{focusedCompany}</span>
+                      <span className="badge-close">×</span>
+                    </button>
+                  ) : null}
+                  {focusedPeriod ? (
+                    <button
+                      type="button"
+                      className="active-tag-badge"
+                      onClick={() => setFocusedPeriod(null)}
+                    >
+                      <span>{formatPeriodFocusLabel(granularity, focusedPeriod)}</span>
+                      <span className="badge-close">×</span>
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
           ) : null}
           {/*
             Na rozdiel od ostatných modulov demo Domova nesie doklady, nie hotové
