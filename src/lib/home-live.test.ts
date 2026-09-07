@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeDuePositions,
   computeProfitCompanyBreakdown,
+  computeProfitKpiCards,
   computeProfitKpis,
   computeProfitSeries,
   computeProfitTagBreakdown,
@@ -131,6 +132,80 @@ describe("computeProfitKpis", () => {
     const kpis = computeProfitKpis([]);
     expect(kpis.periodLabel).toBeNull();
     expect(kpis.profit.current).toBe(0);
+  });
+});
+
+describe("computeProfitKpiCards", () => {
+  function point(label: string, profit: number, previousProfit = 0): ProfitPoint {
+    return {
+      label,
+      income: profit,
+      expense: 0,
+      profit,
+      previousIncome: previousProfit,
+      previousExpense: 0,
+      previousProfit
+    };
+  }
+
+  it("dá tri karty v poradí: obdobie, kumulatív, priemer", () => {
+    const cards = computeProfitKpiCards([point("jan", 100), point("feb", 300)], "month");
+    expect(cards.map((card) => card.title)).toEqual([
+      "Zisk v aktuálnom období",
+      "Kumulatívny zisk tento rok",
+      "Priemerný zisk na obdobie"
+    ]);
+  });
+
+  it("prvá karta je posledný stĺpec, kumulatív je celý rok a priemer ich delí", () => {
+    const cards = computeProfitKpiCards([point("jan", 100), point("feb", 300)], "month");
+    expect(cards[0].currentValue).toBe(300);
+    expect(cards[1].currentValue).toBe(400);
+    expect(cards[2].currentValue).toBe(200);
+  });
+
+  it("focus stĺpca prepne prvú kartu aj jej názov, kumulatív a priemer nechá", () => {
+    const cards = computeProfitKpiCards([point("jan", 100), point("feb", 300)], "month", "jan");
+    expect(cards[0].title).toBe("Zisk vo vybranom období");
+    expect(cards[0].currentValue).toBe(100);
+    expect(cards[1].currentValue).toBe(400);
+    expect(cards[2].currentValue).toBe(200);
+  });
+
+  it("pri rokoch je 'tento rok' posledný stĺpec, nie súčet piatich rokov", () => {
+    const cards = computeProfitKpiCards(
+      [point("2024", 100), point("2025", 200), point("2026", 300)],
+      "year"
+    );
+    // Kumulatív = 300 (tento rok), nie 600 — inak by karta tvrdila, že sme
+    // tento rok zarobili aj to, čo predvlani.
+    expect(cards[1].currentValue).toBe(300);
+    // Priemer naopak patrí celej sérii, ktorú graf ukazuje.
+    expect(cards[2].currentValue).toBe(200);
+  });
+
+  it("zlepšenie z vlaňajšej straty je rast, nie pokles", () => {
+    // Zo straty −100 na zisk +50: naivné (50 − (−100)) / (−100) dá −150 %, teda
+    // „pokles" pri zlepšení. Delenie absolútnou hodnotou znamienko udrží.
+    const cards = computeProfitKpiCards([point("jan", 50, -100)], "month");
+    expect(cards[0].deltaPct).toBe(150);
+    expect(cards[0].deltaPct).toBeGreaterThan(0);
+  });
+
+  it("zhoršenie zo vlaňajšieho zisku do straty je pokles", () => {
+    const cards = computeProfitKpiCards([point("jan", -50, 100)], "month");
+    expect(cards[0].deltaPct).toBeLessThan(0);
+  });
+
+  it("nulový vlaňajšok deltu skryje, nie ukáže 100 %", () => {
+    const cards = computeProfitKpiCards([point("jan", 500, 0)], "month");
+    expect(cards[0].hideDelta).toBe(true);
+  });
+
+  it("prázdna séria dá tri nulové karty a nespadne", () => {
+    const cards = computeProfitKpiCards([], "month");
+    expect(cards).toHaveLength(3);
+    expect(cards.every((card) => card.currentValue === 0)).toBe(true);
   });
 });
 

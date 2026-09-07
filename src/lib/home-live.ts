@@ -16,7 +16,7 @@ import {
 import { parseDocumentDate } from "./document-date";
 import { getDeltaPct } from "./format";
 import { monthKeyFromDate } from "./invoice-cache";
-import type { Granularity } from "./mock-data";
+import type { Granularity, KpiCard } from "./mock-data";
 import type { AggregatedBreakdownPoint, NormalizedExpense, NormalizedInvoice } from "./kros-types";
 import type { PeriodWindow } from "./period-buckets";
 
@@ -131,6 +131,62 @@ export function computeProfitKpis(
 }
 
 const OVERDUE_60_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+/**
+ * Swipovateľné KPI karty nad grafom Zisku — tie isté tri otázky, aké majú Príjmy
+ * a Výdavky, len o zisku: vybrané obdobie, kumulatív za rok a priemer na obdobie.
+ *
+ * Kumulatív číta zo `points`, nie z vlastného dopočtu, a preto potrebuje vedieť
+ * granularitu: pri týždňoch a mesiacoch sú všetky stĺpce z tohto roka (`buildBuckets`
+ * ich stavia od 1. januára), takže ich súčet JE rok. Pri rokoch je stĺpcov päť a
+ * súčet by bol päťročný — vtedy je „tento rok" jediný stĺpec, ten posledný.
+ */
+export function computeProfitKpiCards(
+  points: ProfitPoint[],
+  granularity: Granularity,
+  focusedPeriod?: string | null
+): KpiCard[] {
+  const focused = focusedPeriod
+    ? points.find((point) => point.label === focusedPeriod) ?? null
+    : null;
+  const current = focused ?? (points.length > 0 ? points[points.length - 1] : null);
+
+  const yearPoints = granularity === "year" ? points.slice(-1) : points;
+  const ytdCurrent = yearPoints.reduce((sum, point) => sum + point.profit, 0);
+  const ytdPrevious = yearPoints.reduce((sum, point) => sum + point.previousProfit, 0);
+
+  const total = points.reduce((sum, point) => sum + point.profit, 0);
+  const totalPrevious = points.reduce((sum, point) => sum + point.previousProfit, 0);
+  const avgCurrent = points.length ? total / points.length : 0;
+  const avgPrevious = points.length ? totalPrevious / points.length : 0;
+
+  /**
+   * Percento zo zisku sa nesmie počítať ako pri tržbách. Vlaňajšia STRATA dá
+   * záporný menovateľ, takže `(current - previous) / previous` otočí znamienko:
+   * zo straty −100 na zisk +50 by vyšlo −150 %, teda „pokles" pri zlepšení.
+   * Delenie absolútnou hodnotou znamienko drží a `null` prizná, že pri nulovom
+   * vlaňajšku percento neexistuje — na to má `hideDelta`.
+   */
+  const delta = (currentValue: number, previousValue: number) =>
+    previousValue === 0 ? 0 : ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+  const card = (title: string, currentValue: number, previousValue: number): KpiCard => ({
+    title,
+    currentValue: Math.round(currentValue),
+    previousValue: Math.round(previousValue),
+    deltaPct: delta(currentValue, previousValue),
+    hideDelta: previousValue === 0
+  });
+
+  return [
+    card(
+      focused ? "Zisk vo vybranom období" : "Zisk v aktuálnom období",
+      current?.profit ?? 0,
+      current?.previousProfit ?? 0
+    ),
+    card("Kumulatívny zisk tento rok", ytdCurrent, ytdPrevious),
+    card("Priemerný zisk na obdobie", avgCurrent, avgPrevious)
+  ];
+}
 
 export type DueBandKey = "due" | "overdue" | "overdue60";
 

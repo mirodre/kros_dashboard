@@ -15,6 +15,7 @@ import { CompaniesDashboard } from "@/components/companies-dashboard";
 import {
   computeDuePositions,
   computeProfitCompanyBreakdown,
+  computeProfitKpiCards,
   computeProfitKpis,
   computeProfitSeries,
   computeProfitTagBreakdown,
@@ -186,6 +187,10 @@ export default function HomePage() {
   );
 
   const kpis = useMemo(() => computeProfitKpis(points, focusedPeriod), [points, focusedPeriod]);
+  const kpiCards = useMemo(
+    () => computeProfitKpiCards(points, granularity, focusedPeriod),
+    [points, granularity, focusedPeriod]
+  );
 
   // Neuhradené doklady k dnešku. Zámerne BEZ `periodWindow` — dlžoba nezaniká tým,
   // že vznikla vlani, a zúžiť ju na jeden stĺpec grafu by dalo číslo, ktoré nikoho
@@ -420,6 +425,7 @@ export default function HomePage() {
           */}
           <ProfitDashboard
             kpis={kpis}
+            kpiCards={kpiCards}
             points={points}
             focusedPeriod={focusedPeriod}
             onFocusedPeriodChange={setFocusedPeriod}

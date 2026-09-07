@@ -1,11 +1,15 @@
 "use client";
 
+import { KpiCarousel } from "@/components/kpi-carousel";
 import { ProfitChart } from "@/components/profit-chart";
 import type { ProfitKpiValue, ProfitKpis, ProfitPoint } from "@/lib/home-live";
+import type { KpiCard } from "@/lib/mock-data";
 import { formatCurrency, formatDelta } from "@/lib/format";
 
 type Props = {
   kpis: ProfitKpis;
+  /** Swipovateľné karty nad panelom — to isté miesto, aké majú Príjmy a Výdavky. */
+  kpiCards: KpiCard[];
   points: ProfitPoint[];
   focusedPeriod: string | null;
   onFocusedPeriodChange?: (label: string | null) => void;
@@ -25,18 +29,26 @@ function DeltaBadge({ value, invert = false }: { value: ProfitKpiValue; invert?:
   );
 }
 
-export function ProfitDashboard({ kpis, points, focusedPeriod, onFocusedPeriodChange }: Props) {
+export function ProfitDashboard({
+  kpis,
+  kpiCards,
+  points,
+  focusedPeriod,
+  onFocusedPeriodChange
+}: Props) {
   return (
     <section className="dashboard-body">
+      <KpiCarousel items={kpiCards} />
+
       <article className="panel">
         <header className="panel-head">
           <h3>Zisk firmy</h3>
         </header>
 
-        <p className="profit-headline">{formatCurrency(kpis.profit.current)}</p>
-        <p className="profit-headline-meta">
-          {kpis.periodLabel ?? "—"} <DeltaBadge value={kpis.profit} />
-        </p>
+        {/* Hlavné číslo zisku nesú KPI karty nad panelom — tu by bolo to isté
+            druhýkrát o pár pixelov nižšie. Ostáva len štítok obdobia: bez neho
+            by riadok Príjmy/Výdavky pod grafom nepovedal, za ktoré obdobie je. */}
+        <p className="profit-headline-meta">{kpis.periodLabel ?? "—"}</p>
 
         <ProfitChart
           points={points}
