@@ -10,6 +10,7 @@ import {
   computeExpenseTagBreakdown,
   countsTowardsSpend,
   getExpenseAnalyticsDate,
+  getExpenseDocumentTypeLabel,
   isExpenseUnpaid
 } from "./expenses-live";
 import { parseDocumentDate } from "./document-date";
@@ -131,8 +132,32 @@ export function computeProfitKpis(
 
 const OVERDUE_60_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
 
+export type DueBandKey = "due" | "overdue" | "overdue60";
+
+/**
+ * Jeden riadok v zozname dokladov pod kartou. Zámerne to NIE je `NormalizedInvoice`
+ * ani `NormalizedExpense`: karta ukazuje obe strany v jednom zozname, takže si ich
+ * musí vedieť zjednotiť. Nesie len to, čo sa v riadku naozaj zobrazuje — vďaka tomu
+ * sa zoznam nemá ako rozísť so súčtom pásma, z ktorého vznikol.
+ */
+export type DueDocument = {
+  /** Unikátne v rámci jednej strany; `companyId` je v ňom preto, že id sa medzi firmami opakujú. */
+  key: string;
+  partnerName: string;
+  companyName: string;
+  documentNumber?: string;
+  documentLabel: string;
+  dueDate?: string;
+  amount: number;
+  /** Suma celého dokladu, keď ju filter štítkov zúžil — inak `undefined`. */
+  documentTotal?: number;
+  band: DueBandKey;
+  /** Dní po splatnosti k `referenceDate`; `null` = v splatnosti alebo bez splatnosti. */
+  daysOverdue: number | null;
+};
+
 export type DueBand = {
-  key: "due" | "overdue" | "overdue60";
+  key: DueBandKey;
   label: string;
   total: number;
   count: number;
@@ -142,6 +167,12 @@ export type DuePosition = {
   total: number;
   count: number;
   bands: DueBand[];
+  /**
+   * Doklady, z ktorých sú súčty — od najdlhšie po splatnosti po tie v splatnosti.
+   * Zoznam v karte z nich číta priamo, nefiltruje si nič sám: keby si sumy skládal
+   * druhýkrát, vedel by sa s pásmami rozísť.
+   */
+  documents: DueDocument[];
 };
 
 export type DuePositions = {
@@ -180,21 +211,41 @@ function bandFor(dueDate: string | undefined, referenceDate: Date, allowOverdue6
   return "overdue" as const;
 }
 
-const BAND_LABELS: Record<DueBand["key"], string> = {
+const BAND_LABELS: Record<DueBandKey, string> = {
   due: "V splatnosti",
   overdue: "Po splatnosti",
   overdue60: "Po splatnosti nad 60 dní"
 };
 
+/**
+ * Dní po splatnosti k `referenceDate`. `null` znamená „nie je po splatnosti" —
+ * teda aj doklad bez splatnosti, ktorý nevieme zaradiť a `bandFor` ho drží v
+ * splatnosti. Rovnaké orezanie na polnoc ako `bandFor`, aby zoznam neukazoval
+ * jeden deň a pásmo druhý.
+ */
+function daysOverdueFrom(dueDate: string | undefined, referenceDate: Date): number | null {
+  const due = dueDate ? parseDocumentDate(dueDate) : null;
+  if (!due) return null;
+  const today = startOfLocalDay(referenceDate);
+  if (due >= today) return null;
+  return Math.round((today.getTime() - due.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+/** Vstup pre jeden riadok pásma — spoločný tvar pre faktúru aj výdavok. */
+type DueItem = Omit<DueDocument, "band" | "daysOverdue">;
+
+const BAND_ORDER: Record<DueBandKey, number> = { overdue60: 0, overdue: 1, due: 2 };
+
 function toPosition(
-  items: { amount: number; dueDate?: string }[],
+  items: DueItem[],
   referenceDate: Date,
-  bandKeys: DueBand["key"][]
+  bandKeys: DueBandKey[]
 ): DuePosition {
   const allowOverdue60 = bandKeys.includes("overdue60");
-  const totals = new Map<DueBand["key"], { total: number; count: number }>(
+  const totals = new Map<DueBandKey, { total: number; count: number }>(
     bandKeys.map((key) => [key, { total: 0, count: 0 }])
   );
+  const documents: DueDocument[] = [];
 
   for (const item of items) {
     const key = bandFor(item.dueDate, referenceDate, allowOverdue60);
@@ -202,7 +253,22 @@ function toPosition(
     if (!bucket) continue;
     bucket.total += item.amount;
     bucket.count += 1;
+    documents.push({
+      ...item,
+      band: key,
+      daysOverdue: daysOverdueFrom(item.dueDate, referenceDate)
+    });
   }
+
+  // Najurgentnejšie navrch: najprv pásmo, v ňom najdlhšie po splatnosti. Doklad bez
+  // splatnosti (`daysOverdue === null`) patrí na konec svojho pásma — nevieme o ňom
+  // povedať, že je omeškaný, takže ho nemáme prečo tlačiť pred tie, čo omeškané sú.
+  documents.sort(
+    (a, b) =>
+      BAND_ORDER[a.band] - BAND_ORDER[b.band] ||
+      (b.daysOverdue ?? -1) - (a.daysOverdue ?? -1) ||
+      Math.abs(b.amount) - Math.abs(a.amount)
+  );
 
   // Bez zaokrúhľovania jednotlivých pásiem — `formatCurrency` zaokrúhli až na
   // zobrazenie. Zaokrúhliť každé pásmo zvlášť a potom sčítať by vedelo celok
@@ -217,7 +283,8 @@ function toPosition(
   return {
     total: bands.reduce((sum, band) => sum + band.total, 0),
     count: bands.reduce((sum, band) => sum + band.count, 0),
-    bands
+    bands,
+    documents
   };
 }
 
@@ -262,7 +329,16 @@ export function computeDuePositions({
         (invoice) =>
           invoice.paymentStatus === "notPaid" || invoice.paymentStatus === "partiallyPaid"
       )
-      .map((invoice) => ({ amount: invoice.totalPrice, dueDate: invoice.dueDate })),
+      .map((invoice) => ({
+        key: `${invoice.companyId ?? invoice.companyName}-${invoice.id}`,
+        partnerName: invoice.partnerName ?? "Neznámy odberateľ",
+        companyName: invoice.companyName,
+        documentNumber: invoice.invoiceNumber,
+        documentLabel:
+          invoice.paymentStatus === "partiallyPaid" ? "Faktúra • čiastočne uhradená" : "Faktúra",
+        amount: invoice.totalPrice,
+        dueDate: invoice.dueDate
+      })),
     referenceDate,
     ["due", "overdue", "overdue60"]
   );
@@ -275,7 +351,19 @@ export function computeDuePositions({
           isExpenseUnpaid(expense) &&
           passes(expense.companyName, expense.tags)
       )
-      .map((expense) => ({ amount: expense.totalPrice, dueDate: expense.dueDate })),
+      .map((expense) => ({
+        key: `${expense.companyId ?? expense.companyName}-${expense.id}`,
+        partnerName: expense.partnerName ?? "Neznámy dodávateľ",
+        companyName: expense.companyName,
+        documentNumber: expense.documentNumber,
+        documentLabel: getExpenseDocumentTypeLabel(expense.documentType),
+        amount: expense.totalPrice,
+        // Filter štítkov vie `totalPrice` zúžiť na časť rozúčtovania. Vtedy zoznam
+        // musí povedať, z akého celku tá časť je — inak riadok tvrdí, že doklad je
+        // na menšiu sumu, než na akú naozaj je.
+        documentTotal: expense.documentTotalPrice,
+        dueDate: expense.dueDate
+      })),
     referenceDate,
     ["due", "overdue"]
   );

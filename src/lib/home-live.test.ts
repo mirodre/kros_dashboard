@@ -238,6 +238,80 @@ describe("computeDuePositions", () => {
     expect(result.receivablesAvailable).toBe(true);
     expect(result.receivables.total).toBe(0);
   });
+
+  it("doklady nesie pozícia so sebou a ich súčet sa rovná súčtu pásiem", () => {
+    const result = positions(
+      [unpaidInvoice("2026-09-30", 500), unpaidInvoice("2026-06-01", 300)],
+      [unpaidExpense("2026-08-27", 200)]
+    );
+
+    expect(result.receivables.documents).toHaveLength(2);
+    expect(result.payables.documents).toHaveLength(1);
+    // Zoznam a pásma nesmú tvrdiť dve rôzne sumy — čítajú z tej istej slučky.
+    expect(result.receivables.documents.reduce((sum, doc) => sum + doc.amount, 0)).toBe(
+      result.receivables.total
+    );
+    expect(result.receivables.documents.every((doc) => doc.key !== "")).toBe(true);
+  });
+
+  it("doklady idú od najdlhšie po splatnosti — 60+, potom po splatnosti, potom v splatnosti", () => {
+    const result = positions(
+      [
+        unpaidInvoice("2026-09-30", 100),
+        unpaidInvoice("2026-06-01", 200),
+        unpaidInvoice("2026-08-27", 300)
+      ],
+      []
+    );
+
+    expect(result.receivables.documents.map((doc) => doc.band)).toEqual([
+      "overdue60",
+      "overdue",
+      "due"
+    ]);
+  });
+
+  it("dní po splatnosti je počítané k referenčnému dňu, v splatnosti je null", () => {
+    const result = positions([unpaidInvoice("2026-08-27", 500), unpaidInvoice("2026-09-30", 100)], []);
+    const overdue = result.receivables.documents.find((doc) => doc.band === "overdue");
+    const due = result.receivables.documents.find((doc) => doc.band === "due");
+
+    expect(overdue?.daysOverdue).toBe(10);
+    // Doklad v splatnosti nie je „0 dní po splatnosti" — nie je po splatnosti vôbec.
+    expect(due?.daysOverdue).toBeNull();
+  });
+
+  it("doklad bez splatnosti nemá dni po splatnosti a ostáva na konci svojho pásma", () => {
+    const noDue = { ...unpaidInvoice("2026-09-30", 500), dueDate: undefined, id: "inv-no-due" };
+    const result = positions([noDue, unpaidInvoice("2026-09-30", 100)], []);
+    const found = result.receivables.documents.find((doc) => doc.key.endsWith("inv-no-due"));
+
+    expect(found?.daysOverdue).toBeNull();
+    expect(found?.band).toBe("due");
+  });
+
+  it("riadok výdavku nesie typ dokladu a celok, keď filter štítkov sumu zúžil", () => {
+    const scoped = { ...unpaidExpense("2026-08-27", 120), documentTotalPrice: 300 };
+    const result = positions([], [scoped]);
+
+    expect(result.payables.documents[0].documentLabel).toBe("Došlá faktúra");
+    expect(result.payables.documents[0].documentTotal).toBe(300);
+  });
+
+  it("čiastočne uhradená faktúra to prizná v popise riadku", () => {
+    const partial = {
+      ...unpaidInvoice("2026-09-30", 500),
+      paymentStatus: "partiallyPaid" as const
+    };
+    const result = positions([partial], []);
+
+    expect(result.receivables.documents[0].documentLabel).toContain("čiastočne uhradená");
+  });
+
+  it("uhradené doklady sa do zoznamu nedostanú", () => {
+    const paid = { ...unpaidInvoice("2026-09-30", 500), paymentStatus: "fullyPaid" as const };
+    expect(positions([paid], []).receivables.documents).toHaveLength(0);
+  });
 });
 
 /** 6. september 2026 — „tento mesiac" je 2026-09, „minulý" 2026-08. */

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { HomeDueCard } from "./home-due-card";
-import type { DuePosition, DuePositions } from "@/lib/home-live";
+import type { DueBandKey, DueDocument, DuePosition, DuePositions } from "@/lib/home-live";
 
 // Statický render namiesto jsdom: karta nemá stav ani efekty, takže na otázku
 // „nakreslili sa pruhy?" stačí HTML, ktoré z nej vypadne na serveri. Žiadna
@@ -14,7 +14,26 @@ function renderCard(positions: DuePositions) {
   );
 }
 
-function position(total: number): DuePosition {
+function document(
+  key: string,
+  band: DueBandKey,
+  amount: number,
+  daysOverdue: number | null
+): DueDocument {
+  return {
+    key,
+    partnerName: `Partner ${key}`,
+    companyName: "Kros Trade",
+    documentNumber: `2026${key}`,
+    documentLabel: "Faktúra",
+    dueDate: "2026-08-27",
+    amount,
+    band,
+    daysOverdue
+  };
+}
+
+function position(total: number, prefix: string): DuePosition {
   return {
     total,
     count: 3,
@@ -22,14 +41,19 @@ function position(total: number): DuePosition {
       { key: "due", label: "V splatnosti", total: total * 0.5, count: 1 },
       { key: "overdue", label: "Po splatnosti", total: total * 0.3, count: 1 },
       { key: "overdue60", label: "Po splatnosti nad 60 dní", total: total * 0.2, count: 1 }
+    ],
+    documents: [
+      document(`${prefix}-a`, "overdue60", total * 0.2, 91),
+      document(`${prefix}-b`, "overdue", total * 0.3, 10),
+      document(`${prefix}-c`, "due", total * 0.5, null)
     ]
   };
 }
 
 const positions: DuePositions = {
   net: 400,
-  receivables: position(1000),
-  payables: position(600),
+  receivables: position(1000, "r"),
+  payables: position(600, "p"),
   receivablesAvailable: true
 };
 
@@ -48,6 +72,30 @@ describe("HomeDueCard", () => {
     expect(html.match(/class="due-bar"/g)).toHaveLength(2);
     expect(html).toContain("V splatnosti");
     expect(html).toContain("Po splatnosti nad 60 dní");
+  });
+
+  // Zoznam dokladov sám je za portálom (`SheetOverlay` sa montuje až na klientovi),
+  // takže na serveri sa dá overiť len to, čo ho otvára. Že sa otvorí a čo v ňom je,
+  // drží typový systém a testy `computeDuePositions` nad `documents`.
+  it("ponúka Zoznam dokladov, keď je čo vypísať", () => {
+    const html = renderCard(positions);
+
+    expect(html).toContain("Zoznam dokladov");
+    // Pásma s dokladmi sa dajú rozkliknúť rovno z legendy.
+    expect(html.match(/due-band-button/g)?.length).toBe(6);
+  });
+
+  it("bez dokladov nesľubuje zoznam, ktorý by bol prázdny", () => {
+    const empty: DuePosition = { total: 0, count: 0, bands: [], documents: [] };
+    const html = renderCard({
+      net: 0,
+      receivables: empty,
+      payables: empty,
+      receivablesAvailable: true
+    });
+
+    expect(html).not.toContain("Zoznam dokladov");
+    expect(html).not.toContain("due-band-button");
   });
 
   it("bez stavu úhrady prizná chýbajúci údaj, ale záväzky kreslí ďalej", () => {
