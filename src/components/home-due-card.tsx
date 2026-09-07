@@ -20,11 +20,6 @@ const BAND_CLASS: Record<string, string> = {
 /** Ktorú stranu má otvorený zoznam dokladov. `null` = zoznam je zavretý. */
 type DueSide = "receivables" | "payables";
 
-const SIDE_TITLE: Record<DueSide, string> = {
-  receivables: "Mám dostať",
-  payables: "Mám zaplatiť"
-};
-
 function documentsWord(count: number) {
   if (count === 1) return "doklad";
   return count < 5 ? "doklady" : "dokladov";
@@ -176,8 +171,8 @@ function DueDocumentRow({ document }: { document: DueDocument }) {
 
 export function HomeDueCard({ positions, isPeriodFocused }: Props) {
   const [openSide, setOpenSide] = useState<DueSide | null>(null);
-  // Pásmo, na ktoré sa kliklo v legende. Drží sa mimo `openSide`, aby prepnutie
-  // strany v zozname nezhodilo zvolené pásmo, keď ho druhá strana tiež má.
+  // Pásmo, na ktoré sa kliklo v legende. Drží sa mimo `openSide`, aby otvorenie
+  // zoznamu a zvolený filter ostali dve nezávislé veci.
   const [bandFilter, setBandFilter] = useState<DueBandKey | "all">("all");
 
   const openList = (side: DueSide, band: DueBandKey | "all") => {
@@ -187,9 +182,9 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
 
   const position = openSide === "receivables" ? positions.receivables : positions.payables;
 
-  // Prepnutie strany nesmie ostať na pásme, ktoré druhá strana nemá: záväzky
-  // nepoznajú „nad 60 dní", takže zoznam by po prepnutí ukázal prázdno a chip,
-  // ktorý v ňom nie je. Vtedy padá filter na „Všetko".
+  // Filter nesmie ostať na pásme, ktoré otvorená strana nemá: záväzky nepoznajú
+  // „nad 60 dní", takže zoznam by ukázal prázdno a chip, ktorý v ňom nie je.
+  // Vtedy padá filter na „Všetko".
   const availableBands = position.bands.filter((band) => band.count > 0);
   const activeBand =
     bandFilter !== "all" && availableBands.some((band) => band.key === bandFilter)
@@ -296,29 +291,11 @@ export function HomeDueCard({ positions, isPeriodFocused }: Props) {
               </button>
             </header>
 
-            <div className="invoice-detail-tabs">
-              {canOpenReceivables ? (
-                <button
-                  type="button"
-                  className={openSide === "receivables" ? "filter-chip active" : "filter-chip"}
-                  onClick={() => setOpenSide("receivables")}
-                >
-                  {SIDE_TITLE.receivables} ({positions.receivables.count})
-                </button>
-              ) : null}
-              {canOpenPayables ? (
-                <button
-                  type="button"
-                  className={openSide === "payables" ? "filter-chip active" : "filter-chip"}
-                  onClick={() => setOpenSide("payables")}
-                >
-                  {SIDE_TITLE.payables} ({positions.payables.count})
-                </button>
-              ) : null}
-            </div>
-
-            {/* Pásma sú druhá úroveň filtra, nie ďalšie taby — preto vlastný riadok.
-                Ukazujeme len tie, ktoré na tejto strane niečo majú. */}
+            {/* Strana (Mám dostať / Mám zaplatiť) sa tu už nechipuje: zoznam sa
+                otvára tlačidlom pri tej strane v karte, takže chip len opakoval,
+                odkiaľ prišiel — a v riadku pásiem sa navyše prekrýval. Pásma
+                ostávajú, sú jediný filter zoznamu; ukazujeme len tie, ktoré na
+                tejto strane niečo majú. */}
             {availableBands.length > 1 ? (
               <div className="invoice-detail-tabs due-band-chips">
                 <button

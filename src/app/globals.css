@@ -3348,11 +3348,12 @@ body {
 
 /* Filtre pásiem nad zoznamom dokladov. Zalamujú sa, lebo „Po splatnosti nad
    60 dní (12)" sa na mobil do jedného riadku nezmestí. */
-/* Druhý riadok filtrov v dialógu so zoznamom — pásma pod stranami. Zalamuje sa,
-   lebo „Po splatnosti nad 60 dní (12)" sa na mobil do jedného riadku nezmestí. */
+/* Filtre pásiem v dialógu so zoznamom. Zalamujú sa, lebo „Po splatnosti nad
+   60 dní (12)" sa na mobil do jedného riadku nezmestí. Bez negatívneho
+   `margin-top`: kým nad nimi boli chipy strán, doťahovali sa k nim — teraz
+   nasledujú priamo za hlavičkou a držia jej odstup. */
 .due-band-chips {
   flex-wrap: wrap;
-  margin-top: -0.35rem;
 }
 
 /* Pásma vľavo, ikona zoznamu na voľnom mieste vpravo. `align-items: flex-start`,
