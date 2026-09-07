@@ -1007,8 +1007,8 @@ body {
 }
 
 .cashflow-balance {
-  background: linear-gradient(180deg, #86f0be 0%, #4cc890 42%, #31a673 100%);
-  box-shadow: 0 5px 12px rgba(49, 166, 115, 0.34);
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 42%, #059669 100%);
+  box-shadow: 0 5px 12px rgba(5, 150, 105, 0.34);
 }
 
 .cashflow-balance-previous {
@@ -1156,11 +1156,11 @@ body {
 }
 
 .cashflow-time-bar.inflow {
-  background: linear-gradient(180deg, #93f4cb 0%, #3ec790 100%);
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 100%);
 }
 
 .cashflow-time-bar.outflow {
-  background: linear-gradient(180deg, #ffb1c2 0%, #ff6f8f 100%);
+  background: linear-gradient(180deg, #fca5a5 0%, #f87171 100%);
 }
 
 .cashflow-time-label {
@@ -1326,7 +1326,7 @@ body {
 }
 
 .cashflow-legend-item::before {
-  background: var(--legend-accent, #86f0be);
+  background: var(--legend-accent, #7b99ff);
   border-radius: 99px;
   content: "";
   height: 56px;
@@ -1342,7 +1342,7 @@ body {
   box-shadow:
     0 6px 16px rgba(16, 26, 54, 0.28),
     0 0 0 1px rgba(195, 214, 255, 0.34) inset,
-    inset 0 0 0 999px color-mix(in srgb, var(--legend-accent, #86f0be) 9%, transparent);
+    inset 0 0 0 999px color-mix(in srgb, var(--legend-accent, #7b99ff) 9%, transparent);
   transform: none;
 }
 
@@ -1833,7 +1833,7 @@ body {
 }
 
 .vendor-share-fill {
-  background: linear-gradient(90deg, #ff9f6e 0%, #f68fc9 100%);
+  background: linear-gradient(90deg, #fb923c 0%, #f472b6 100%);
   border-radius: inherit;
   height: 100%;
   transition: width 420ms ease;

@@ -5,6 +5,7 @@ import type { Granularity, KpiCard, RevenuePoint } from "@/lib/mock-data";
 import type { NormalizedExpense } from "@/lib/kros-types";
 import type { ExpenseDueWatchlist, ExpenseTagSlice } from "@/lib/expenses-live";
 import { getExpenseAnalyticsDate, getExpenseBucketDocs, getExpenseDocumentTypeLabel } from "@/lib/expenses-live";
+import { CHART_SLICE_COLORS } from "@/lib/chart-slice-colors";
 import {
   categoryForTag,
   hasRealCategories,
@@ -135,17 +136,8 @@ export function ExpensesDashboard({
   }, [tagStructure, activeDonutCategories, categoryBySliceName]);
 
   const donutData = useMemo(() => {
-    // Largest slices get rank 0,1,… — rovnaká paleta a rozostup ako donut v module Peniaze.
-    const palette = [
-      "#ff9f6e",
-      "#9f8bff",
-      "#67c9ff",
-      "#86f0be",
-      "#f68fc9",
-      "#6de0d8",
-      "#ffc46b",
-      "#9edc7a"
-    ];
+    // Largest slices get rank 0,1,… — rovnaká paleta a rozostup ako donut v module Financie.
+    const palette = CHART_SLICE_COLORS;
     const positive = visibleTagStructure.filter((slice) => slice.amount > 0);
     const total = positive.reduce((sum, slice) => sum + slice.amount, 0);
 

@@ -7,6 +7,7 @@ import type {
   CashflowPoint,
   CashflowRecentTransaction
 } from "@/lib/cashflow-mock-data";
+import { CHART_SLICE_COLORS } from "@/lib/chart-slice-colors";
 import { formatCurrency, formatCurrencyPrecise } from "@/lib/format";
 import { isSameCalendarDay, parseDocumentDate } from "@/lib/document-date";
 import { useDonutEntrance } from "@/lib/use-donut-entrance";
@@ -43,17 +44,8 @@ export function CashflowDashboard({
   const [isUnsettledSheetOpen, setIsUnsettledSheetOpen] = useState(false);
 
   const chartData = useMemo(() => {
-    // Largest slices get rank 0,1,… — mint / teal / limetka sú rozostúpené medzi modrou, koralom a fialou.
-    const palette = [
-      "#86f0be",
-      "#67c9ff",
-      "#ff9f6e",
-      "#9f8bff",
-      "#6de0d8",
-      "#f68fc9",
-      "#9edc7a",
-      "#ffc46b"
-    ];
+    // Largest slices get rank 0,1,… — paleta je zdieľaná s koláčom na Domove.
+    const palette = CHART_SLICE_COLORS;
     const total = accounts.reduce((sum, account) => sum + Math.max(account.amount, 0), 0);
 
     const valueById = new Map(

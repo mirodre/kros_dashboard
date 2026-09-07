@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DonutLegend } from "@/components/donut-legend";
 import { FilterIconButton } from "@/components/filter-icon-button";
 import { SheetOverlay } from "@/components/sheet-overlay";
+import { CHART_SLICE_COLORS } from "@/lib/chart-slice-colors";
 import type { CashflowAccountPoint } from "@/lib/cashflow-live";
 import { formatCurrency } from "@/lib/format";
 
@@ -19,7 +20,7 @@ type Props = {
 };
 
 /** Farby výsekov — rovnaké poradie ako v legende, aby sa dali spárovať očami. */
-const SLICE_COLORS = ["#7b99ff", "#f6b73c", "#34d399", "#a78bfa", "#f472b6", "#38bdf8", "#fb923c"];
+const SLICE_COLORS = CHART_SLICE_COLORS;
 
 /** „1 účet", „2/3/4 účty", „0" aj „5+ účtov" — nula ide s väčšinovým tvarom, nie so vzorom pre 2–4. */
 function accountsWord(count: number) {
