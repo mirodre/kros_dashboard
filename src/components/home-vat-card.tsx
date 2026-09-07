@@ -47,6 +47,8 @@ function VatSides({ month }: { month: VatMonthEstimate }) {
 export function HomeVatCard({ estimate }: Props) {
   const current = estimate.currentMonth;
   const previous = estimate.previousMonth;
+  const headlineNote =
+    current.amount === null ? MISSING_NOTE : current.amount < 0 ? "nadmerný odpočet" : null;
 
   return (
     <section className="dashboard-body">
@@ -60,15 +62,11 @@ export function HomeVatCard({ estimate }: Props) {
         <p className="profit-headline">
           {current.amount === null ? "—" : formatCurrencyPrecise(current.amount)}
         </p>
-        <p className="profit-headline-meta">
-          {current.amount === null
-            ? MISSING_NOTE
-            : // Záporný odhad nie je „mínus na odvod": vtedy firma naopak žiada vrátiť.
-              // Bez tohto slova sa smer sumy dá prečítať len zo znamienka.
-              current.amount < 0
-              ? "nadmerný odpočet"
-              : "na odvod"}
-        </p>
+        {/* Odvod je predvolený smer sumy — nepotrebuje slovo. Riadok si teda necháme len
+            na to, čo by inak zostalo nečitateľné: chýbajúci údaj a záporný odhad, ktorý
+            nie je „mínus na odvod", ale žiadosť o vrátenie. Bez textu radšej žiadny
+            odstavec, nech pod číslom nezostane prázdna medzera. */}
+        {headlineNote ? <p className="profit-headline-meta">{headlineNote}</p> : null}
 
         <VatSides month={current} />
 
