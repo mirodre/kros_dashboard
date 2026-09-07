@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { AccountsDonut } from "@/components/accounts-donut";
 import { FilterIconButton } from "@/components/filter-icon-button";
 import { SheetOverlay } from "@/components/sheet-overlay";
@@ -38,7 +37,8 @@ export function HomeAccountsCard({
 
   // Účet vypadnutý z KROSu drží uložený výber ďalej: prienik ho ticho obíde, ale keby
   // z výberu nezostal ani jeden dostupný účet, tichá nula by tvrdila „nemáš peniaze".
-  // Vtedy karta radšej ukáže všetko a povie prečo.
+  // Vtedy karta radšej ukáže všetko — bez hlášky, tú si používateľ nepýtal; filter
+  // v hlavičke svieti počtom vybraných účtov, takže rozdiel je odtiaľ vidieť.
   const wanted = new Set(selectedAccountIds);
   const matching = selectedAccountIds.length === 0 ? accounts : accounts.filter((account) => wanted.has(account.id));
   const filterMissedAll = matching.length === 0 && accounts.length > 0;
@@ -88,12 +88,6 @@ export function HomeAccountsCard({
 
         {metaNote ? <p className="profit-headline-meta">{metaNote}</p> : null}
 
-        {filterMissedAll ? (
-          <p className="tag-filter-help">
-            Vybrané účty tu nie sú — zobrazujeme všetky. Uprav filter alebo ho zruš.
-          </p>
-        ) : null}
-
         {accounts.length === 0 ? (
           <p className="tag-filter-help">Zatiaľ nemáme žiadne účty.</p>
         ) : (
@@ -106,10 +100,6 @@ export function HomeAccountsCard({
             legendAriaLabel="Zostatky na účtoch"
           />
         )}
-
-        <Link href="/cashflow" className="home-card-link">
-          Financie →
-        </Link>
       </article>
 
       {isFilterOpen ? (
