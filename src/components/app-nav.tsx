@@ -46,12 +46,15 @@ const NAV_ITEMS = [
   {
     href: "/cashflow",
     label: "Financie",
+    // Banka s tympanónom a stĺpmi — tá istá ikona, akú má Financie hlavné menu
+    // KROSu. Predtým tu bol stĺpcový graf, ktorý si používateľ spájal s Prehľadmi.
     icon: (
       <>
-        <path d="M4 19.5h16" />
-        <rect x="5.2" y="12.2" width="3.2" height="5.6" rx="1.1" />
-        <rect x="10.4" y="8.6" width="3.2" height="9.2" rx="1.1" />
-        <rect x="15.6" y="5.6" width="3.2" height="12.2" rx="1.1" />
+        <path d="M12 4 3.5 9.2h17L12 4Z" />
+        <path d="M7.3 11.6v6.3" />
+        <path d="M12 11.6v6.3" />
+        <path d="M16.7 11.6v6.3" />
+        <path d="M4.4 20.2h15.2" />
       </>
     )
   },
