@@ -796,6 +796,15 @@ body {
   width: 46px;
 }
 
+/*
+ * Neposúvateľný obal grafu — bublina s číslami (`.bar-chart-tooltip`) v ňom má kam
+ * sadnúť. Vnútri `.bar-chart` by ju kvôli `overflow-x: auto` orezala hrana viditeľnej
+ * plochy vždy, keď je stĺpcov viac, než sa zmestí (na mobile takmer vždy).
+ */
+.bar-chart-wrap {
+  position: relative;
+}
+
 .bar-chart {
   -ms-overflow-style: none;
   align-items: flex-end;
@@ -878,10 +887,10 @@ body {
 }
 
 /*
- * Popup s číslami musí byť nad VŠETKÝMI stĺpcami, nie len nad tými pred sebou.
+ * Zvýraznenie aktívneho stĺpca (`box-shadow` nižšie) musí byť nad susedmi, nie pod nimi.
  * `.bar-item` má kvôli `animation-fill-mode: both` natrvalo nastavený `transform`, takže
- * je vlastný stacking context — `z-index` tooltipu vnútri sa preto s ďalšími stĺpcami
- * vôbec neporovnáva a nasledujúci stĺpec ho prekryl. Zdvihnúť treba celý stĺpec.
+ * je vlastný stacking context a `z-index` čohokoľvek vnútri sa s ďalšími stĺpcami vôbec
+ * neporovnáva — zdvihnúť treba celý stĺpec.
  */
 .bar-item.active {
   z-index: 30;
@@ -898,26 +907,24 @@ body {
   box-shadow: 0 0 0 2px #7a96ff55;
 }
 
-.chart-tooltip-inline {
+/*
+ * Bublina grafov Príjmy/Výdavky. Nie je potomkom `.bar-item` ani `.bar-chart`, `left` jej
+ * dopočíta `use-chart-tooltip-left.ts` podľa stĺpca pod ňou. `top` ju drží v hornej
+ * rezerve grafu (`.bar-chart` má na ňu `padding-top`), takže neprelezie nad jeho hranu.
+ */
+.bar-chart-tooltip {
   left: 50%;
-  max-width: min(190px, calc(100vw - 48px));
+  margin-top: 0;
+  max-width: min(190px, calc(100% - 16px));
   min-width: 146px;
   position: absolute;
-  top: -42px;
+  top: 0;
   transform: translateX(-50%);
-  white-space: normal;
-  z-index: 20;
-}
-
-.chart-tooltip-inline.edge-start {
-  left: 0;
-  transform: translateX(0);
-}
-
-.chart-tooltip-inline.edge-end {
-  left: auto;
-  right: 0;
-  transform: translateX(0);
+  /* Bez `max-content` by šírku určoval zvyšok miesta napravo od `left`, takže by sa
+     bublina pri posune k okraju zúžila alebo rozšírila — a meranie, ktorým si
+     komponent počíta `left`, by platilo pre inú šírku, než akú nakoniec dostane. */
+  width: max-content;
+  z-index: 30;
 }
 
 .bar {
@@ -2970,9 +2977,8 @@ body {
 /*
  * Rovnaký dôvod ako pri `.bar-item.active`: `.profit-bar-item` má kvôli
  * `animation-fill-mode: both` natrvalo nastavený `transform` zo vstupnej
- * animácie, takže je vlastný stacking context. `z-index` na bublinu s číslami
- * vnútri by sa preto porovnával len voči jej súrodencom, nie voči ostatným
- * stĺpcom — zdvihnúť treba celý fokusnutý stĺpec.
+ * animácie, takže je vlastný stacking context a nič vnútri sa `z-index`-om
+ * neporovnáva s ostatnými stĺpcami — zdvihnúť treba celý fokusnutý stĺpec.
  */
 .profit-bar-item.is-period-focused {
   z-index: 30;
@@ -3037,6 +3043,30 @@ body {
   stroke: rgba(226, 234, 255, 0.28);
   stroke-dasharray: 3 4;
   stroke-width: 1;
+}
+
+/*
+ * Bublina s číslami je potomkom `.profit-chart-wrap`, NIE posúvateľného
+ * `.profit-chart-scroll` — ten by ju orezal (pozri `use-chart-tooltip-left.ts`).
+ * `left` dopočíta komponent podľa fokusnutého stĺpca, tu je len pád naspäť na stred.
+ * `top: 0` ju drží vnútri plochy grafu, takže nemôže vyliezť nad jeho hornú hranu.
+ */
+.profit-chart-tooltip {
+  left: 50%;
+  margin-top: 0;
+  max-width: min(190px, calc(100% - 16px));
+  min-width: 146px;
+  /* Bublina leží nad fokusnutým stĺpcom — klik na ňu musí prejsť na stĺpec pod ňou,
+     inak by sa fokus nedal zrušiť tam, kde ho používateľ zapol. */
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  /* Bez `max-content` by šírku určoval zvyšok miesta napravo od `left`, takže by sa
+     bublina pri posune k okraju zúžila alebo rozšírila — a meranie, ktorým si
+     komponent počíta `left`, by platilo pre inú šírku, než akú nakoniec dostane. */
+  width: max-content;
+  z-index: 30;
 }
 
 .profit-chart.has-period-focus .profit-bar-item:not(.is-period-focused) .profit-bar-stack,

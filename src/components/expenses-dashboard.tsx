@@ -17,6 +17,7 @@ import { parseDocumentDate } from "@/lib/document-date";
 import { useDonutEntrance } from "@/lib/use-donut-entrance";
 import { usePreference } from "@/lib/use-preference";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
+import { chartTooltipStyle, useChartTooltipLeft } from "@/lib/use-chart-tooltip-left";
 import { DonutLegend } from "./donut-legend";
 import { FilterIconButton } from "./filter-icon-button";
 import { KpiCarousel } from "./kpi-carousel";
@@ -81,6 +82,8 @@ export function ExpensesDashboard({
   const [pendingDonutCategories, setPendingDonutCategories] = useState<string[]>([]);
   const [isCategoryFilterOpen, setIsCategoryFilterOpen] = useState(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const chartWrapRef = useRef<HTMLDivElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
 
   const maxValue = Math.max(1, ...points.map((point) => Math.max(point.current, point.previous)));
@@ -203,7 +206,22 @@ export function ExpensesDashboard({
 
   useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
-  const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
+  /**
+   * Bublina s číslami stojí MIMO `.bar-chart` — ten sa posúva, takže by ju orezal
+   * (podrobnosti v `use-chart-tooltip-left.ts`). Bod berieme z aktuálneho `points`,
+   * nie zo stavu: po zmene dát by inak bublina ukazovala staré čísla.
+   */
+  const activeIndex = activePoint ? points.findIndex((point) => point.label === activePoint.label) : -1;
+  const tooltipPoint = activeIndex >= 0 ? points[activeIndex] : null;
+  const tooltipDelta = tooltipPoint ? getDeltaPct(tooltipPoint.current, tooltipPoint.previous) : null;
+  const tooltipLeft = useChartTooltipLeft({
+    wrapRef: chartWrapRef,
+    scrollRef: chartRef,
+    tooltipRef,
+    columnSelector: ".bar-item",
+    activeIndex,
+    resetKey: `${granularity}:${points.length}`
+  });
 
   // Pri výdavkoch je pokles dobrá správa — zelenú dostane nižší stĺpec ako vlani.
   const getYoyBarClass = (point: RevenuePoint) => {
@@ -330,17 +348,14 @@ export function ExpensesDashboard({
       <KpiCarousel items={kpis} invertDeltaColor />
 
       <article className="panel">
-        <div
-          className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
-          ref={chartRef}
-          onMouseLeave={() => setActivePoint(null)}
-        >
-          {points.map((point, index) => {
-            const tooltipEdgeClass =
-              index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
-            const delta = getPointDeltaPct(point);
-
-            return (
+        {/* Obal je neposúvateľný, aby mal kam sadnúť tooltip; `onMouseLeave` je na ňom,
+            a nie na grafe, nech bublina prežije prejdenie myšou zo stĺpca na jej tlačidlo. */}
+        <div className="bar-chart-wrap" ref={chartWrapRef} onMouseLeave={() => setActivePoint(null)}>
+          <div
+            className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
+            ref={chartRef}
+          >
+            {points.map((point, index) => (
               <div
                 role="button"
                 tabIndex={0}
@@ -359,40 +374,43 @@ export function ExpensesDashboard({
                   }
                 }}
               >
-                {activePoint?.label === point.label ? (
-                  <div className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`} aria-live="polite">
-                    <p className="tooltip-label">{point.label}</p>
-                    <div className="tooltip-values">
-                      <span>Tento rok: {formatCurrency(point.current)}</span>
-                      <span>Vlani: {formatCurrency(point.previous)}</span>
-                      {delta !== null ? (
-                        <span className={delta <= 0 ? "delta up" : "delta down"}>
-                          Rozdiel: {formatDelta(delta)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {expenses.length > 0 ? (
-                      <button
-                        type="button"
-                        className="tooltip-detail-button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openDocDetails(point, "current");
-                        }}
-                      >
-                        Zobraziť doklady
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
                 <div className="bar-stack">
                   <div className="bar current" style={{ height: `${(point.current / maxValue) * 100}%` }} />
                   <div className="bar previous" style={{ height: `${(point.previous / maxValue) * 100}%` }} />
                 </div>
                 <p>{point.label}</p>
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {tooltipPoint ? (
+            <div
+              ref={tooltipRef}
+              className="chart-tooltip bar-chart-tooltip"
+              aria-live="polite"
+              style={chartTooltipStyle(tooltipLeft)}
+            >
+              <p className="tooltip-label">{tooltipPoint.label}</p>
+              <div className="tooltip-values">
+                <span>Tento rok: {formatCurrency(tooltipPoint.current)}</span>
+                <span>Vlani: {formatCurrency(tooltipPoint.previous)}</span>
+                {tooltipDelta !== null ? (
+                  <span className={tooltipDelta <= 0 ? "delta up" : "delta down"}>
+                    Rozdiel: {formatDelta(tooltipDelta)}
+                  </span>
+                ) : null}
+              </div>
+              {expenses.length > 0 ? (
+                <button
+                  type="button"
+                  className="tooltip-detail-button"
+                  onClick={() => openDocDetails(tooltipPoint, "current")}
+                >
+                  Zobraziť doklady
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </article>
 

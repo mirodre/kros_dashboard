@@ -1,7 +1,10 @@
 "use client";
 
+import { useRef } from "react";
+
 import type { ProfitPoint } from "@/lib/home-live";
 import { formatCurrency } from "@/lib/format";
+import { chartTooltipStyle, useChartTooltipLeft } from "@/lib/use-chart-tooltip-left";
 
 type Props = {
   points: ProfitPoint[];
@@ -27,6 +30,22 @@ const COLUMN_WIDTH = 44;
  * vidieť na prvý pohľad.
  */
 export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Props) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const focusedIndex = points.findIndex((point) => point.label === focusedPeriod);
+  const focusedPoint = focusedIndex >= 0 ? points[focusedIndex] : null;
+  // Bublina s číslami žije mimo posúvateľnej vrstvy, inak by ju orezala — pozri hook.
+  const tooltipLeft = useChartTooltipLeft({
+    wrapRef,
+    scrollRef,
+    tooltipRef,
+    columnSelector: ".profit-bar-item",
+    activeIndex: focusedIndex,
+    resetKey: `${focusedPeriod ?? ""}:${points.length}`
+  });
+
   if (points.length === 0) {
     return <p className="tag-filter-help">Pre toto obdobie nemáme žiadne doklady.</p>;
   }
@@ -72,8 +91,8 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
   const contentWidth = points.length * COLUMN_WIDTH;
 
   return (
-    <div className="profit-chart-wrap">
-      <div className="profit-chart-scroll">
+    <div className="profit-chart-wrap" ref={wrapRef}>
+      <div className="profit-chart-scroll" ref={scrollRef}>
         <div className="profit-chart-track" style={{ width: `${contentWidth}px` }}>
           <svg
             className="profit-chart-line"
@@ -108,8 +127,6 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
           >
             {points.map((point, index) => {
               const isFocused = focusedPeriod === point.label;
-              const tooltipEdgeClass =
-                index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
               return (
                 <button
                   type="button"
@@ -120,23 +137,6 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
                   aria-label={`${point.label}: zisk ${formatCurrency(point.profit)}`}
                   onClick={() => onFocusedPeriodChange?.(isFocused ? null : point.label)}
                 >
-                  {isFocused ? (
-                    <div
-                      className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`}
-                      aria-live="polite"
-                    >
-                      <p className="tooltip-label">{point.label}</p>
-                      <div className="tooltip-values">
-                        <span>Príjmy: {formatCurrency(point.income)}</span>
-                        <span>Výdavky: {formatCurrency(point.expense)}</span>
-                        <span>Zisk: {formatCurrency(point.profit)}</span>
-                        <span className="profit-tooltip-previous">
-                          Vlani: {formatCurrency(point.previousProfit)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-
                   <div className="profit-bar-stack">
                     <div
                       className="profit-bar income"
@@ -160,6 +160,25 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
           </div>
         </div>
       </div>
+
+      {focusedPoint ? (
+        <div
+          ref={tooltipRef}
+          className="chart-tooltip profit-chart-tooltip"
+          aria-live="polite"
+          style={chartTooltipStyle(tooltipLeft)}
+        >
+          <p className="tooltip-label">{focusedPoint.label}</p>
+          <div className="tooltip-values">
+            <span>Príjmy: {formatCurrency(focusedPoint.income)}</span>
+            <span>Výdavky: {formatCurrency(focusedPoint.expense)}</span>
+            <span>Zisk: {formatCurrency(focusedPoint.profit)}</span>
+            <span className="profit-tooltip-previous">
+              Vlani: {formatCurrency(focusedPoint.previousProfit)}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       <ul className="profit-chart-legend">
         <li className="income">Príjmy</li>

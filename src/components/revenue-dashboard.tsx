@@ -8,6 +8,7 @@ import { getInvoiceAnalyticsDate, getRevenueBucketInvoices } from "@/lib/dashboa
 import { formatPeriodFocusLabel } from "@/lib/period-buckets";
 import type { NormalizedInvoice } from "@/lib/kros-types";
 import { useScrollToEnd } from "@/lib/use-scroll-to-end";
+import { chartTooltipStyle, useChartTooltipLeft } from "@/lib/use-chart-tooltip-left";
 import { KpiCarousel } from "./kpi-carousel";
 import { SheetOverlay } from "./sheet-overlay";
 
@@ -49,6 +50,8 @@ export function RevenueDashboard({
   const [invoiceDetailPoint, setInvoiceDetailPoint] = useState<RevenuePoint | null>(null);
   const [invoiceDetailSide, setInvoiceDetailSide] = useState<"current" | "previous">("current");
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const chartWrapRef = useRef<HTMLDivElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
   const invoiceDetails = useMemo(() => {
     if (!invoiceDetailPoint) return null;
@@ -72,7 +75,22 @@ export function RevenueDashboard({
 
   useScrollToEnd(chartRef, `${granularity}:${points.length}`);
 
-  const getPointDeltaPct = (point: RevenuePoint) => getDeltaPct(point.current, point.previous);
+  /**
+   * Bublina s číslami stojí MIMO `.bar-chart` — ten sa posúva, takže by ju orezal
+   * (podrobnosti v `use-chart-tooltip-left.ts`). Bod berieme z aktuálneho `points`,
+   * nie zo stavu: po zmene dát by inak bublina ukazovala staré čísla.
+   */
+  const activeIndex = activePoint ? points.findIndex((point) => point.label === activePoint.label) : -1;
+  const tooltipPoint = activeIndex >= 0 ? points[activeIndex] : null;
+  const tooltipDelta = tooltipPoint ? getDeltaPct(tooltipPoint.current, tooltipPoint.previous) : null;
+  const tooltipLeft = useChartTooltipLeft({
+    wrapRef: chartWrapRef,
+    scrollRef: chartRef,
+    tooltipRef,
+    columnSelector: ".bar-item",
+    activeIndex,
+    resetKey: `${granularity}:${points.length}`
+  });
 
   const getYoyBarClass = (point: RevenuePoint) => {
     if (point.current > point.previous) return "bar-yoy-up";
@@ -147,17 +165,14 @@ export function RevenueDashboard({
       <KpiCarousel items={kpis} />
 
       <article className="panel">
-        <div
-          className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
-          ref={chartRef}
-          onMouseLeave={() => setActivePoint(null)}
-        >
-          {points.map((point, index) => {
-            const tooltipEdgeClass =
-              index === 0 ? "edge-start" : index === points.length - 1 ? "edge-end" : "";
-            const delta = getPointDeltaPct(point);
-
-            return (
+        {/* Obal je neposúvateľný, aby mal kam sadnúť tooltip; `onMouseLeave` je na ňom,
+            a nie na grafe, nech bublina prežije prejdenie myšou z stĺpca na jej tlačidlo. */}
+        <div className="bar-chart-wrap" ref={chartWrapRef} onMouseLeave={() => setActivePoint(null)}>
+          <div
+            className={focusedPeriod ? "bar-chart has-period-focus" : "bar-chart"}
+            ref={chartRef}
+          >
+            {points.map((point, index) => (
               <div
                 role="button"
                 tabIndex={0}
@@ -176,40 +191,43 @@ export function RevenueDashboard({
                   }
                 }}
               >
-                {activePoint?.label === point.label ? (
-                  <div className={`chart-tooltip chart-tooltip-inline ${tooltipEdgeClass}`} aria-live="polite">
-                    <p className="tooltip-label">{point.label}</p>
-                    <div className="tooltip-values">
-                      <span>Tento rok: {formatCurrency(point.current)}</span>
-                      <span>Vlani: {formatCurrency(point.previous)}</span>
-                      {delta !== null ? (
-                        <span className={delta >= 0 ? "delta up" : "delta down"}>
-                          Rozdiel: {formatDelta(delta)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {invoices.length > 0 ? (
-                      <button
-                        type="button"
-                        className="tooltip-detail-button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openInvoiceDetails(point, "current");
-                        }}
-                      >
-                        Zobraziť faktúry
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
                 <div className="bar-stack">
                   <div className="bar current" style={{ height: `${(point.current / maxValue) * 100}%` }} />
                   <div className="bar previous" style={{ height: `${(point.previous / maxValue) * 100}%` }} />
                 </div>
                 <p>{point.label}</p>
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {tooltipPoint ? (
+            <div
+              ref={tooltipRef}
+              className="chart-tooltip bar-chart-tooltip"
+              aria-live="polite"
+              style={chartTooltipStyle(tooltipLeft)}
+            >
+              <p className="tooltip-label">{tooltipPoint.label}</p>
+              <div className="tooltip-values">
+                <span>Tento rok: {formatCurrency(tooltipPoint.current)}</span>
+                <span>Vlani: {formatCurrency(tooltipPoint.previous)}</span>
+                {tooltipDelta !== null ? (
+                  <span className={tooltipDelta >= 0 ? "delta up" : "delta down"}>
+                    Rozdiel: {formatDelta(tooltipDelta)}
+                  </span>
+                ) : null}
+              </div>
+              {invoices.length > 0 ? (
+                <button
+                  type="button"
+                  className="tooltip-detail-button"
+                  onClick={() => openInvoiceDetails(tooltipPoint, "current")}
+                >
+                  Zobraziť faktúry
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </article>
 
