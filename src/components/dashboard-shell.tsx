@@ -109,18 +109,22 @@ export function DashboardShell({
               aria-label="Obnoviť dáta"
               title="Obnoviť dáta"
             >
+              {/* lucide/refresh-cw — pozri app-nav.tsx, ikony berieme z Lucide. */}
               <svg className="header-refresh-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M20 11a8 8 0 1 0-.9 4.5" />
-                <path d="M20 4v6h-6" />
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                <path d="M8 16H3v5" />
               </svg>
             </button>
           ) : null}
           <form action={signOutAction}>
             <button type="submit" className="header-icon-btn" aria-label="Odhlásiť sa" title="Odhlásiť sa">
+              {/* lucide/log-out */}
               <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2" />
-                <path d="M10 12h10" />
-                <path d="M17 9l3 3-3 3" />
+                <path d="m16 17 5-5-5-5" />
+                <path d="M21 12H9" />
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               </svg>
             </button>
           </form>

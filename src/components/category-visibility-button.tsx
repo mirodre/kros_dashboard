@@ -106,9 +106,11 @@ export function CategoryVisibilityButton({
                       className="category-filter-hint"
                       title={`Aktívny filter: ${filterCount}`}
                     >
+                      {/* Ten istý lievik ako `FilterIconButton` — lucide/funnel.
+                          Keď sa mení jeden, musí sa aj druhý. */}
                       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
                         <path
-                          d="M4 5.5h16l-6.4 7.6v5.2l-3.2-1.8v-3.4L4 5.5z"
+                          d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"
                           stroke="currentColor"
                           strokeWidth="1.8"
                           strokeLinecap="round"
@@ -149,16 +151,17 @@ export function CategoryVisibilityButton({
         aria-label={label}
         title={label}
       >
+        {/* lucide/sliders-horizontal */}
         <svg className="header-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M4 7h9" />
-          <path d="M17 7h3" />
-          <path d="M4 12h4" />
-          <path d="M12 12h8" />
-          <path d="M4 17h11" />
-          <path d="M19 17h1" />
-          <circle cx="15" cy="7" r="2" />
-          <circle cx="10" cy="12" r="2" />
-          <circle cx="17" cy="17" r="2" />
+          <path d="M10 5H3" />
+          <path d="M12 19H3" />
+          <path d="M14 3v4" />
+          <path d="M16 17v4" />
+          <path d="M21 12h-9" />
+          <path d="M21 19h-5" />
+          <path d="M21 5h-7" />
+          <path d="M8 10v4" />
+          <path d="M8 12H3" />
         </svg>
       </button>
 

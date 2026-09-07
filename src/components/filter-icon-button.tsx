@@ -24,10 +24,11 @@ export function FilterIconButton({ label, activeCount = 0, onClick }: Props) {
       aria-label={title}
       title={title}
     >
-      {/* Nevyplnený lievik: filter je pomocná akcia, nemá v hlavičke ťahať oko na seba. */}
+      {/* Nevyplnený lievik: filter je pomocná akcia, nemá v hlavičke ťahať oko na seba.
+          lucide/funnel — pozri app-nav.tsx, ikony berieme z Lucide. */}
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
         <path
-          d="M4 5.5h16l-6.4 7.6v5.2l-3.2-1.8v-3.4L4 5.5z"
+          d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
