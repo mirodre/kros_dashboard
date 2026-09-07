@@ -3,7 +3,13 @@
  * späť. Prekryv je zámerný: hodiny KROSu a naše nemusia sedieť na sekundu
  * a doklad, ktorý by padol do medzery, by sa už nikdy nedosynchronizoval.
  *
- * KROS API značku očakáva bez časovej zóny, preto sa skladá ručne z UTC zložiek.
+ * KROS API značku očakáva bez časovej zóny A BEZ ZLOMKU SEKUNDY, preto sa skladá
+ * ručne z UTC zložiek a sekundy sa zaokrúhľujú dole. So zlomkom (`...29.2` aj
+ * `...29.200`) API filter potichu zahodí a vráti CELÚ históriu — merané na jednej
+ * firme: 433 dokladov namiesto jedného. Keďže značka z KROSu zlomok skoro vždy
+ * má, bez tohto orezania sa z každého ručného obnovenia stane plné sťahovanie.
+ *
+ * Orezanie posúva okno len dole (o zlomok sekundy), takže žiadnu zmenu nezmešká.
  */
 export function withLastModifiedOverlap(value: string) {
   const date = new Date(value);
@@ -15,10 +21,7 @@ export function withLastModifiedOverlap(value: string) {
   const hours = String(date.getUTCHours()).padStart(2, "0");
   const minutes = String(date.getUTCMinutes()).padStart(2, "0");
   const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-  const milliseconds = date.getUTCMilliseconds();
-  const fraction =
-    milliseconds > 0 ? `.${String(milliseconds).padStart(3, "0").replace(/0+$/, "")}` : "";
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${fraction}`;
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }
 
 /**

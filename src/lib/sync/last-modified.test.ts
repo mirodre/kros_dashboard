@@ -6,8 +6,16 @@ describe("withLastModifiedOverlap", () => {
     expect(withLastModifiedOverlap("2026-09-06T10:00:00.000Z")).toBe("2026-09-06T09:55:00");
   });
 
-  it("zachová zlomky sekundy bez koncových núl", () => {
-    expect(withLastModifiedOverlap("2026-09-06T10:00:00.120Z")).toBe("2026-09-06T09:55:00.12");
+  // Overené priamo proti KROS API na tej istej firme: značka `...T14:48:29.2`
+  // (aj `...29.200`) vrátila všetkých 433 dokladov, `...T14:48:29` jeden. Zlomok
+  // sekundy teda API neparsuje a filter potichu zahodí — a z inkrementálneho
+  // doťahovania sa stane plné sťahovanie na každom refreshi.
+  it("zlomok sekundy zahodí — s ním KROS API filter ignoruje", () => {
+    expect(withLastModifiedOverlap("2026-09-06T10:00:00.120Z")).toBe("2026-09-06T09:55:00");
+  });
+
+  it("sekundy zaokrúhľuje dole, nie hore — okno sa smie len rozšíriť", () => {
+    expect(withLastModifiedOverlap("2026-09-06T10:00:00.999Z")).toBe("2026-09-06T09:55:00");
   });
 
   it("neplatný vstup vráti nezmenený — radšej nič než posunuté okno", () => {
