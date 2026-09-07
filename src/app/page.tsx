@@ -484,17 +484,7 @@ export default function HomePage() {
             />
           )}
           {hiddenSections.includes(HOME_SECTIONS.vat) ? null : (
-            <HomeVatCard
-              estimate={vatEstimate}
-              hasIgnoredFilters={
-                Boolean(focusedPeriod) ||
-                Boolean(focusedCompany) ||
-                Boolean(focusedTag) ||
-                selectedCompanies.length > 0 ||
-                Object.values(categoryFilters).some((tags) => tags.length > 0)
-              }
-              limitedToCompanyCount={selectedCompanies.length}
-            />
+            <HomeVatCard estimate={vatEstimate} />
           )}
           <CategorizedTagsDashboard
             baseTitle="Zisk podľa štítkov"

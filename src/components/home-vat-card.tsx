@@ -6,17 +6,6 @@ import { formatMonthKeyLabel } from "@/lib/use-sync-progress";
 
 type Props = {
   estimate: VatEstimate;
-  /**
-   * Je naokolo zapnutý nejaký filter alebo rozklik (obdobie, firma, štítok)? Karta ich
-   * všetky ignoruje — a práve preto to musí priznať: bez hlášky by čísla vyzerali, akoby
-   * sa s ostatnými kartami rozchádzali bez dôvodu.
-   */
-  hasIgnoredFilters: boolean;
-  /**
-   * Koľko firiem drží uložený filter. Nie kozmetika: firmy mimo neho sa vôbec nesťahujú,
-   * takže odhad nie je z celého účtovníctva a karta to nesmie tvrdiť.
-   */
-  limitedToCompanyCount: number;
 };
 
 /** Nula by tvrdila, že firma nemá čo odviesť. To je iná veta než „nevieme". */
@@ -55,7 +44,7 @@ function VatSides({ month }: { month: VatMonthEstimate }) {
   );
 }
 
-export function HomeVatCard({ estimate, hasIgnoredFilters, limitedToCompanyCount }: Props) {
+export function HomeVatCard({ estimate }: Props) {
   const current = estimate.currentMonth;
   const previous = estimate.previousMonth;
 
@@ -94,15 +83,6 @@ export function HomeVatCard({ estimate, hasIgnoredFilters, limitedToCompanyCount
             <span className="vat-previous-value">{formatCurrencyPrecise(previous.amount)}</span>
           )}
         </div>
-
-        {hasIgnoredFilters && limitedToCompanyCount > 0 ? (
-          <p className="tag-filter-help">
-            {/* „Zo všetkých dokladov" by tu bola lož: firmy mimo uloženého filtra sa
-                nesťahujú, takže ich doklady appka nemá z čoho započítať. */}
-            Odhad počíta zo všetkých dokladov vybraných firiem — rozkliknuté obdobie, firma ani
-            štítok sa sem neprenášajú.
-          </p>
-        ) : null}
       </article>
     </section>
   );
