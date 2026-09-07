@@ -1348,18 +1348,17 @@ body {
 
 /* Karta Domova zámerne nevykresľuje `.cashflow-legend-trend` — trend by so sebou
    priniesol závislosť na období, ktorej sa má táto karta vyhýbať (zobrazuje
-   zostatok k dnešku, nie tok za obdobie). Bez tohto prepisu by ale dlaždica
-   zdedila trojriadkovú mriežku a 180px podlahu z Financií a dole by jej ostal
-   prázdny pás po chýbajúcom riadku trendu. Prepis preto zníži mriežku na dva
-   riadky, zruší min-height podlahu a zruší aj zdedený `cursor: pointer` —
-   táto dlaždica nie je tlačidlo, na rozdiel od legendy vo Financiách/Výdavkoch. */
-.home-legend-item {
+   zostatok k dnešku, nie tok za obdobie). Bez tohto prepisu by dlaždica zdedila
+   trojriadkovú mriežku a 180px podlahu z Financií a dole by jej ostal prázdny
+   pás po chýbajúcom riadku trendu. Dvojica tried (nie samostatná `.no-trend`)
+   je tu zámerne — vďaka vyššej špecifickosti prebije aj mobilné pravidlo pre
+   `.cashflow-legend-item` nižšie v súbore. */
+.cashflow-legend-item.no-trend {
   grid-template-areas:
     "label"
     "value";
   grid-template-rows: minmax(52px, auto) minmax(30px, auto);
   min-height: 0;
-  cursor: default;
 }
 
 .cashflow-legend-label {
@@ -2325,12 +2324,6 @@ body {
     min-width: 0;
   }
 
-  /* Bez tohto by mobilné pravidlo vyššie (rovnaká špecifickosť, neskôr v súbore)
-     prepísalo min-height:0 z hlavného prepisu vyššie späť na 168px. */
-  .home-legend-item {
-    min-height: 0;
-  }
-
   .kpi-card {
     min-height: 165px;
   }
@@ -3148,14 +3141,6 @@ body {
   color: var(--muted);
   flex-basis: 100%;
   font-size: 0.76rem;
-}
-
-.home-donut {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  margin: 0.6rem auto;
-  mask: radial-gradient(circle, transparent 56%, #000 57%);
-  width: min(190px, 52vw);
 }
 
 .home-card-link {
