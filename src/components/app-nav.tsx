@@ -10,61 +10,79 @@ import { useEffect, useState } from "react";
  * a neprestane reagovať, kým sa nový modul dokresľuje. Menu musí byť živé vždy —
  * aj uprostred načítavania sa musí dať prekliknúť inam.
  */
+/**
+ * Ikony sú prebrané z Lucide (https://lucide.dev), teda presná geometria
+ * z ikonového setu, nie kreslená napodobenina — pri štandardných motívoch
+ * (dom, banka, bloček) je rozdiel vidieť. Cesty sú tu inline zámerne: appka
+ * kvôli piatim ikonám nepotrebuje závislosť a `.mobile-liquid-icon svg`
+ * v globals.css im dá jednotný `stroke`, hrúbku aj zaoblenia.
+ *
+ * Lucide ISC License. Copyright (c) for portions of Lucide are held by
+ * Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c)
+ * for Lucide are held by Lucide Contributors 2022.
+ *
+ * Keď sa pridáva ďalšia ikona, patrí sem tá istá cesta, akú má Lucide —
+ * nie vlastný tvar, ktorý by v rade vedľa ostatných vyzeral inak.
+ */
 const NAV_ITEMS = [
   {
     href: "/",
     label: "Domov",
+    // lucide/house
     icon: (
       <>
-        <path d="M4.5 10.4 12 4l7.5 6.4V20a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1v-9.6Z" />
-        <path d="M9.5 21v-5.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V21" />
+        <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+        <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       </>
     )
   },
   {
     href: "/prijmy",
     label: "Príjmy",
+    // lucide/trending-up
     icon: (
       <>
-        <path d="M4 16.5 9.2 11l3.4 3.2L20 7" />
-        <path d="M15.2 7H20v4.8" />
+        <path d="M16 7h6v6" />
+        <path d="m22 7-8.5 8.5-5-5L2 17" />
       </>
     )
   },
   {
     href: "/expenses",
     label: "Výdavky",
+    // lucide/receipt
     icon: (
       <>
-        <path d="M6 3.5h12v17l-2.4-1.6-2.4 1.6-1.2-.8-1.2.8-2.4-1.6L6 20.5v-17Z" />
-        <path d="M9 8h6" />
-        <path d="M9 11.5h6" />
-        <path d="M9 15h3.6" />
+        <path d="M12 17V7" />
+        <path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8" />
+        <path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z" />
       </>
     )
   },
   {
     href: "/cashflow",
     label: "Financie",
-    // Banka s tympanónom a stĺpmi — tá istá ikona, akú má Financie hlavné menu
-    // KROSu. Predtým tu bol stĺpcový graf, ktorý si používateľ spájal s Prehľadmi.
+    // lucide/landmark — banka s tympanónom a stĺpmi, ten istý motív, aký má
+    // Financie hlavné menu KROSu.
     icon: (
       <>
-        <path d="M12 4 3.5 9.2h17L12 4Z" />
-        <path d="M7.3 11.6v6.3" />
-        <path d="M12 11.6v6.3" />
-        <path d="M16.7 11.6v6.3" />
-        <path d="M4.4 20.2h15.2" />
+        <path d="M10 18v-7" />
+        <path d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z" />
+        <path d="M14 18v-7" />
+        <path d="M18 18v-7" />
+        <path d="M3 22h18" />
+        <path d="M6 18v-7" />
       </>
     )
   },
   {
     href: "/settings",
     label: "Nastavenia",
+    // lucide/settings
     icon: (
       <>
-        <path d="m19.2 12.9.1-.9-.1-.9 2-1.5-1.9-3.3-2.4 1a7.8 7.8 0 0 0-1.6-.9L15 3.7h-6l-.3 2.7a7.8 7.8 0 0 0-1.6.9l-2.4-1L2.8 9.6l2 1.5-.1.9.1.9-2 1.5 1.9 3.3 2.4-1a7.8 7.8 0 0 0 1.6.9l.3 2.7h6l.3-2.7a7.8 7.8 0 0 0 1.6-.9l2.4 1 1.9-3.3-2-1.5Z" />
-        <circle cx="12" cy="12" r="2.8" />
+        <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+        <circle cx="12" cy="12" r="3" />
       </>
     )
   }

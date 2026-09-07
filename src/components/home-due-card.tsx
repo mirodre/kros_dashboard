@@ -35,16 +35,25 @@ function daysWord(days: number) {
   return days < 5 ? "dni" : "dní";
 }
 
-/** Zoznam dokladov ako ikona: tri riadky s odrážkami, v štýle ostatných ikon appky. */
+/** Ikona zoznamu — lucide/list, rovnako ako ikony hlavného menu (pozri app-nav.tsx). */
 function DocumentListIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M4.6 6.5h.01M4.6 12h.01M4.6 17.5h.01M9 6.5h10.4M9 12h10.4M9 17.5h10.4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 5h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 19h.01" />
+      <path d="M8 5h13" />
+      <path d="M8 12h13" />
+      <path d="M8 19h13" />
     </svg>
   );
 }
