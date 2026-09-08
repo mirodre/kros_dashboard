@@ -11,7 +11,7 @@ Moduly:
 | `/expenses` | Výdavky | Štruktúra výdavkov, dodávatelia, splatnosti |
 | `/cashflow` | Financie | Účty, pohyby, cashflow |
 
-Ďalej: Revolut-like swipe KPI karty, filter granularít (týždeň / mesiac / rok), PWA manifest.
+Ďalej: Revolut-like swipe KPI karty, filter granularít (týždeň / mesiac / rok), [inštalácia na plochu](#inštalácia-na-plochu-pwa).
 
 **Domov je výcuc z ostatných modulov, nie ďalší zdroj dát.** Skladá čísla, ktoré inde
 nie sú — zisk vzniká až spojením príjmov a výdavkov — ale nesťahuje nič navyše:
@@ -90,6 +90,63 @@ npm install
 npm run build
 # reštart procesu (pm2, systemd, …)
 ```
+
+## Inštalácia na plochu (PWA)
+
+Prehľad sa dá pridať medzi ikony telefónu a otvoriť ako appku — na celú obrazovku, bez
+adresného riadka. Pozvánku appka kreslí sama, nie prehliadač:
+
+1. **Lišta nad menu** (`src/components/install-invite.tsx`) — objaví sa 9 sekúnd po
+   otvorení appky. Nikto neinštaluje appku, ktorú ešte nevidel.
+2. **Spodný dialóg** (`src/components/install-sheet.tsx`) — ukáže, ako bude ikona na
+   ploche vyzerať a čo z inštalácie človek má. Na iOS namiesto toho tri kroky cez menu
+   Zdieľať, pretože Apple `beforeinstallprompt` neimplementuje.
+3. **Systémový dialóg Chromu** — až na kliknutie „Nainštalovať". Prehliadačový pásik je
+   potlačený (`event.preventDefault()` v `src/lib/use-install-prompt.ts`), takže si
+   rozhodnutie nevypýta skôr, ako appka povie, o čom je.
+
+Zavretie pozvánky sa pamätá v `localStorage` **tohto zariadenia** (nie v serverových
+nastaveniach — appku na telefóne môžeš mať a na notebooku nie). Prvé zavretie ju stichne
+na 3 dni, druhé na 3 týždne, potom sa sama neukáže viac; inštalácia zostáva dostupná v
+**Nastavenia → Appka na plochu**. Pravidlá sú v `src/lib/install-prompt.ts` a majú testy.
+
+### Servisný worker
+
+`public/sw.js` je tu kvôli inštalácii: **Chromium appku neponúkne nainštalovať, kým na
+stránke nebeží servisný worker s `fetch` obsluhou.** Zároveň drží offline stránku
+(`public/offline.html`), aby appka spustená z plochy bez signálu nekončila chybovou
+stránkou prehliadača.
+
+Kešuje len hashované assety buildu (`/_next/static/*`), ikony a offline stránku.
+`/api/*` ani HTML modulov sa nedotkne — sú to dáta firmy za prihlásením a cache
+prehliadača prežije odhlásenie. Stráži to `src/lib/service-worker.test.ts`.
+
+Worker sa registruje **len v produkčnom builde** (`src/components/service-worker-boot.tsx`):
+`next dev` servíruje chunky bez hashu v URL, takže cache-first by pri vývoji podávalo
+staré. Inštaláciu preto testuj cez `npm run build && npm start` (localhost sa počíta ako
+bezpečný origin) alebo na nasadenej appke.
+
+Po zmene `public/sw.js` treba zvýšiť `VERSION` v jeho hlavičke, inak si prehliadače
+ponechajú staré cache.
+
+### Ikony
+
+| Súbor | Na čo |
+|---|---|
+| `public/icon.svg` | favicon a ikona v UI appky |
+| `public/favicon.ico` | prehliadače bez SVG faviconu |
+| `public/apple-icon.png` | ikona na ploche iOS (SVG tam iOS ignoruje) |
+| `public/icon-192.png`, `public/icon-512.png` | inštalácia na Androide |
+| `public/icon-maskable.svg` + `icon-maskable-192/512.png` | adaptívna ikona Androidu |
+
+Maskovateľná ikona je vlastná kresba, nie zväčšený favicon: launcher si z nej vystrihne
+svoj tvar (kruh, squircle), takže pozadie ide od okraja po okraj a kresba sa musí zmestiť
+do bezpečného kruhu s priemerom 80 % plátna. Bez nej Android ikonu nezmaskuje, ale zmenší
+a podloží bielym kolieskom.
+
+PNG-ká z nej vznikajú rasterizáciou SVG — čímkoľvek, čo dodrží veľkosť a zachová
+priehľadnosť (napr. `rsvg-convert -w 512 -h 512 public/icon-maskable.svg -o public/icon-maskable-512.png`).
+Po zmene `icon-maskable.svg` treba oba PNG-ká vygenerovať znova.
 
 ## Zapamätané nastavenia (filtre)
 

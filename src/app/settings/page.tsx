@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { signOutAction } from "@/app/actions/sign-out";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { InstallAppCard } from "@/components/install-app-card";
 import { KrosConnectionCard } from "@/components/kros-connection-card";
 import { SheetOverlay } from "@/components/sheet-overlay";
 import { TenantDefaultsCard } from "@/components/tenant-defaults-card";
@@ -98,6 +99,10 @@ export default function SettingsPage() {
       {/* Až za prepojením: bez firiem v KROSe nie je čo filtrovať, a karta sa navyše
           ukáže len vo firme, kde appku otvorilo viac ľudí. */}
       <TenantDefaultsCard />
+
+      {/* Inštalácia na plochu patrí pred lokálnu cache: je to prvá vec, ktorú človek na
+          telefóne chce, a zvyšok karty sú už len údržbové úkony. */}
+      <InstallAppCard />
 
       <section className="dashboard-body">
         <article className="panel">

@@ -3,7 +3,9 @@ import "./globals.css";
 import { AppNav } from "@/components/app-nav";
 
 import { auth } from "@/auth";
+import { InstallInvite } from "@/components/install-invite";
 import { PreferencesBoot } from "@/components/preferences-boot";
+import { ServiceWorkerBoot } from "@/components/service-worker-boot";
 
 export const metadata: Metadata = {
   // Názov záložky si každý modul určuje vo svojom layoute (`src/app/expenses/layout.tsx`
@@ -66,7 +68,16 @@ export default async function RootLayout({
             neodmontuje, takže ostáva klikateľné aj počas načítavania nového modulu.
           */}
           <AppNav />
+          {/*
+            Pozvánka na inštaláciu na plochu. Tiež v layoute, nie v stránke: lišta sa má
+            objaviť tam, kde človek práve je, a prechod na iný modul ju nesmie zhodiť ani
+            znova odpočítavať. Vykresľuje sa portálom do `body` (rovnaký dôvod ako pri
+            `SheetOverlay`), takže tu na poradí v strome nezáleží.
+          */}
+          <InstallInvite />
         </PreferencesBoot>
+        {/* Servisný worker: bez neho Chromium inštaláciu na plochu vôbec neponúkne. */}
+        <ServiceWorkerBoot />
         <div className="orientation-lock" aria-hidden="true">
           <div>
             <strong>Otoč telefón naspäť na výšku</strong>

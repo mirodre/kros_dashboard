@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Maskovateľná (adaptive) ikona pre Android. Je to tá istá ikona ako `icon.svg`,
+    len prekreslená pre iné pravidlá: launcher si z nej vystrihne svoj tvar (kruh,
+    squircle, kvapku), takže pozadie musí ísť od okraja po okraj BEZ zaoblenia a
+    kresba sa musí zmestiť do bezpečnej zóny — kruhu s priemerom 80 % plátna.
+
+    Bez tejto verzie Android nemaskuje, ale ikonu zmenší a podloží bielym kolieskom:
+    tmavá dlaždica prehľadu potom na ploche vyzerá ako nálepka na tanieriku.
+
+    Kresba je preto obalená transformáciou zo 64px mriežky `icon.svg` do stredných
+    410px: najvzdialenejší bod ťahu tak leží 181px od stredu, teda vnútri bezpečného
+    kruhu (205px). PNG-ká z tohto súboru vznikajú do `public/icon-maskable-*.png`,
+    generovanie je popísané v README.
+  -->
+  <defs>
+    <linearGradient id="kros-maskable-bg" gradientUnits="userSpaceOnUse" x1="256" y1="0" x2="256" y2="512">
+      <stop offset="0" stop-color="#242c4d" />
+      <stop offset="1" stop-color="#111420" />
+    </linearGradient>
+    <radialGradient id="kros-maskable-glow" gradientUnits="userSpaceOnUse" cx="256" cy="150" r="290">
+      <stop offset="0" stop-color="#374e94" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#111420" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="kros-maskable-peak" gradientUnits="userSpaceOnUse" x1="47.5" y1="47.5" x2="47.5" y2="14.5">
+      <stop offset="0" stop-color="#5c83ff" />
+      <stop offset="1" stop-color="#39d499" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#kros-maskable-bg)" />
+  <rect width="512" height="512" fill="url(#kros-maskable-glow)" />
+  <g transform="translate(256 256) scale(6.4) translate(-32 -32)" fill="none" stroke-width="9" stroke-linecap="round">
+    <path d="M16.5 47.5V37" stroke="#39508f" />
+    <path d="M32 47.5V29" stroke="#5c83ff" />
+    <path d="M47.5 47.5V19" stroke="url(#kros-maskable-peak)" />
+  </g>
+</svg>

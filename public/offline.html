@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111420" />
+    <title>KROS Prehľad — offline</title>
+    <!--
+      Stránka, ktorú ukáže servisný worker (`public/sw.js`), keď appka spustená z plochy
+      nemá sieť. Je zámerne samostatná a bez závislostí: v okamihu, keď sa zobrazuje, sa
+      už nedá nič dotiahnuť — ani font, ani CSS z buildu. Štýly sú preto inline a farby
+      sú tie isté tokeny ako v `src/app/globals.css`, aby to nevyzeralo ako cudzia
+      chybová stránka prehliadača.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        align-items: center;
+        background: #111420;
+        color: #eff2ff;
+        display: flex;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        justify-content: center;
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: calc(2rem + env(safe-area-inset-top)) 1.5rem calc(2rem + env(safe-area-inset-bottom));
+        position: relative;
+      }
+
+      body::before {
+        background: radial-gradient(
+          ellipse 760px 470px at 50% 120px,
+          rgba(55, 78, 148, 0.78) 0%,
+          rgba(44, 62, 122, 0.42) 30%,
+          rgba(17, 20, 32, 0) 72%
+        );
+        content: "";
+        height: 620px;
+        left: 0;
+        pointer-events: none;
+        position: fixed;
+        right: 0;
+        top: 0;
+      }
+
+      main {
+        background: linear-gradient(150deg, #1b2440 0%, #18203a 55%, #141a31 100%);
+        border: 1px solid #2b3964;
+        border-radius: 22px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+        display: grid;
+        gap: 0.7rem;
+        justify-items: center;
+        max-width: 380px;
+        padding: 1.6rem 1.4rem;
+        position: relative;
+        text-align: center;
+        width: 100%;
+      }
+
+      .mark {
+        align-items: center;
+        background: linear-gradient(160deg, #242c4d 0%, #111420 100%);
+        border: 1px solid #33406f;
+        border-radius: 20px;
+        display: flex;
+        height: 62px;
+        justify-content: center;
+        margin-bottom: 0.25rem;
+        width: 62px;
+      }
+
+      h1 {
+        font-size: 1.12rem;
+        margin: 0;
+      }
+
+      p {
+        color: #9ea7c2;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        margin: 0;
+      }
+
+      button {
+        background: linear-gradient(180deg, #4b6fe0 0%, #3450ab 100%);
+        border: 1px solid #6f90ff;
+        border-radius: 999px;
+        color: #f4f7ff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        margin-top: 0.45rem;
+        padding: 0.6rem 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#8ea6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <!-- lucide/wifi-off -->
+          <path d="M12 20h.01" />
+          <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+          <path d="M5 12.859a10 10 0 0 1 5.17-2.69" />
+          <path d="M19 12.859a10 10 0 0 0-2.007-1.523" />
+          <path d="M2 8.82a15 15 0 0 1 4.177-2.643" />
+          <path d="M22 8.82a15 15 0 0 0-11.288-3.764" />
+          <path d="m2 2 20 20" />
+        </svg>
+      </span>
+      <h1>Prehľad je bez signálu</h1>
+      <p>
+        Appka sa nedostala na server, takže nové čísla teraz nedotiahne. Skús to znova,
+        keď bude pripojenie — naposledy stiahnuté doklady máš v appke uložené.
+      </p>
+      <button type="button" onclick="window.location.reload()">Skúsiť znova</button>
+    </main>
+  </body>
+</html>

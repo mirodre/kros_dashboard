@@ -17,7 +17,13 @@ describe("isPublicPath", () => {
     "/kros/callback",
     // Prihlasovacia route musi byt verejna, inak by ju middleware chranil a poslal
     // neprihlaseneho zase na nu — redirect loop.
-    "/prihlasenie"
+    "/prihlasenie",
+    // Servisny worker a jeho offline stranka: prehliadac si `sw.js` preveruje aj po
+    // vyprsani session a worker si `offline.html` uklada do cache dopredu. Chranena
+    // cesta by im vratila presmerovanie na prihlasenie — appka by prestala byt
+    // instalovatelna a offline by z ikony na ploche vyskocila prazdna obrazovka.
+    "/sw.js",
+    "/offline.html"
   ])("verejna: %s", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });

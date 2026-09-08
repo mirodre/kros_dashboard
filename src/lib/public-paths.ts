@@ -37,7 +37,19 @@ const PUBLIC_PREFIXES = [
  */
 export const SIGN_IN_PATH = "/prihlasenie";
 
-const PUBLIC_EXACT = new Set(["/kros/callback", SIGN_IN_PATH]);
+/**
+ * `/sw.js` a `/offline.html` sú tu naschvál, nie cez `PUBLIC_FILE`: pridať do tej
+ * regulárky `js|html` by zverejnilo ľubovoľnú budúcu cestu s tou príponou, kdežto tieto
+ * dva súbory sú konkrétne, statické a bez čohokoľvek firemného (pozri `public/sw.js`).
+ *
+ * Verejné byť MUSIA. Servisný worker si prehliadač periodicky preveruje aj vtedy, keď
+ * session medzitým vyprší; chránená cesta by mu namiesto skriptu vrátila presmerovanie
+ * na prihlásenie, registrácia by padla a appka by prestala byť inštalovateľná. To isté
+ * platí pre offline stránku: worker si ju ukladá do cache dopredu a keby si namiesto nej
+ * uložil prihlasovacie presmerovanie, výpadok siete by v appke na ploche skončil prázdnou
+ * obrazovkou.
+ */
+const PUBLIC_EXACT = new Set(["/kros/callback", SIGN_IN_PATH, "/sw.js", "/offline.html"]);
 
 /**
  * Statické súbory z `public/` — majú príponu a Next ich servíruje z koreňa.
