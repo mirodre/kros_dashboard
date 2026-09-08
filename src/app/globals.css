@@ -939,24 +939,28 @@ body {
 
 /*
  * YoY „tento rok“: zelená = lepšie ako vlani, červená = horšie.
- * Teal hore; dole jemná ružovo‑červená medzi prachovou mauve a pôvodnou sýtou červenou.
+ * Stredný odtieň oboch stĺpcov je zámerne prevzatý z palety výsekov koláčových grafov
+ * (`chart-slice-colors.ts`) — zelená `#34d399` a červená `#f87171` sú z nej najbližšie
+ * k čistej zelenej a červenej. Domov, Financie a Príjmy tak hovoria tou istou farebnou
+ * rečou. Svetlý a tmavý stop gradientu je len o krok vedľa (emerald/red 300 a 600),
+ * takže stĺpec má hĺbku, ale drží odtieň palety.
  */
 .bar-item.bar-yoy-up .bar.current {
-  background: linear-gradient(180deg, #5eead4 0%, #2dd4bf 40%, #0d9488 100%);
-  box-shadow: 0 5px 18px rgba(13, 148, 136, 0.42);
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 40%, #059669 100%);
+  box-shadow: 0 5px 18px rgba(5, 150, 105, 0.42);
 }
 
 .bar-item.bar-yoy-down .bar.current {
-  background: linear-gradient(180deg, #f6ccd4 0%, #d6738a 46%, #943d50 100%);
-  box-shadow: 0 5px 16px rgba(120, 45, 65, 0.34);
+  background: linear-gradient(180deg, #fca5a5 0%, #f87171 46%, #dc2626 100%);
+  box-shadow: 0 5px 16px rgba(185, 28, 28, 0.34);
 }
 
 .bar-item.active.bar-yoy-up .bar.current {
-  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.55), 0 5px 18px rgba(13, 148, 136, 0.42);
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.55), 0 5px 18px rgba(5, 150, 105, 0.42);
 }
 
 .bar-item.active.bar-yoy-down .bar.current {
-  box-shadow: 0 0 0 2px rgba(220, 115, 140, 0.48), 0 5px 16px rgba(120, 45, 65, 0.34);
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.48), 0 5px 16px rgba(185, 28, 28, 0.34);
 }
 
 /*

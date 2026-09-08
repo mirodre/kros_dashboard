@@ -6,6 +6,11 @@
  * aby dva vedľajšie výseky nikdy nesplynuli. Nové farby preto pridávaj na
  * koniec — vsunutím doprostred by sa všetkým existujúcim výsekom preskupili
  * farby a používateľ by po nasadení videl iný graf pri tých istých dátach.
+ *
+ * Pozor: `#34d399` a `#f87171` z tejto palety sú zároveň ručne prepísané v
+ * `globals.css` ako YoY farby stĺpcov hlavného grafu (`.bar-yoy-up` /
+ * `.bar-yoy-down`) — CSS si TypeScript naimportovať nevie. Keď sa tieto dva
+ * odtiene menia, treba ich prepísať aj tam.
  */
 export const CHART_SLICE_COLORS = [
   "#7b99ff",
