@@ -7,10 +7,11 @@
  * koniec — vsunutím doprostred by sa všetkým existujúcim výsekom preskupili
  * farby a používateľ by po nasadení videl iný graf pri tých istých dátach.
  *
- * Pozor: `#34d399` a `#f87171` z tejto palety sú zároveň ručne prepísané v
- * `globals.css` ako YoY farby stĺpcov hlavného grafu (`.bar-yoy-up` /
- * `.bar-yoy-down`) — CSS si TypeScript naimportovať nevie. Keď sa tieto dva
- * odtiene menia, treba ich prepísať aj tam.
+ * Pozor: YoY farby stĺpcov hlavného grafu (`.bar-yoy-up` / `.bar-yoy-down`
+ * v `globals.css`) sú odvodené z tejto palety a ručne prepísané — CSS si
+ * TypeScript naimportovať nevie. Zelený stĺpec je `#34d399`, červený je stred
+ * medzi `#f87171` a `#f472b6` (čistá červená v stĺpci kričala). Keď sa niektorý
+ * z týchto troch odtieňov mení, treba ho prepísať aj tam.
  */
 export const CHART_SLICE_COLORS = [
   "#7b99ff",
