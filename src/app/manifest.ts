@@ -17,8 +17,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "KROS Prehľad",
-    short_name: "Prehľad",
+    name: "KROS Prehľady",
+    short_name: "KROS Prehľady",
     description:
       "Prehľad tržieb, výdavkov, pohľadávok a peňazí na účtoch z KROSu — na telefóne, na jednu obrazovku.",
     start_url: "/",

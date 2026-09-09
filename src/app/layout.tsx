@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "KROS Prehľad"
+    title: "KROS Prehľady"
   },
   other: {
     "mobile-web-app-capable": "yes",
