@@ -5,6 +5,7 @@ import { useRef } from "react";
 import type { ProfitPoint } from "@/lib/home-live";
 import { formatCurrency } from "@/lib/format";
 import { chartTooltipStyle, useChartTooltipLeft } from "@/lib/use-chart-tooltip-left";
+import { useScrollToEnd } from "@/lib/use-scroll-to-end";
 
 type Props = {
   points: ProfitPoint[];
@@ -45,6 +46,11 @@ export function ProfitChart({ points, focusedPeriod, onFocusedPeriodChange }: Pr
     activeIndex: focusedIndex,
     resetKey: `${focusedPeriod ?? ""}:${points.length}`
   });
+  // Rovnako ako v module Príjmy: po otvorení ukážeme najaktuálnejšie obdobia vpravo.
+  useScrollToEnd(
+    scrollRef,
+    `${points.length}:${points[0]?.label ?? ""}:${points[points.length - 1]?.label ?? ""}`
+  );
 
   if (points.length === 0) {
     return <p className="tag-filter-help">Pre toto obdobie nemáme žiadne doklady.</p>;
