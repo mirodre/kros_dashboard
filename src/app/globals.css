@@ -2573,15 +2573,11 @@ body {
   text-align: center;
 }
 
-.sync-overlay-tap {
-  background: rgba(126, 160, 255, 0.12);
-  border: 1px solid rgba(126, 160, 255, 0.28);
-  border-radius: 12px;
-  color: #c9d4f5;
-  font-size: 0.8rem;
+.sync-overlay-hint {
+  color: #9aa6c8;
+  font-size: 0.78rem;
   line-height: 1.45;
   margin: 18px 0 0;
-  padding: 10px 14px;
   text-align: center;
 }
 
