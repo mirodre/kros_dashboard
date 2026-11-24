@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+import { getScreenAwakeNeedsTap, subscribeToScreenAwakeNeedsTap } from "@/lib/screen-wake-lock";
 import { formatSyncEta, getSyncFraction, type SyncProgress } from "@/lib/use-sync-progress";
 
 type Props = {
@@ -26,6 +28,12 @@ export function SyncOverlay({ progress, title, note }: Props) {
   const eta = formatSyncEta(progress.etaSeconds);
   const activeStep = progress.steps[progress.activeIndex];
   const currentStepNumber = Math.min(progress.doneCount + 1, progress.steps.length);
+  // iOS dovolí držať displej zapnutý až po dotyku; kým neprišiel, poprosíme oň.
+  const needsTap = useSyncExternalStore(
+    subscribeToScreenAwakeNeedsTap,
+    getScreenAwakeNeedsTap,
+    () => false
+  );
 
   return (
     <div className="sync-overlay" role="status" aria-live="polite">
@@ -71,6 +79,12 @@ export function SyncOverlay({ progress, title, note }: Props) {
             Krok {currentStepNumber} z {progress.steps.length}
           </em>
         </div>
+
+        {needsTap ? (
+          <p className="sync-overlay-tap">
+            Ťukni kamkoľvek, aby sa displej počas načítavania nezamkol.
+          </p>
+        ) : null}
       </div>
 
       {/* Pri spodku obrazovky — pre toho, koho zaujme, prečo to trvá. */}
