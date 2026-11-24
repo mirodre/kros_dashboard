@@ -3,6 +3,7 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { Granularity } from "@/lib/mock-data";
 import type { KrosConnection } from "@/lib/kros-types";
+import { holdScreenAwake } from "@/lib/screen-wake-lock";
 import { useSyncProgress } from "@/lib/use-sync-progress";
 import { EMPTY_SYNC_DATA, type AnySyncEngine, type SyncData } from "./types";
 
@@ -41,6 +42,9 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
   const [hasResolvedFirstData, setHasResolvedFirstData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  // Zvýši sa, keď sťahovanie spadlo, lebo appka bola na pozadí (zamknutý displej)
+  // — efekt sa tým spustí znova a dotiahne, čo ostalo.
+  const [resumeNonce, setResumeNonce] = useState(0);
   const handledRefreshNonceRef = useRef(0);
   const { beginSync, startStep, advanceStep, completeStep, endSync } = useSyncProgress();
 
@@ -65,6 +69,32 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
     const companyIds = syncConnections.map((connection) => connection.companyId);
     const isManualRefresh = refreshNonce !== handledRefreshNonceRef.current;
 
+    // Zamknutý displej alebo prepnutie do inej appky: systém stránku uspí a
+    // rozrobené spojenie zhodí. Pamätáme si, že sa to počas behu stalo — pád
+    // sťahovania potom nie je chyba na zobrazenie, ale dôvod pokračovať.
+    let wasHiddenDuringRun = document.visibilityState !== "visible";
+    let cancelPendingResume: (() => void) | null = null;
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") wasHiddenDuringRun = true;
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    /** Pokračuje hneď, ako je appka znova na očiach. */
+    const resumeWhenVisible = () => {
+      const resume = () => setResumeNonce((value) => value + 1);
+      if (document.visibilityState === "visible") {
+        resume();
+        return;
+      }
+      const onVisible = () => {
+        if (document.visibilityState !== "visible") return;
+        document.removeEventListener("visibilitychange", onVisible);
+        resume();
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      cancelPendingResume = () => document.removeEventListener("visibilitychange", onVisible);
+    };
+
     const hydrateAll = async () => {
       const parts = await Promise.all(engines.map((engine) => engine.hydrate(companyIds)));
       const merged = parts.reduce<SyncData>(
@@ -86,6 +116,8 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
     const run = async () => {
       const cached = await hydrateAll();
       setError(null);
+      let releaseScreen = () => {};
+      let willResume = false;
 
       try {
         // Najprv plán: čo všetko treba stiahnuť. Počet krokov je podklad pre
@@ -113,6 +145,7 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
         if (planned.length === 0) return;
 
         setIsSyncing(true);
+        releaseScreen = holdScreenAwake();
         // Log KROS volaní čistíme raz na začiatku sťahovania, nie raz za modul —
         // inak by Domov premazal to, čo práve zapísal jeho vlastný prvý engine.
         // Zlyhanie mazania logu nesmie zhodiť celý sync — log je diagnostika,
@@ -138,20 +171,32 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
         localStorage.setItem(LAST_SYNC_STORAGE_KEY, new Date().toISOString());
       } catch (caught) {
         if (!abortController.signal.aborted) {
-          setError(caught instanceof Error ? caught.message : "Načítanie dát zlyhalo.");
+          if (wasHiddenDuringRun) {
+            // Hotové kroky sú už v cache, nový plán obsiahne len zvyšok.
+            willResume = true;
+          } else {
+            setError(caught instanceof Error ? caught.message : "Načítanie dát zlyhalo.");
+          }
         }
       } finally {
+        releaseScreen();
         if (!abortController.signal.aborted) {
-          handledRefreshNonceRef.current = refreshNonce;
+          // Prerušené ručné obnovenie ostáva ručným aj po pokračovaní.
+          if (!willResume) handledRefreshNonceRef.current = refreshNonce;
           setIsSyncing(false);
           endSync();
+          if (willResume) resumeWhenVisible();
         }
       }
     };
 
     run();
 
-    return () => abortController.abort();
+    return () => {
+      abortController.abort();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      cancelPendingResume?.();
+    };
   }, [
     engines,
     connections,
@@ -159,6 +204,7 @@ export function useSyncOrchestrator(engines: AnySyncEngine[], options: Options) 
     granularity,
     enabled,
     refreshNonce,
+    resumeNonce,
     beginSync,
     startStep,
     advanceStep,
